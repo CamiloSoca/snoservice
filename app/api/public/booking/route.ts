@@ -10,9 +10,11 @@ import {
   ServiceItem,
 } from '@/lib/booking-store';
 
- function GET() {
+export async function GET() {
   try {
     const supabase = getSupabaseServer();
+    console.log("SHOP_UUID actual:", SHOP_UUID);
+
     const { data, error } = await supabase
       .from('appointments')
       .select('id, barber_id, service_id, date_string, time_slot, duration_minutes, status, created_at')
@@ -21,12 +23,13 @@ import {
       .order('created_at', { ascending: false });
 
     if (error) {
-      return NextResponse.json({ error: 'No se pudo consultar la disponibilidad.' }, { status: 500 });
+      console.error("Error detallado de Supabase en GET /booking:", error);
+      return NextResponse.json({ error: `Error de base de datos: ${error.message}` }, { status: 500 });
     }
 
     // Devuelve solo horarios ocupados, CERO datos personales de clientes
     const sanitizedSlots: AppointmentItem[] = (data || []).map((apt) => ({
-      id: apt.id,export async
+      id: apt.id,
       code: '',
       serviceId: apt.service_id,
       serviceName: '',
@@ -53,24 +56,14 @@ import {
   }
 }
 
-export async function GET() {
+export async function POST(request: Request) {
   try {
-    const supabase = getSupabaseServer();
-    console.log("SHOP_UUID actual:", SHOP_UUID); // Para verificar en Vercel Logs
+    const body = await request.json();
+    const { serviceId, barberId, dateString, timeSlot, clientName, clientPhone, clientNotes } = body;
 
-    const { data, error } = await supabase
-      .from('appointments')
-      .select('id, barber_id, service_id, date_string, time_slot, duration_minutes, status, created_at')
-      .eq('shop_id', SHOP_UUID)
-      .neq('status', 'cancelado')
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error("Error detallado de Supabase en GET /booking:", error);
-      return NextResponse.json({ error: `Error de base de datos: ${error.message}` }, { status: 500 });
+    if (!isValidUUID(serviceId) || !isValidUUID(barberId)) {
+      return NextResponse.json({ error: 'Servicio o barbero inválido.' }, { status: 400 });
     }
-
-    // Resto del código igual...
 
     const cleanName = sanitizeInput(String(clientName || '')).slice(0, 80);
     const cleanPhone = sanitizeInput(String(clientPhone || '')).slice(0, 25);
