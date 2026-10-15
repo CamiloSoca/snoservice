@@ -1,0 +1,495 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useParams } from 'next/navigation';
+import Link from 'next/link';
+import {
+  MapPin,
+  Scissors,
+  Clock,
+  Check,
+  ArrowLeft,
+  User,
+  CheckCircle2,
+  Phone,
+  MessageSquare,
+  Lock,
+  Sparkles,
+  Calendar,
+  XCircle,
+  AlertCircle,
+} from 'lucide-react';
+import {
+  ServiceItem,
+  BarberItem,
+  AppointmentItem,
+  ShopConfig,
+  DayOption,
+  DEFAULT_SHOP_CONFIG,
+  DEFAULT_SCHEDULE,
+  getServices,
+  getBarbers,
+  getAppointments,
+  getShopConfig,
+  createAppointment,
+  buildRealOpenDays,
+  getSlotsForDayOfWeek,
+} from '@/lib/booking-store';
+
+import BarberPage from '@/app/barbero/page';
+export default BarberPage;
+
+export default function BarberLandingProfile() {
+  const params = useParams();
+  const slugParam = String(params?.slug || '').toLowerCase();
+
+  const [shopConfig, setShopConfig] = useState<ShopConfig>(DEFAULT_SHOP_CONFIG);
+  const [barber, setBarber] = useState<BarberItem | null>(null);
+  const [allServices, setAllServices] = useState<ServiceItem[]>([]);
+  const [appointments, setAppointments] = useState<AppointmentItem[]>([]);
+  const [days, setDays] = useState<DayOption[]>([]);
+
+  const [selectedService, setSelectedService] = useState<ServiceItem | null>(null);
+  const [selectedDate, setSelectedDate] = useState<string>('');
+  const [selectedTime, setSelectedTime] = useState<string | null>(null);
+  const [clientName, setClientName] = useState('');
+  const [clientPhone, setClientPhone] = useState('');
+  const [formError, setFormError] = useState('');
+  const [confirmedApt, setConfirmedApt] = useState<AppointmentItem | null>(null);
+
+  useEffect(() => {
+    const openDays = buildRealOpenDays();
+    setDays(openDays);
+    if (openDays.length > 0) setSelectedDate(openDays[0].dateString);
+
+    setShopConfig(getShopConfig());
+    const loadedServices = getServices().filter((s) => s.active);
+    setAllServices(loadedServices);
+    setAppointments(getAppointments());
+
+    const loadedBarbers = getBarbers();
+    const found =
+      loadedBarbers.find(
+        (b) => b.slug?.toLowerCase() === slugParam || b.id.toLowerCase() === slugParam
+      ) || loadedBarbers[0];
+
+    if (found) {
+      setBarber(found);
+      const firstAvailable = loadedServices.find((s) =>
+        (found.serviceIds || []).includes(s.id)
+      );
+      if (firstAvailable) setSelectedService(firstAvailable);
+    }
+  }, [slugParam]);
+
+  if (!barber) {
+    return (
+      <div className="min-h-screen bg-zinc-950 text-zinc-100 flex items-center justify-center p-4">
+        Cargando perfil del profesional...
+      </div>
+    );
+  }
+
+  const activeDayObj = days.find((d) => d.dateString === selectedDate) || days[0];
+  const { morning, afternoon } = activeDayObj
+    ? getSlotsForDayOfWeek(activeDayObj.dayOfWeek)
+    : { morning: [], afternoon: [] };
+  const allDaySlots = [...morning, ...afternoon];
+  const currentRule = activeDayObj ? DEFAULT_SCHEDULE[activeDayObj.dayOfWeek] : null;
+
+  const checkSlotBooked = (timeSlot: string) => {
+    return appointments.some(
+      (apt) =>
+        apt.barberId === barber.id &&
+        apt.dateString === selectedDate &&
+        apt.timeSlot === timeSlot &&
+        apt.status !== 'cancelado'
+    );
+  };
+
+  const freeSlotsCount = allDaySlots.filter((t) => !checkSlotBooked(t)).length;
+
+  const handleBookDirect = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedService || !selectedTime) {
+      setFormError('Seleccioná un servicio disponible y un horario libre.');
+      return;
+    }
+    const digits = clientPhone.replace(/\D/g, '');
+    if (clientName.trim().length < 3 || digits.length < 8) {
+      setFormError('Completá tu nombre y un celular válido (ej: 098 509 376).');
+      return;
+    }
+
+    const created = createAppointment({
+      serviceId: selectedService.id,
+      serviceName: selectedService.name,
+      servicePrice: selectedService.price,
+      priceSnapshot: selectedService.price,
+      barberId: barber.id,
+      barberName: barber.name,
+      dateString: selectedDate,
+      timeSlot: selectedTime,
+      clientName: clientName.trim(),
+      clientPhone: clientPhone.trim(),
+    });
+    setAppointments(getAppointments());
+    setConfirmedApt(created);
+  };
+
+  const bgImage = shopConfig.backgroundImageUrl || DEFAULT_SHOP_CONFIG.backgroundImageUrl;
+  const logoImage = shopConfig.logoUrl || DEFAULT_SHOP_CONFIG.logoUrl;
+
+  return (
+    <div className="min-h-screen bg-zinc-950 text-zinc-100 pb-16 relative">
+      {/* FONDO DE 13´CUT */}
+      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
+        <img
+          src={bgImage}
+          alt="Fondo"
+          className="w-full h-full object-cover object-center grayscale opacity-[0.13]"
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-zinc-950/85 via-zinc-950/70 to-zinc-950/95" />
+      </div>
+
+      <div className="relative z-10">
+        {/* BARRA SUPERIOR */}
+        <header className="sticky top-0 z-40 bg-zinc-950/85 backdrop-blur-md border-b border-zinc-800 px-4 py-3.5">
+          <div className="max-w-4xl mx-auto flex items-center justify-between">
+            <Link
+              href="/"
+              className="inline-flex items-center space-x-2 text-xs font-semibold text-zinc-300 hover:text-white bg-zinc-900 border border-zinc-800 px-3.5 py-2 rounded-xl"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Volver a {shopConfig.name}</span>
+            </Link>
+
+            <div className="flex items-center space-x-2">
+              {logoImage && (
+                <img
+                  src={logoImage}
+                  alt={shopConfig.name}
+                  className="w-7 h-7 rounded-lg object-cover border border-zinc-700"
+                />
+              )}
+              <span className="text-xs font-bold">{shopConfig.name}</span>
+            </div>
+          </div>
+        </header>
+
+        {/* HERO DE PRESENTACIÓN PERSONAL DEL BARBERO */}
+        <section className="max-w-4xl mx-auto px-4 pt-6">
+          <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-6 sm:p-8 backdrop-blur-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-5">
+                <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl bg-zinc-950 border-2 border-zinc-700 flex items-center justify-center text-3xl font-extrabold text-white shrink-0 shadow-xl">
+                  {barber.name.charAt(0)}
+                </div>
+
+                <div className="space-y-2">
+                  <div className="inline-flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                    <Sparkles className="w-3 h-3" />
+                    <span>{barber.role}</span>
+                  </div>
+                  <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
+                    {barber.name}
+                  </h1>
+                  <p className="text-xs sm:text-sm text-zinc-300 max-w-xl leading-relaxed">
+                    {barber.bio}
+                  </p>
+
+                  {/* Especialidades */}
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {(barber.specialties || []).map((spec) => (
+                      <span
+                        key={spec}
+                        className="px-2.5 py-1 rounded-lg bg-zinc-950 border border-zinc-800 text-[11px] font-medium text-zinc-300"
+                      >
+                        ✂️ {spec}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* CONTENIDO PRINCIPAL: QUÉ SERVICIOS HACE + RESERVA DIRECTA CON ÉL */}
+        <main className="max-w-4xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          {/* COLUMNA IZQUIERDA (7 cols): SERVICIOS HABILITADOS Y NO HABILITADOS */}
+          <div className="lg:col-span-7 space-y-6">
+            <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 sm:p-6 space-y-4">
+              <div>
+                <h2 className="text-lg font-bold">
+                  1. Servicios que realiza {barber.name}
+                </h2>
+                <p className="text-xs text-zinc-400">
+                  Seleccioná un servicio disponible para agendar directo en su calendario.
+                </p>
+              </div>
+
+              <div className="space-y-2.5">
+                {allServices.map((srv) => {
+                  const isSupported = (barber.serviceIds || []).includes(srv.id);
+                  const isSelected = selectedService?.id === srv.id;
+
+                  return (
+                    <button
+                      key={srv.id}
+                      type="button"
+                      disabled={!isSupported}
+                      onClick={() => setSelectedService(srv)}
+                      className={`w-full p-3.5 rounded-2xl border text-left transition-all flex items-center justify-between gap-3 ${
+                        !isSupported
+                          ? 'bg-zinc-950/30 border-zinc-800/50 opacity-50 cursor-not-allowed'
+                          : isSelected
+                          ? 'bg-zinc-800/80 border-zinc-100 ring-1 ring-zinc-100/30 cursor-pointer'
+                          : 'bg-zinc-950/70 border-zinc-800 hover:border-zinc-700 cursor-pointer'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-3">
+                        {srv.imageUrl && (
+                          <img
+                            src={srv.imageUrl}
+                            alt={srv.name}
+                            className="w-14 h-14 rounded-xl object-cover border border-zinc-800 shrink-0"
+                          />
+                        )}
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-bold text-sm">{srv.name}</h3>
+                            {isSupported ? (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/15 text-emerald-400">
+                                Disponible
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-rose-500/15 text-rose-400 flex items-center gap-1">
+                                <XCircle className="w-3 h-3" /> No realiza este servicio
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-zinc-400 line-clamp-1 mt-0.5">
+                            {srv.description}
+                          </p>
+                          <span className="text-[11px] text-zinc-500 flex items-center mt-1">
+                            <Clock className="w-3 h-3 mr-1" /> {srv.durationMinutes} min
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center space-x-2.5 shrink-0">
+                        <span className="font-extrabold text-base">${srv.price}</span>
+                        {isSupported && (
+                          <div
+                            className={`w-5 h-5 rounded-full flex items-center justify-center border ${
+                              isSelected
+                                ? 'bg-zinc-100 border-zinc-100 text-zinc-950'
+                                : 'border-zinc-700'
+                            }`}
+                          >
+                            {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* DISPONIBILIDAD DE HORARIOS EN VIVO DE ESTE BARBERO */}
+            <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 sm:p-6 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-lg font-bold">
+                    2. Horarios libres de {barber.name}
+                  </h2>
+                  <p className="text-xs text-zinc-400">
+                    Lunes y Domingos cerrado • Turnos de 60 minutos.
+                  </p>
+                </div>
+                <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                  {freeSlotsCount} turnos libres este día
+                </span>
+              </div>
+
+              {/* Días */}
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                {days.map((day) => {
+                  const isSelected = selectedDate === day.dateString;
+                  return (
+                    <button
+                      key={day.dateString}
+                      type="button"
+                      onClick={() => {
+                        setSelectedDate(day.dateString);
+                        setSelectedTime(null);
+                      }}
+                      className={`py-2.5 px-2 rounded-xl border text-center transition-all flex flex-col items-center cursor-pointer ${
+                        isSelected
+                          ? 'bg-zinc-100 text-zinc-950 border-transparent font-bold'
+                          : 'bg-zinc-950/60 border-zinc-800 text-zinc-300 hover:border-zinc-700'
+                      }`}
+                    >
+                      <span className="text-[11px] opacity-80">{day.dayName}</span>
+                      <span className="text-base font-extrabold">{day.dayNumber}</span>
+                      <span className="text-[10px] opacity-75">{day.monthName}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {currentRule?.open && (
+                <p className="text-xs text-zinc-400">
+                  Horario de atención del día: <strong>{currentRule.open} a {currentRule.close} hs</strong>
+                </p>
+              )}
+
+              {/* Grilla de Horas Libres vs Ocupadas */}
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                {allDaySlots.map((time) => {
+                  const booked = checkSlotBooked(time);
+                  const isSelected = selectedTime === time;
+
+                  return (
+                    <button
+                      key={time}
+                      type="button"
+                      disabled={booked}
+                      onClick={() => setSelectedTime(time)}
+                      className={`py-2.5 px-2 rounded-xl border text-xs font-bold transition-all flex flex-col items-center justify-center ${
+                        booked
+                          ? 'bg-zinc-950/30 border-zinc-800/40 text-zinc-600 line-through cursor-not-allowed'
+                          : isSelected
+                          ? 'bg-zinc-100 text-zinc-950 border-transparent shadow-md cursor-pointer'
+                          : 'bg-zinc-950/70 border-zinc-800 text-zinc-200 hover:border-zinc-600 cursor-pointer'
+                      }`}
+                    >
+                      <span>{time} hs</span>
+                      {booked ? (
+                        <span className="text-[9px] no-underline text-rose-400 flex items-center mt-0.5">
+                          <Lock className="w-2.5 h-2.5 mr-0.5" /> Ocupado
+                        </span>
+                      ) : (
+                        <span className="text-[9px] no-underline text-emerald-400 mt-0.5">
+                          Libre
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* COLUMNA DERECHA (5 cols): CONFIRMAR RESERVA DIRECTA CON ÉL */}
+          <aside className="lg:col-span-5 lg:sticky lg:top-20">
+            <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 sm:p-6 space-y-4">
+              {confirmedApt ? (
+                <div className="text-center space-y-4 py-3">
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center mx-auto">
+                    <CheckCircle2 className="w-7 h-7" />
+                  </div>
+                  <h3 className="text-lg font-bold">¡Turno Agendado con {barber.name}!</h3>
+                  <p className="text-xs text-zinc-400">
+                    {confirmedApt.serviceName} (${confirmedApt.servicePrice}) •{' '}
+                    {confirmedApt.dateString} a las {confirmedApt.timeSlot} hs
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setConfirmedApt(null);
+                      setSelectedTime(null);
+                    }}
+                    className="w-full py-3 rounded-xl bg-zinc-100 text-zinc-950 font-bold text-xs cursor-pointer"
+                  >
+                    Hacer otra reserva
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleBookDirect} className="space-y-4">
+                  <div className="border-b border-zinc-800 pb-3">
+                    <h3 className="font-bold text-base">Agendar con {barber.name}</h3>
+                    <p className="text-xs text-zinc-400">
+                      Reserva directa en su agenda de {shopConfig.name}.
+                    </p>
+                  </div>
+
+                  <div className="bg-zinc-950/70 border border-zinc-800 rounded-2xl p-3.5 space-y-2 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-zinc-400">Profesional:</span>
+                      <span className="font-bold">{barber.name}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-zinc-400">Servicio:</span>
+                      <span className="font-bold">
+                        {selectedService ? `${selectedService.name} ($${selectedService.price})` : 'Elegí uno'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-zinc-400">Día y Hora:</span>
+                      <span className="font-bold text-emerald-400">
+                        {selectedTime ? `${selectedDate} • ${selectedTime} hs` : 'Elegí una hora libre'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-300 mb-1">
+                        Tu Nombre y Apellido *
+                      </label>
+                      <div className="relative">
+                        <User className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="text"
+                          required
+                          placeholder="Ej: Martín Rodríguez"
+                          value={clientName}
+                          onChange={(e) => setClientName(e.target.value)}
+                          className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-sm outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-zinc-300 mb-1">
+                        Tu Celular / WhatsApp *
+                      </label>
+                      <div className="relative">
+                        <Phone className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="tel"
+                          required
+                          placeholder="098 509 376"
+                          value={clientPhone}
+                          onChange={(e) => setClientPhone(e.target.value)}
+                          className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-sm outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {formError && (
+                    <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 shrink-0" />
+                      <span>{formError}</span>
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    className="w-full py-3.5 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-extrabold text-xs sm:text-sm cursor-pointer transition-colors"
+                  >
+                    Confirmar Turno con {barber.name}
+                  </button>
+                </form>
+              )}
+            </div>
+          </aside>
+        </main>
+      </div>
+    </div>
+  );
+}
