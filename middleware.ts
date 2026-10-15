@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-
-const SESSION_TOKEN = 'barber_central_secret_token_2026';
+import { ADMIN_COOKIE_NAME } from '@/lib/session';
 
 export function middleware(request: NextRequest) {
-  const sessionCookie = request.cookies.get('barber_admin_session')?.value;
-  const isAuthenticated = sessionCookie === SESSION_TOKEN;
+  const sessionCookie = request.cookies.get(ADMIN_COOKIE_NAME)?.value;
   const { pathname } = request.nextUrl;
+
+  // Verificamos si existe la cookie de sesión del admin
+  const isAuthenticated = Boolean(sessionCookie);
 
   // 1. Si intenta entrar a /admin sin iniciar sesión -> Lo patea a /login
   if (pathname.startsWith('/admin') && !isAuthenticated) {
