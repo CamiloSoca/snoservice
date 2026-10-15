@@ -10,7 +10,7 @@ import {
   ServiceItem,
 } from '@/lib/booking-store';
 
-export async function GET() {
+ function GET() {
   try {
     const supabase = getSupabaseServer();
     const { data, error } = await supabase
@@ -26,7 +26,7 @@ export async function GET() {
 
     // Devuelve solo horarios ocupados, CERO datos personales de clientes
     const sanitizedSlots: AppointmentItem[] = (data || []).map((apt) => ({
-      id: apt.id,
+      id: apt.id,export async
       code: '',
       serviceId: apt.service_id,
       serviceName: '',
@@ -53,14 +53,24 @@ export async function GET() {
   }
 }
 
-export async function POST(request: Request) {
+export async function GET() {
   try {
-    const body = await request.json();
-    const { serviceId, barberId, dateString, timeSlot, clientName, clientPhone, clientNotes } = body;
+    const supabase = getSupabaseServer();
+    console.log("SHOP_UUID actual:", SHOP_UUID); // Para verificar en Vercel Logs
 
-    if (!isValidUUID(serviceId) || !isValidUUID(barberId)) {
-      return NextResponse.json({ error: 'Servicio o barbero inválido.' }, { status: 400 });
+    const { data, error } = await supabase
+      .from('appointments')
+      .select('id, barber_id, service_id, date_string, time_slot, duration_minutes, status, created_at')
+      .eq('shop_id', SHOP_UUID)
+      .neq('status', 'cancelado')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error("Error detallado de Supabase en GET /booking:", error);
+      return NextResponse.json({ error: `Error de base de datos: ${error.message}` }, { status: 500 });
     }
+
+    // Resto del código igual...
 
     const cleanName = sanitizeInput(String(clientName || '')).slice(0, 80);
     const cleanPhone = sanitizeInput(String(clientPhone || '')).slice(0, 25);
