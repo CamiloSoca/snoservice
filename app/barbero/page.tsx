@@ -49,7 +49,6 @@ const MONTH_MAP: Record<string, number> = {
   jul: 6, ago: 7, sep: 8, oct: 9, nov: 10, dic: 11
 };
 
-// Obtiene fecha, mes y hora exacta en Montevideo (UTC-3)
 function getUruguayNow() {
   const formatter = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/Montevideo',
@@ -418,7 +417,7 @@ function BarberPageContent() {
 
         {/* TARJETA DEL BARBERO */}
         {currentBarber && (
-          <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 backdrop-blur-sm">
             <div className="flex items-center space-x-3.5">
               <div className="w-14 h-14 rounded-2xl bg-zinc-950 border border-zinc-800 flex items-center justify-center font-extrabold text-xl text-white">
                 {currentBarber.name.charAt(0)}
@@ -463,7 +462,7 @@ function BarberPageContent() {
 
         {/* MODO 1: RESERVAR DIRECTO (PÚBLICO) */}
         {activeMode === 'reservar' && currentBarber && (
-          <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 sm:p-6 space-y-6">
+          <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 sm:p-7 backdrop-blur-sm space-y-6">
             {confirmedApt ? (
               <div className="py-6 text-center space-y-4">
                 <div className="w-12 h-12 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 flex items-center justify-center mx-auto">
@@ -492,12 +491,19 @@ function BarberPageContent() {
                 </button>
               </div>
             ) : (
-              <form onSubmit={handleBookDirectWithBarber} className="space-y-5">
-                <div className="space-y-2.5">
-                  <label className="text-xs font-bold uppercase tracking-wider text-zinc-400">
-                    1. Elegí el servicio con {currentBarber.name}
-                  </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <form onSubmit={handleBookDirectWithBarber} className="space-y-6">
+                {/* 1. SERVICIOS */}
+                <div className="space-y-3">
+                  <div>
+                    <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight">
+                      Elegí el servicio
+                    </h2>
+                    <p className="text-xs mt-1 text-zinc-400">
+                      Con {currentBarber.name}
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
                     {barberServices.map((srv) => {
                       const isSelected = selectedService?.id === srv.id;
                       return (
@@ -508,21 +514,31 @@ function BarberPageContent() {
                             setSelectedService(srv);
                             setSelectedTime(null);
                           }}
-                          className={`p-3.5 rounded-2xl border text-left transition-all flex items-center justify-between cursor-pointer ${
+                          className={`w-full p-3.5 rounded-2xl border text-left transition-all flex items-center justify-between gap-3 cursor-pointer ${
                             isSelected
-                              ? 'border-zinc-200 bg-zinc-800/90'
-                              : 'border-zinc-800 bg-zinc-950/60 hover:border-zinc-700'
+                              ? 'border-zinc-200 bg-zinc-800/80 ring-1 ring-zinc-200/30'
+                              : 'bg-zinc-950/60 border-zinc-800/90 hover:border-zinc-700'
                           }`}
                         >
-                          <div>
-                            <p className="font-bold text-sm">{srv.name}</p>
-                            <span className="text-[11px] text-zinc-400 flex items-center mt-0.5">
-                              <Clock className="w-3 h-3 mr-1" /> {srv.durationMinutes} min
-                            </span>
+                          <div className="flex items-center space-x-3.5 min-w-0">
+                            <div className="p-3 rounded-xl bg-zinc-900 text-white shrink-0">
+                              <Scissors className="w-4 h-4" />
+                            </div>
+                            <div className="truncate">
+                              <h3 className="font-bold text-sm sm:text-base truncate">{srv.name}</h3>
+                              <span className="inline-flex items-center text-xs mt-0.5 text-zinc-400">
+                                <Clock className="w-3 h-3 mr-1" /> Duración: {srv.durationMinutes} min
+                              </span>
+                            </div>
                           </div>
-                          <div className="flex items-center space-x-2">
-                            <span className="font-extrabold text-sm">${srv.price}</span>
-                            {isSelected && <Check className="w-4 h-4 text-emerald-400" />}
+
+                          <div className="flex items-center space-x-3 shrink-0">
+                            <span className="font-extrabold text-sm sm:text-base">${srv.price}</span>
+                            <div className={`w-5 h-5 rounded-full flex items-center justify-center border transition-all ${
+                              isSelected ? 'bg-zinc-100 border-zinc-100 text-zinc-950' : 'border-zinc-700 bg-zinc-900 text-transparent'
+                            }`}>
+                              <Check className="w-3 h-3 stroke-[3]" />
+                            </div>
                           </div>
                         </button>
                       );
@@ -530,116 +546,201 @@ function BarberPageContent() {
                   </div>
                 </div>
 
+                {/* 2. FECHA Y HORA */}
                 {selectedService && (
-                  <div className="space-y-3 pt-2 border-t border-zinc-800">
-                    <label className="text-xs font-bold uppercase tracking-wider text-zinc-400">
-                      2. Elegí día y hora ({selectedService.durationMinutes} min)
-                    </label>
-
-                    <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-                      {days.map((d) => {
-                        const isSelected = selectedDate === d.dateString;
-                        return (
-                          <button
-                            key={d.dateString}
-                            type="button"
-                            onClick={() => {
-                              setSelectedDate(d.dateString);
-                              setSelectedTime(null);
-                            }}
-                            className={`py-2 px-1.5 rounded-xl border text-center transition-all flex flex-col items-center cursor-pointer ${
-                              isSelected
-                                ? 'bg-zinc-100 text-zinc-950 border-transparent font-bold'
-                                : 'bg-zinc-950 border-zinc-800 text-zinc-300'
-                            }`}
-                          >
-                            <span className="text-[10px] opacity-80">{d.dayName}</span>
-                            <span className="text-base font-bold">{d.dayNumber}</span>
-                            <span className="text-[10px] opacity-75">{d.monthName}</span>
-                          </button>
-                        );
-                      })}
+                  <div className="space-y-5 pt-4 border-t border-zinc-800">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight">
+                          Fecha y hora
+                        </h2>
+                        <p className="text-xs mt-0.5 text-zinc-400">
+                          Reserva de {selectedService.durationMinutes} min continuos
+                        </p>
+                      </div>
                     </div>
 
-                    <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 pt-2">
-                      {[...morningSlots, ...afternoonSlots].map((time) => {
-                        const isPast = isSlotPastForSelectedDay(activeDayObj, time);
-                        const booked = checkSlotBooked(time);
-                        const unavailable = isPast || booked;
-                        const isSelected = selectedTime === time && !unavailable;
+                    <div>
+                      <label className="text-[11px] font-semibold uppercase tracking-wider opacity-60 block mb-2">
+                        Día de atención
+                      </label>
+                      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                        {days.map((d) => {
+                          const isSelected = selectedDate === d.dateString;
+                          return (
+                            <button
+                              key={d.dateString}
+                              type="button"
+                              onClick={() => {
+                                setSelectedDate(d.dateString);
+                                setSelectedTime(null);
+                              }}
+                              className={`py-2.5 px-1.5 rounded-2xl border text-center transition-all flex flex-col items-center cursor-pointer ${
+                                isSelected
+                                  ? 'bg-zinc-100 hover:bg-white text-zinc-950 font-bold border-transparent shadow-md'
+                                  : 'bg-zinc-950/60 border-zinc-800 text-zinc-300 hover:border-zinc-700'
+                              }`}
+                            >
+                              <span className="text-[10px] opacity-75 uppercase tracking-wider">{d.dayName}</span>
+                              <span className="text-lg font-extrabold my-0.5">{d.dayNumber}</span>
+                              <span className="text-[10px] opacity-75">{d.monthName}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
 
-                        return (
-                          <button
-                            key={time}
-                            type="button"
-                            disabled={unavailable}
-                            onClick={() => setSelectedTime(time)}
-                            className={`py-2.5 px-2 rounded-xl border text-xs font-semibold transition-all flex flex-col items-center justify-center ${
-                              unavailable
-                                ? 'bg-zinc-950/30 border-zinc-800/50 text-zinc-600 line-through cursor-not-allowed opacity-50'
-                                : isSelected
-                                ? 'bg-zinc-100 text-zinc-950 border-transparent font-bold'
-                                : 'bg-zinc-950 border-zinc-800 text-zinc-200 hover:border-zinc-700 cursor-pointer'
-                            }`}
-                          >
-                            <span>{time}</span>
-                            {unavailable && (
-                              <span className="text-[9px] no-underline text-rose-400">
-                                {isPast ? 'Pasó' : 'Ocupado'}
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
+                    {/* HORARIOS */}
+                    <div className="space-y-3 pt-2 border-t border-zinc-800/40">
+                      <label className="text-[11px] font-semibold uppercase tracking-wider opacity-60 block">
+                        Horarios disponibles ({selectedDate})
+                      </label>
+
+                      <div className="space-y-3">
+                        {morningSlots.length > 0 && (
+                          <div>
+                            <span className="text-[11px] font-medium text-emerald-400 block mb-1.5">☀️ Turno Mañana</span>
+                            <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                              {morningSlots.map((time) => {
+                                const isPast = isSlotPastForSelectedDay(activeDayObj, time);
+                                const booked = checkSlotBooked(time);
+                                const unavailable = isPast || booked;
+                                const isSelected = selectedTime === time && !unavailable;
+
+                                return (
+                                  <button
+                                    key={time}
+                                    type="button"
+                                    disabled={unavailable}
+                                    onClick={() => setSelectedTime(time)}
+                                    className={`py-2 px-1 rounded-xl border text-xs font-semibold transition-all flex flex-col items-center justify-center ${
+                                      unavailable
+                                        ? 'bg-zinc-950/20 border-zinc-800/40 text-zinc-600 line-through cursor-not-allowed opacity-50'
+                                        : isSelected
+                                        ? 'bg-zinc-100 text-zinc-950 font-bold border-transparent scale-[1.02]'
+                                        : 'bg-zinc-950/70 border-zinc-800 text-zinc-200 hover:border-zinc-700 cursor-pointer'
+                                    }`}
+                                  >
+                                    <span>{time}</span>
+                                    {unavailable && (
+                                      <span className="text-[8px] no-underline text-rose-400 scale-90">
+                                        {isPast ? 'Pasó' : 'Ocupado'}
+                                      </span>
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {afternoonSlots.length > 0 && (
+                          <div className="pt-1">
+                            <span className="text-[11px] font-medium text-indigo-400 block mb-1.5">🌙 Turno Tarde / Noche</span>
+                            <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                              {afternoonSlots.map((time) => {
+                                const isPast = isSlotPastForSelectedDay(activeDayObj, time);
+                                const booked = checkSlotBooked(time);
+                                const unavailable = isPast || booked;
+                                const isSelected = selectedTime === time && !unavailable;
+
+                                return (
+                                  <button
+                                    key={time}
+                                    type="button"
+                                    disabled={unavailable}
+                                    onClick={() => setSelectedTime(time)}
+                                    className={`py-2 px-1 rounded-xl border text-xs font-semibold transition-all flex flex-col items-center justify-center ${
+                                      unavailable
+                                        ? 'bg-zinc-950/20 border-zinc-800/40 text-zinc-600 line-through cursor-not-allowed opacity-50'
+                                        : isSelected
+                                        ? 'bg-zinc-100 text-zinc-950 font-bold border-transparent scale-[1.02]'
+                                        : 'bg-zinc-950/70 border-zinc-800 text-zinc-200 hover:border-zinc-700 cursor-pointer'
+                                    }`}
+                                  >
+                                    <span>{time}</span>
+                                    {unavailable && (
+                                      <span className="text-[8px] no-underline text-rose-400 scale-90">
+                                        {isPast ? 'Pasó' : 'Ocupado'}
+                                      </span>
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}
 
+                {/* 3. DATOS */}
                 {selectedService && selectedTime && (
-                  <div className="space-y-3 pt-3 border-t border-zinc-800">
-                    <label className="text-xs font-bold uppercase tracking-wider text-zinc-400 block">
-                      3. Tus datos ({selectedTime} a {getEndTimeString(selectedTime)} hs)
-                    </label>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div className="relative">
-                        <User className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                        <input
-                          type="text"
-                          placeholder="Tu nombre y apellido"
-                          value={clientName}
-                          onChange={(e) => setClientName(e.target.value)}
-                          className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-sm outline-none"
-                        />
-                      </div>
-                      <div className="relative">
-                        <Phone className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                        <input
-                          type="tel"
-                          inputMode="numeric"
-                          maxLength={11}
-                          placeholder="Celular (09X XXX XXX)"
-                          value={clientPhone}
-                          onChange={(e) => setClientPhone(formatUruguayanPhoneInput(e.target.value))}
-                          className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-sm outline-none font-mono"
-                        />
-                      </div>
+                  <div className="space-y-4 pt-4 border-t border-zinc-800">
+                    <div>
+                      <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight">
+                        Tus datos
+                      </h2>
+                      <p className="text-xs mt-1 text-zinc-400">
+                        Para enviarte el comprobante de tu turno con {currentBarber.name}
+                      </p>
                     </div>
 
-                    {bookingError && (
-                      <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center gap-2">
-                        <AlertCircle className="w-4 h-4 shrink-0" />
-                        <span>{bookingError}</span>
+                    <div className="space-y-3.5">
+                      <div>
+                        <label className="block text-xs font-semibold mb-1.5 opacity-80">
+                          Nombre y apellido *
+                        </label>
+                        <div className="relative">
+                          <User className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                          <input
+                            type="text"
+                            maxLength={50}
+                            placeholder="Tu nombre"
+                            value={clientName}
+                            onChange={(e) => setClientName(e.target.value)}
+                            className="w-full pl-10 pr-4 py-3 rounded-xl bg-zinc-950 border border-zinc-800 text-base outline-none text-zinc-100"
+                          />
+                        </div>
                       </div>
-                    )}
 
-                    <button
-                      type="submit"
-                      disabled={isSubmitting}
-                      className="w-full py-3.5 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-bold text-xs sm:text-sm cursor-pointer transition-all"
-                    >
-                      {isSubmitting ? 'Confirmando...' : `Confirmar Turno ($${selectedService.price})`}
-                    </button>
+                      <div>
+                        <label className="block text-xs font-semibold mb-1.5 opacity-80">
+                          Celular uruguayo (09X XXX XXX) *
+                        </label>
+                        <div className="relative">
+                          <Phone className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                          <input
+                            type="tel"
+                            inputMode="numeric"
+                            maxLength={11}
+                            placeholder="098 509 376"
+                            value={clientPhone}
+                            onChange={(e) => setClientPhone(formatUruguayanPhoneInput(e.target.value))}
+                            className="w-full pl-10 pr-4 py-3 rounded-xl bg-zinc-950 border border-zinc-800 text-base outline-none font-mono text-zinc-100"
+                          />
+                        </div>
+                        <p className="text-[11px] opacity-60 mt-1">
+                          Número celular de Uruguay (9 dígitos exactos).
+                        </p>
+                      </div>
+
+                      {bookingError && (
+                        <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center gap-2">
+                          <AlertCircle className="w-4 h-4 shrink-0" />
+                          <span>{bookingError}</span>
+                        </div>
+                      )}
+
+                      <button
+                        type="submit"
+                        disabled={isSubmitting}
+                        className="w-full py-3.5 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-extrabold text-xs sm:text-sm cursor-pointer transition-all"
+                      >
+                        {isSubmitting ? 'Confirmando...' : `Confirmar Turno ($${selectedService.price})`}
+                      </button>
+                    </div>
                   </div>
                 )}
               </form>
@@ -649,7 +750,7 @@ function BarberPageContent() {
 
         {/* MODO 2: MODO PRIVADO */}
         {activeMode === 'privado' && currentBarber && (
-          <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 sm:p-6">
+          <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 sm:p-6 backdrop-blur-sm">
             {!isPanelUnlocked ? (
               <form onSubmit={handleUnlockPanel} className="max-w-xs mx-auto py-8 space-y-4 text-center">
                 <div className="w-12 h-12 rounded-2xl bg-zinc-950 border border-zinc-800 flex items-center justify-center mx-auto text-amber-400">
@@ -668,7 +769,7 @@ function BarberPageContent() {
                   placeholder="••••"
                   value={pinInput}
                   onChange={(e) => setPinInput(e.target.value)}
-                  className="w-full text-center tracking-[0.5em] font-mono text-xl py-3 rounded-xl bg-zinc-950 border border-zinc-800 outline-none"
+                  className="w-full text-center tracking-[0.5em] font-mono text-xl py-3 rounded-xl bg-zinc-950 border border-zinc-800 outline-none text-zinc-100"
                 />
 
                 {pinError && <p className="text-xs text-rose-400">{pinError}</p>}
