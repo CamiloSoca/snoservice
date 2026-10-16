@@ -10,6 +10,8 @@ const jakarta = Plus_Jakarta_Sans({
   variable: "--font-jakarta",
 });
 
+
+
 // Bloquea el zoom en celulares para dar sensación de App Nativa
 export const viewport: Viewport = {
   width: "device-width",
@@ -22,6 +24,12 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   title: "13 Cut | Reserva tu turno",
   description: "Sistema de reservas online para 13 Cut en Uruguay.",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "13 Cut",
+  },
 };
 
 // Componente integrado de Navegación Flotante Inferior (Estilo App Móvil)
