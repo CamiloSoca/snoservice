@@ -42,7 +42,6 @@ import {
   isSlotAvailable,
   timeToMinutes,
   minutesToTime,
-  isValidUruguayanPhone,
 } from '@/lib/booking-store';
 
 const FALLBACK_DAYS: DayOption[] = [
@@ -53,6 +52,40 @@ const FALLBACK_DAYS: DayOption[] = [
   { dateString: 'Sáb 19 Oct', dayName: 'Sáb', dayNumber: '19', monthName: 'Oct', dayOfWeek: 6 },
   { dateString: 'Mar 22 Oct', dayName: 'Mar', dayNumber: '22', monthName: 'Oct', dayOfWeek: 2 },
 ];
+
+const MONTHS_ES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+const BOOKING_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutos entre reservas desde el mismo dispositivo
+const BOOKING_STORAGE_KEY = '13cut_last_booking_ts';
+
+// Obtiene fecha y minutos actuales en hora de Uruguay (America/Montevideo)
+function getUruguayNow() {
+  const nowUy = new Date(
+    new Date().toLocaleString('en-US', { timeZone: 'America/Montevideo' })
+  );
+  return {
+    dayNumber: String(nowUy.getDate()),
+    monthName: MONTHS_ES[nowUy.getMonth()],
+    currentMinutes: nowUy.getHours() * 60 + nowUy.getMinutes(),
+  };
+}
+
+// Formatea automáticamente a "09X XXX XXX" limitando estrictamente a 9 dígitos
+function formatUruguayanPhoneInput(raw: string): string {
+  const digits = raw.replace(/\D/g, '').slice(0, 9);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 3)} ${digits.slice(3)}`;
+  return `${digits.slice(0, 3)} ${digits.slice(3, 6)} ${digits.slice(6, 9)}`;
+}
+
+// Validación estricta de celular uruguayo (9 dígitos, empieza con 09[1-9], sin secuencias falsas)
+function isStrictUruguayanMobile(phone: string): boolean {
+  const digits = phone.replace(/\D/g, '');
+  if (!/^09[1-9]\d{6}$/.test(digits)) return false;
+  const subscriber = digits.slice(3);
+  if (/^(\d)\1{5}$/.test(subscriber)) return false; // Bloquea 099 111 111, 099 000 000, etc.
+  if (['123456', '654321', '012345'].includes(subscriber)) return false;
+  return true;
+}
 
 const INSTAGRAM_POSTS = [
   {
@@ -247,6 +280,19 @@ export default function Home() {
     bookingSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
+  // Verifica si el horario ya pasó en el día de HOY (Hora de Montevideo + 10 min de margen)
+  const isSlotPastForSelectedDay = (dayObj: DayOption, timeSlot: string): boolean => {
+    const { dayNumber, monthName, currentMinutes } = getUruguayNow();
+    const isToday =
+      String(Number(dayObj.dayNumber)) === String(Number(dayNumber)) &&
+      dayObj.monthName.toLowerCase() === monthName.toLowerCase();
+
+    if (!isToday) return false;
+
+    const slotMinutes = timeToMinutes(timeSlot);
+    return slotMinutes <= currentMinutes + 10;
+  };
+
   const checkSlotBooked = (barberId: string, dateStr: string, timeSlot: string): boolean => {
     const duration = selectedService?.durationMinutes || 60;
     const available = isSlotAvailable({
@@ -271,16 +317,26 @@ export default function Home() {
   const canProceed = () => {
     if (step === 1) return selectedService !== null;
     if (step === 2) return selectedBarber !== null;
-    if (step === 3) return Boolean(selectedDate) && Boolean(selectedTime);
-    if (step === 4)
-      return !isSubmitting && clientName.trim().length >= 3 && isValidUruguayanPhone(clientPhone);
+    if (step === 3) {
+      if (!selectedDate || !selectedTime) return false;
+      return !isSlotPastForSelectedDay(activeDayObj, selectedTime);
+    }
+    if (step === 4) {
+      return (
+        !isSubmitting &&
+        clientName.trim().length >= 3 &&
+        isStrictUruguayanMobile(clientPhone)
+      );
+    }
     return false;
   };
 
   const handleNext = async () => {
     if (!canProceed()) {
       if (step === 4 && !isSubmitting) {
-        setFormError('Ingresá tu nombre y un celular uruguayo válido (ej: 098 509 376).');
+        setFormError(
+          'Ingresá tu nombre y un celular uruguayo válido de 9 dígitos (09X XXX XXX).'
+        );
       }
       return;
     }
@@ -294,6 +350,48 @@ export default function Home() {
       try {
         setIsSubmitting(true);
 
+        // 1. Anti-Spam en navegador: Bloqueo de ráfaga si ya reservó hace menos de 5 minutos
+        const lastBookingTs = Number(localStorage.getItem(BOOKING_STORAGE_KEY) || '0');
+        if (lastBookingTs && Date.now() - lastBookingTs < BOOKING_COOLDOWN_MS) {
+          const waitMins = Math.ceil(
+            (BOOKING_COOLDOWN_MS - (Date.now() - lastBookingTs)) / 60000
+          );
+          setFormError(
+            `Ya registraste una reserva hace instantes. Por seguridad, esperá ${waitMins} min antes de crear otra.`
+          );
+          setIsSubmitting(false);
+          return;
+        }
+
+        // 2. Validar que el horario no haya pasado mientras tenía la página abierta
+        if (isSlotPastForSelectedDay(activeDayObj, selectedTime)) {
+          setFormError('Este horario ya pasó. Por favor volvé atrás y elegí una hora posterior.');
+          setIsSubmitting(false);
+          return;
+        }
+
+        // 3. Validar disponibilidad actual en base de datos
+        const freshSlots = await getPublicBookedSlots();
+        setAppointments(freshSlots);
+
+        const cleanInputPhone = clientPhone.replace(/\D/g, '');
+        const alreadyHasTurnToday = freshSlots.some(
+          (apt: any) =>
+            apt.dateString === selectedDate &&
+            apt.status !== 'cancelled' &&
+            apt.status !== 'cancelado' &&
+            typeof apt.clientPhone === 'string' &&
+            apt.clientPhone.replace(/\D/g, '') === cleanInputPhone
+        );
+
+        if (alreadyHasTurnToday) {
+          setFormError(
+            `Ya tenés un turno registrado para el ${selectedDate} con este número de celular.`
+          );
+          setIsSubmitting(false);
+          return;
+        }
+
         if (checkSlotBooked(selectedBarber.id, selectedDate, selectedTime)) {
           setFormError(
             'Este horario no cuenta con tiempo suficiente o acaba de ser ocupado. Por favor elegí otro.'
@@ -301,6 +399,8 @@ export default function Home() {
           setIsSubmitting(false);
           return;
         }
+
+        const formattedPhone = formatUruguayanPhoneInput(cleanInputPhone);
 
         const created = await createAppointment({
           serviceId: selectedService.id,
@@ -313,9 +413,11 @@ export default function Home() {
           dateString: selectedDate,
           timeSlot: selectedTime,
           clientName: clientName.trim(),
-          clientPhone: clientPhone.trim(),
+          clientPhone: formattedPhone,
           clientNotes: clientNotes.trim(),
         });
+
+        localStorage.setItem(BOOKING_STORAGE_KEY, String(Date.now()));
 
         const updatedSlots = await getPublicBookedSlots();
         setAppointments(updatedSlots);
@@ -839,19 +941,21 @@ export default function Home() {
                       </label>
                       <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                         {morningSlots.map((time) => {
+                          const isPast = isSlotPastForSelectedDay(activeDayObj, time);
                           const booked = selectedBarber
                             ? checkSlotBooked(selectedBarber.id, selectedDate, time)
                             : false;
-                          const isSelected = selectedTime === time;
+                          const unavailable = isPast || booked;
+                          const isSelected = selectedTime === time && !unavailable;
 
                           return (
                             <button
                               key={time}
                               type="button"
-                              disabled={booked}
+                              disabled={unavailable}
                               onClick={() => setSelectedTime(time)}
                               className={`py-2.5 px-2 rounded-xl border text-xs sm:text-sm font-semibold transition-all flex flex-col items-center justify-center ${
-                                booked
+                                unavailable
                                   ? isDark
                                     ? 'bg-zinc-950/30 border-zinc-800/50 text-zinc-600 line-through cursor-not-allowed'
                                     : 'bg-zinc-100 border-zinc-200 text-zinc-400 line-through cursor-not-allowed'
@@ -863,9 +967,9 @@ export default function Home() {
                               }`}
                             >
                               <span>{time}</span>
-                              {booked && (
+                              {unavailable && (
                                 <span className="text-[9px] no-underline text-rose-400 mt-0.5">
-                                  No disp.
+                                  {isPast ? 'Pasó' : 'No disp.'}
                                 </span>
                               )}
                             </button>
@@ -880,19 +984,21 @@ export default function Home() {
                       </label>
                       <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
                         {afternoonSlots.map((time) => {
+                          const isPast = isSlotPastForSelectedDay(activeDayObj, time);
                           const booked = selectedBarber
                             ? checkSlotBooked(selectedBarber.id, selectedDate, time)
                             : false;
-                          const isSelected = selectedTime === time;
+                          const unavailable = isPast || booked;
+                          const isSelected = selectedTime === time && !unavailable;
 
                           return (
                             <button
                               key={time}
                               type="button"
-                              disabled={booked}
+                              disabled={unavailable}
                               onClick={() => setSelectedTime(time)}
                               className={`py-2.5 px-2 rounded-xl border text-xs sm:text-sm font-semibold transition-all flex flex-col items-center justify-center ${
-                                booked
+                                unavailable
                                   ? isDark
                                     ? 'bg-zinc-950/30 border-zinc-800/50 text-zinc-600 line-through cursor-not-allowed'
                                     : 'bg-zinc-100 border-zinc-200 text-zinc-400 line-through cursor-not-allowed'
@@ -904,9 +1010,9 @@ export default function Home() {
                               }`}
                             >
                               <span>{time}</span>
-                              {booked && (
+                              {unavailable && (
                                 <span className="text-[9px] no-underline text-rose-400 mt-0.5">
-                                  No disp.
+                                  {isPast ? 'Pasó' : 'No disp.'}
                                 </span>
                               )}
                             </button>
@@ -933,6 +1039,7 @@ export default function Home() {
                           <User className="w-4 h-4 opacity-50 absolute left-3.5 top-1/2 -translate-y-1/2" />
                           <input
                             type="text"
+                            maxLength={50}
                             placeholder="Tu nombre"
                             value={clientName}
                             onChange={(e) => setClientName(e.target.value)}
@@ -947,22 +1054,29 @@ export default function Home() {
 
                       <div>
                         <label className="block text-xs font-semibold mb-1 opacity-80">
-                          Celular (09X XXX XXX) *
+                          Celular uruguayo (9 dígitos: 09X XXX XXX) *
                         </label>
                         <div className="relative">
                           <Phone className="w-4 h-4 opacity-50 absolute left-3.5 top-1/2 -translate-y-1/2" />
                           <input
                             type="tel"
+                            inputMode="numeric"
+                            maxLength={11}
                             placeholder="098 509 376"
                             value={clientPhone}
-                            onChange={(e) => setClientPhone(e.target.value)}
-                            className={`w-full pl-10 pr-4 py-3 rounded-xl border text-base outline-none ${
+                            onChange={(e) =>
+                              setClientPhone(formatUruguayanPhoneInput(e.target.value))
+                            }
+                            className={`w-full pl-10 pr-4 py-3 rounded-xl border text-base outline-none font-mono ${
                               isDark
                                 ? 'bg-zinc-950 border-zinc-800 focus:border-zinc-400 text-zinc-100'
                                 : 'bg-zinc-50 border-zinc-300 focus:border-zinc-900 text-zinc-900'
                             }`}
                           />
                         </div>
+                        <p className="text-[11px] opacity-60 mt-1">
+                          Solo números celulares de Uruguay (debe comenzar con 09 y tener 9 dígitos).
+                        </p>
                       </div>
 
                       {formError && (
