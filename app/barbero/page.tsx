@@ -42,8 +42,61 @@ import {
   isSlotAvailable,
   timeToMinutes,
   minutesToTime,
-  isValidUruguayanPhone,
 } from '@/lib/booking-store';
+
+const MONTH_MAP: Record<string, number> = {
+  ene: 0, feb: 1, mar: 2, abr: 3, may: 4, jun: 5,
+  jul: 6, ago: 7, sep: 8, oct: 9, nov: 10, dic: 11
+};
+
+// Obtiene fecha, mes y hora exacta en Montevideo (UTC-3)
+function getUruguayNow() {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Montevideo',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: 'numeric',
+    hour12: false,
+  });
+  
+  const parts = formatter.formatToParts(new Date());
+  let year = 2026, month = 9, day = 16, hour = 0, minute = 0;
+
+  for (const p of parts) {
+    if (p.type === 'year') year = parseInt(p.value, 10) || 2026;
+    if (p.type === 'month') month = parseInt(p.value, 10) - 1;
+    if (p.type === 'day') day = parseInt(p.value, 10);
+    if (p.type === 'hour') hour = parseInt(p.value, 10) || 0;
+    if (p.type === 'minute') minute = parseInt(p.value, 10) || 0;
+  }
+
+  if (hour === 24) hour = 0;
+
+  return {
+    year,
+    month,
+    day,
+    currentMinutes: hour * 60 + minute,
+  };
+}
+
+function formatUruguayanPhoneInput(raw: string): string {
+  const digits = raw.replace(/\D/g, '').slice(0, 9);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 3)} ${digits.slice(3)}`;
+  return `${digits.slice(0, 3)} ${digits.slice(3, 6)} ${digits.slice(6, 9)}`;
+}
+
+function isStrictUruguayanMobile(phone: string): boolean {
+  const digits = phone.replace(/\D/g, '');
+  if (!/^09[1-9]\d{6}$/.test(digits)) return false;
+  const subscriber = digits.slice(3);
+  if (/^(\d)\1{5}$/.test(subscriber)) return false;
+  if (['123456', '654321', '012345'].includes(subscriber)) return false;
+  return true;
+}
 
 function BarberPageContent() {
   const router = useRouter();
@@ -60,7 +113,6 @@ function BarberPageContent() {
   const [selectedBarber, setSelectedBarber] = useState<BarberItem | null>(null);
   const [activeMode, setActiveMode] = useState<'reservar' | 'privado'>('reservar');
 
-  // Estado para PIN del barbero validado en el servidor (Protege la agenda y las finanzas)
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState('');
   const [isVerifyingPin, setIsVerifyingPin] = useState(false);
@@ -68,7 +120,6 @@ function BarberPageContent() {
   const [unlockedCommissionRate, setUnlockedCommissionRate] = useState<number>(50);
   const [privateAppointments, setPrivateAppointments] = useState<AppointmentItem[]>([]);
 
-  // Estado para reserva directa (Público)
   const [selectedService, setSelectedService] = useState<ServiceItem | null>(null);
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
@@ -78,7 +129,6 @@ function BarberPageContent() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [confirmedApt, setConfirmedApt] = useState<AppointmentItem | null>(null);
 
-  // Filtro de fecha para el calendario privado del barbero
   const [calendarDateFilter, setCalendarDateFilter] = useState<string>('');
 
   const getInitialSlugFromUrl = () => {
@@ -147,7 +197,7 @@ function BarberPageContent() {
     setSelectedTime(null);
     setConfirmedApt(null);
     setPinError('');
-    setUnlockedBarberId(null); // Bloquea al cambiar de barbero por seguridad
+    setUnlockedBarberId(null);
     setPrivateAppointments([]);
 
     const slug = b.slug || b.name.toLowerCase();
@@ -171,6 +221,24 @@ function BarberPageContent() {
     activeDayObj.dayOfWeek,
     30
   );
+
+  const isSlotPastForSelectedDay = (dayObj: DayOption, timeSlot: string): boolean => {
+    const uyNow = getUruguayNow();
+    const parts = dayObj.dateString.split(' ');
+    const dayNumStr = parts.find(p => !isNaN(Number(p))) || parts[1];
+    const monthStr = parts.find(p => MONTH_MAP[(p || '').toLowerCase()] !== undefined) || parts[2];
+
+    const targetDay = parseInt(dayNumStr, 10);
+    const targetMonth = MONTH_MAP[(monthStr || '').toLowerCase()];
+
+    if (isNaN(targetDay) || targetMonth === undefined) return false;
+
+    const isToday = targetDay === uyNow.day && targetMonth === uyNow.month;
+    if (!isToday) return false;
+
+    const slotMinutes = timeToMinutes(timeSlot);
+    return slotMinutes <= uyNow.currentMinutes + 10;
+  };
 
   const checkSlotBooked = (timeSlot: string): boolean => {
     if (!currentBarber) return false;
@@ -199,14 +267,20 @@ function BarberPageContent() {
       setBookingError('Seleccioná un servicio, fecha y horario.');
       return;
     }
-    if (clientName.trim().length < 3 || !isValidUruguayanPhone(clientPhone)) {
-      setBookingError('Ingresá tu nombre y un celular uruguayo válido (ej: 098 509 376).');
+    if (clientName.trim().length < 3 || !isStrictUruguayanMobile(clientPhone)) {
+      setBookingError('Ingresá tu nombre y un celular uruguayo válido de 9 dígitos (09X XXX XXX).');
       return;
     }
 
     try {
       setIsSubmitting(true);
       setBookingError('');
+
+      if (isSlotPastForSelectedDay(activeDayObj, selectedTime)) {
+        setBookingError('Este horario ya pasó. Por favor elegí una hora posterior.');
+        setIsSubmitting(false);
+        return;
+      }
 
       if (checkSlotBooked(selectedTime)) {
         setBookingError(
@@ -215,6 +289,8 @@ function BarberPageContent() {
         setIsSubmitting(false);
         return;
       }
+
+      const formattedPhone = formatUruguayanPhoneInput(clientPhone);
 
       const created = await createAppointment({
         serviceId: selectedService.id,
@@ -227,7 +303,7 @@ function BarberPageContent() {
         dateString: selectedDate,
         timeSlot: selectedTime,
         clientName: clientName.trim(),
-        clientPhone: clientPhone.trim(),
+        clientPhone: formattedPhone,
         clientNotes: '',
       });
 
@@ -340,7 +416,7 @@ function BarberPageContent() {
           })}
         </div>
 
-        {/* TARJETA DEL BARBERO ACTUAL (SELECTOR PÚBLICO / PRIVADO) */}
+        {/* TARJETA DEL BARBERO */}
         {currentBarber && (
           <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center space-x-3.5">
@@ -487,26 +563,29 @@ function BarberPageContent() {
 
                     <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 pt-2">
                       {[...morningSlots, ...afternoonSlots].map((time) => {
+                        const isPast = isSlotPastForSelectedDay(activeDayObj, time);
                         const booked = checkSlotBooked(time);
-                        const isSelected = selectedTime === time;
+                        const unavailable = isPast || booked;
+                        const isSelected = selectedTime === time && !unavailable;
+
                         return (
                           <button
                             key={time}
                             type="button"
-                            disabled={booked}
+                            disabled={unavailable}
                             onClick={() => setSelectedTime(time)}
                             className={`py-2.5 px-2 rounded-xl border text-xs font-semibold transition-all flex flex-col items-center justify-center ${
-                              booked
-                                ? 'bg-zinc-950/30 border-zinc-800/50 text-zinc-600 line-through cursor-not-allowed'
+                              unavailable
+                                ? 'bg-zinc-950/30 border-zinc-800/50 text-zinc-600 line-through cursor-not-allowed opacity-50'
                                 : isSelected
                                 ? 'bg-zinc-100 text-zinc-950 border-transparent font-bold'
                                 : 'bg-zinc-950 border-zinc-800 text-zinc-200 hover:border-zinc-700 cursor-pointer'
                             }`}
                           >
                             <span>{time}</span>
-                            {booked && (
+                            {unavailable && (
                               <span className="text-[9px] no-underline text-rose-400">
-                                Ocupado
+                                {isPast ? 'Pasó' : 'Ocupado'}
                               </span>
                             )}
                           </button>
@@ -537,10 +616,12 @@ function BarberPageContent() {
                         <Phone className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
                         <input
                           type="tel"
+                          inputMode="numeric"
+                          maxLength={11}
                           placeholder="Celular (09X XXX XXX)"
                           value={clientPhone}
-                          onChange={(e) => setClientPhone(e.target.value)}
-                          className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-sm outline-none"
+                          onChange={(e) => setClientPhone(formatUruguayanPhoneInput(e.target.value))}
+                          className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-sm outline-none font-mono"
                         />
                       </div>
                     </div>
@@ -566,7 +647,7 @@ function BarberPageContent() {
           </div>
         )}
 
-        {/* MODO 2: MODO PRIVADO (BLOQUEADO POR PIN EN SERVIDOR) */}
+        {/* MODO 2: MODO PRIVADO */}
         {activeMode === 'privado' && currentBarber && (
           <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 sm:p-6">
             {!isPanelUnlocked ? (
@@ -645,7 +726,7 @@ function BarberPageContent() {
                   </div>
                 </div>
 
-                {/* CALENDARIO ESTILO GOOGLE (GRILLA POR DÍA) */}
+                {/* CALENDARIO */}
                 <div className="space-y-4 pt-2 border-t border-zinc-800">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <h4 className="font-bold text-sm flex items-center gap-2">
