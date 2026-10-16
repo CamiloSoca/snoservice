@@ -53,18 +53,45 @@ const FALLBACK_DAYS: DayOption[] = [
   { dateString: 'Mar 22 Oct', dayName: 'Mar', dayNumber: '22', monthName: 'Oct', dayOfWeek: 2 },
 ];
 
-const MONTHS_ES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+const MONTH_MAP: Record<string, number> = {
+  ene: 0, feb: 1, mar: 2, abr: 3, may: 4, jun: 5,
+  jul: 6, ago: 7, sep: 8, oct: 9, nov: 10, dic: 11
+};
+
 const BOOKING_COOLDOWN_MS = 5 * 60 * 1000;
 const BOOKING_STORAGE_KEY = '13cut_last_booking_ts';
 
+// Obtiene fecha, mes y hora exacta en Montevideo (UTC-3)
 function getUruguayNow() {
-  const nowUy = new Date(
-    new Date().toLocaleString('en-US', { timeZone: 'America/Montevideo' })
-  );
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Montevideo',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: 'numeric',
+    hour12: false,
+  });
+  
+  const parts = formatter.formatToParts(new Date());
+  let year = 2026, month = 9, day = 16, hour = 0, minute = 0;
+
+  for (const p of parts) {
+    if (p.type === 'year') year = parseInt(p.type, 10) || 2026; // Fallback seguro
+    if (p.type === 'month') month = parseInt(p.value, 10) - 1;
+    if (p.type === 'day') day = parseInt(p.value, 10);
+    if (p.type === 'hour') hour = parseInt(p.value, 10);
+    if (p.type === 'minute') minute = parseInt(p.value, 10);
+  }
+
+  // Corrección por si el formato devuelve 24 horas
+  if (hour === 24) hour = 0;
+
   return {
-    dayNumber: String(nowUy.getDate()),
-    monthName: MONTHS_ES[nowUy.getMonth()],
-    currentMinutes: nowUy.getHours() * 60 + nowUy.getMinutes(),
+    year,
+    month,
+    day,
+    currentMinutes: hour * 60 + minute,
   };
 }
 
@@ -276,16 +303,27 @@ export default function Home() {
     bookingSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
+  // Validación exacta de horarios pasados comparando con hora real de Uruguay
   const isSlotPastForSelectedDay = (dayObj: DayOption, timeSlot: string): boolean => {
-    const { dayNumber, monthName, currentMinutes } = getUruguayNow();
-    const isToday =
-      String(Number(dayObj.dayNumber)) === String(Number(dayNumber)) &&
-      dayObj.monthName.toLowerCase() === monthName.toLowerCase();
+    const uyNow = getUruguayNow();
+    
+    // Parsear el string del día (ej. "Vie 16 Oct" o "16 Oct")
+    const parts = dayObj.dateString.split(' ');
+    const dayNumStr = parts.find(p => !isNaN(Number(p))) || parts[1];
+    const monthStr = parts.find(p => MONTH_MAP[p.toLowerCase()] !== undefined) || parts[2];
+
+    const targetDay = parseInt(dayNumStr, 10);
+    const targetMonth = MONTH_MAP[(monthStr || '').toLowerCase()];
+
+    // Si no se pudo parsear bien, asumimos que no es hoy por seguridad
+    if (isNaN(targetDay) || targetMonth === undefined) return false;
+
+    const isToday = targetDay === uyNow.day && targetMonth === uyNow.month;
 
     if (!isToday) return false;
 
     const slotMinutes = timeToMinutes(timeSlot);
-    return slotMinutes <= currentMinutes + 10;
+    return slotMinutes <= uyNow.currentMinutes + 10; // Margen de 10 minutos
   };
 
   const checkSlotBooked = (barberId: string, dateStr: string, timeSlot: string): boolean => {
@@ -861,7 +899,7 @@ export default function Home() {
                   </div>
                 )}
 
-                {/* PASO 3 (FECHA Y HORA - DISEÑO PULIDO Y COMPACTO) */}
+                {/* PASO 3 (FECHA Y HORA) */}
                 {step === 3 && (
                   <div className="space-y-5">
                     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -880,7 +918,6 @@ export default function Home() {
                       )}
                     </div>
 
-                    {/* Selector de días horizontal limpio */}
                     <div>
                       <label className="text-[11px] font-semibold uppercase tracking-wider opacity-60 block mb-2">
                         Día de atención
@@ -913,18 +950,13 @@ export default function Home() {
                       </div>
                     </div>
 
-                    {/* Selector de Horarios Simplificado en grilla fluida y elegante */}
                     <div className="space-y-3 pt-2 border-t border-zinc-800/40">
                       <div className="flex items-center justify-between">
                         <label className="text-[11px] font-semibold uppercase tracking-wider opacity-60">
-                          Horarios disponibles
+                          Horarios disponibles ({selectedDate})
                         </label>
-                        <span className="text-[11px] opacity-50">
-                          Seleccioná una franja
-                        </span>
                       </div>
 
-                      {/* Mañana y Tarde unificados en un diseño visualmente más limpio */}
                       <div className="space-y-3">
                         {morningSlots.length > 0 && (
                           <div>
