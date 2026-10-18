@@ -9,26 +9,35 @@ export async function POST(request: Request) {
       { status: 403 }
     );
   }
+try {
+  const adminUser = process.env.ADMIN_USER;
+  const adminPass = process.env.ADMIN_PASS;
 
-  try {
-    const adminUser = process.env.ADMIN_USER || 'admin';
-    const adminPass = process.env.ADMIN_PASS || 'barber2026';
+  // Si no configuraste las variables en el servidor, bloqueamos el acceso por seguridad
+  if (!adminUser || !adminPass) {
+    return NextResponse.json(
+      { error: 'Configuración de seguridad del servidor incompleta.' },
+      { status: 500 }
+    );
+  }
 
-    const body = await request.json();
-    const { username, password } = body;
+  const body = await request.json();
+  const { username, password } = body;
 
-    if (
-      typeof username === 'string' &&
-      typeof password === 'string' &&
-      username === adminUser &&
-      password === adminPass
-    ) {
-      const maxAgeSeconds = 60 * 60 * 24 * 7; // 7 días
-      const token = signSessionToken({
-        role: 'admin',
-        sub: adminUser,
-        exp: Date.now() + maxAgeSeconds * 1000,
-      });
+  if (
+    typeof username === 'string' &&
+    typeof password === 'string' &&
+    username === adminUser &&
+    password === adminPass
+  ) {
+    const maxAgeSeconds = 60 * 60 * 24 * 7; // 7 días
+    const token = signSessionToken({
+      role: 'admin',
+      sub: adminUser,
+      exp: Date.now() + maxAgeSeconds * 1000,
+    });
+    
+    // ... resto de tu lógica para devolver la cookie o el token
 
       const response = NextResponse.json({ ok: true });
 

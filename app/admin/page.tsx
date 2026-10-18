@@ -29,7 +29,10 @@ import {
   Crown,
   Save,
   AlertCircle,
+  ShieldCheck,
+  Lock,
 } from 'lucide-react';
+import { createClient } from '@supabase/supabase-js';
 import {
   ServiceItem,
   BarberItem,
@@ -55,6 +58,10 @@ import {
   buildRealOpenDays,
   DayOption,
 } from '@/lib/booking-store';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null;
 
 type PeriodFilter = 'hoy' | 'semana' | 'mes';
 
@@ -100,10 +107,11 @@ export default function AdminDashboard() {
   const [savingBarberId, setSavingBarberId] = useState<string | null>(null);
   const [adminError, setAdminError] = useState<string>('');
 
+  const [blockedBarbers, setBlockedBarbers] = useState<Record<string, boolean>>({});
+
   const [period, setPeriod] = useState<PeriodFilter>('mes');
   const [onlyCompleted, setOnlyCompleted] = useState<boolean>(false);
 
-  // Filtros para la pestaña de Agenda Global
   const [adminAgendaDate, setAdminAgendaDate] = useState<string>('');
   const [adminAgendaBarberId, setAdminAgendaBarberId] = useState<string>('todos');
 
@@ -118,6 +126,15 @@ export default function AdminDashboard() {
   const [expenseDesc, setExpenseDesc] = useState('');
   const [expenseAmount, setExpenseAmount] = useState('');
   const [expenseCategory, setExpenseCategory] = useState<ExpenseCategory>('Insumos');
+
+  const checkBarberLocks = (brbs: BarberItem[]) => {
+    const locks: Record<string, boolean> = {};
+    brbs.forEach((b) => {
+      const lockUntil = Number(localStorage.getItem(`pin_lock_${b.id}`) || '0');
+      locks[b.id] = lockUntil > Date.now();
+    });
+    setBlockedBarbers(locks);
+  };
 
   useEffect(() => {
     async function loadAdminData() {
@@ -137,11 +154,14 @@ export default function AdminDashboard() {
           getShopConfig(),
         ]);
 
+        const freshBarbers = Array.isArray(brbs) ? brbs : [];
         setAppointments(Array.isArray(apts) ? apts : []);
         setServices(Array.isArray(srvs) ? srvs : []);
-        setBarbers(Array.isArray(brbs) ? brbs : []);
+        setBarbers(freshBarbers);
         setExpenses(Array.isArray(exps) ? exps : []);
         setShopConfig(cfg || DEFAULT_SHOP_CONFIG);
+
+        checkBarberLocks(freshBarbers);
       } catch (err: any) {
         console.error('Error cargando panel de admin:', err);
         setAdminError(err?.message || 'Error al cargar los datos del panel administrativo.');
@@ -164,6 +184,26 @@ export default function AdminDashboard() {
       setAppointments(Array.isArray(updated) ? updated : []);
     } catch (err: any) {
       setAdminError(err?.message || 'No se pudo actualizar el estado del turno.');
+    }
+  };
+
+  const handleUnblockBarberPin = async (barberId: string, barberName: string) => {
+    try {
+      if (!supabase) throw new Error('Sin conexión con la base de datos.');
+
+      const { error } = await supabase.rpc('admin_unblock_barber_pin', {
+        p_barber_id: barberId,
+      });
+
+      if (error) throw new Error(error.message);
+
+      localStorage.removeItem(`pin_lock_${barberId}`);
+      localStorage.removeItem(`pin_attempts_${barberId}`);
+      setBlockedBarbers((prev) => ({ ...prev, [barberId]: false }));
+
+      alert(`¡Listo! El acceso por PIN para ${barberName} fue desbloqueado correctamente.`);
+    } catch (err: any) {
+      alert(err?.message || 'No se pudo desbloquear al barbero.');
     }
   };
 
@@ -264,7 +304,9 @@ export default function AdminDashboard() {
       setAdminError('');
       await saveBarbers(updated);
       const freshBarbers = await getAdminBarbers();
-      setBarbers(freshBarbers.length > 0 ? freshBarbers : updated);
+      const finalBarbers = freshBarbers.length > 0 ? freshBarbers : updated;
+      setBarbers(finalBarbers);
+      checkBarberLocks(finalBarbers);
       setNewBarberName('');
       setNewBarberCommission('50');
       setNewBarberPin('1234');
@@ -364,12 +406,18 @@ export default function AdminDashboard() {
       setAdminError(err?.message || 'Error al eliminar el gasto.');
     }
   };
-
-  const handleSaveBrand = async (e: React.FormEvent) => {
+const handleSaveBrand = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       setAdminError('');
-      await saveShopConfig(shopConfig);
+      
+      // Aseguramos que el schedule actual viaje correctamente en la configuración
+      const configToSave = {
+        ...shopConfig,
+        schedule: (shopConfig as any).schedule || {},
+      };
+
+      await saveShopConfig(configToSave);
       setSavedBanner(true);
       setTimeout(() => setSavedBanner(false), 2500);
     } catch (err: any) {
@@ -392,7 +440,6 @@ export default function AdminDashboard() {
     isWithinPeriod(exp.createdAt || exp.date, period)
   );
 
-  // Turnos para la pestaña de Agenda Global del Admin
   const adminAgendaAppointments = safeAppointments.filter((apt) => {
     if (apt.status === 'cancelado') return false;
     if (adminAgendaDate && apt.dateString !== adminAgendaDate) return false;
@@ -730,7 +777,7 @@ export default function AdminDashboard() {
                           <div className="flex justify-between pt-2 border-t border-zinc-800/80">
                             <span className="text-zinc-300 font-medium">Para local:</span>
                             <span className="font-bold text-emerald-400">
-                              +${isOwner ? item.barberTakeHome : item.leftForOwner}
+                              +{isOwner ? item.barberTakeHome : item.leftForOwner}
                             </span>
                           </div>
                         </div>
@@ -810,7 +857,7 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          {/* NUEVA VISTA: CALENDARIO / AGENDA GLOBAL DEL DUEÑO */}
+          {/* VISTA DE AGENDA GENERAL */}
           {activeTab === 'agenda' && (
             <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 sm:p-6 space-y-5">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800 pb-4">
@@ -1059,111 +1106,131 @@ export default function AdminDashboard() {
               </div>
 
               <div className="grid grid-cols-1 gap-4">
-                {safeBarbers.map((brb) => (
-                  <div
-                    key={brb.id}
-                    className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-4"
-                  >
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-11 h-11 rounded-xl bg-zinc-950 border border-zinc-800 flex items-center justify-center font-bold text-base text-zinc-100">
-                          {brb.name.charAt(0)}
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h4 className="font-bold text-base">{brb.name}</h4>
-                            <Link
-                              href={`/barbero?perfil=${brb.slug || brb.name.toLowerCase()}`}
-                              className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-200"
-                            >
-                              <span>Ver Perfil</span>
-                              <ExternalLink className="w-3 h-3" />
-                            </Link>
+                {safeBarbers.map((brb) => {
+                  const isLocked = Boolean(blockedBarbers[brb.id]);
+                  return (
+                    <div
+                      key={brb.id}
+                      className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-4"
+                    >
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-11 h-11 rounded-xl bg-zinc-950 border border-zinc-800 flex items-center justify-center font-bold text-base text-zinc-100">
+                            {brb.name.charAt(0)}
                           </div>
-                          <p className="text-xs text-zinc-400">Barbero</p>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-2.5">
-                        <div className="flex items-center space-x-1.5 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-1.5">
-                          <span className="text-xs text-zinc-400">Comisión:</span>
-                          <input
-                            type="number"
-                            min={0}
-                            max={100}
-                            value={brb.commissionRate}
-                            onChange={(e) =>
-                              handleUpdateBarberField(brb.id, 'commissionRate', e.target.value)
-                            }
-                            className="w-12 bg-transparent font-bold text-amber-400 outline-none text-sm text-right"
-                          />
-                          <span className="text-xs font-bold text-amber-400">%</span>
-                        </div>
-
-                        <div className="flex items-center space-x-1.5 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-1.5">
-                          <KeyRound className="w-3.5 h-3.5 text-zinc-400" />
-                          <span className="text-xs text-zinc-400">PIN:</span>
-                          <input
-                            type="text"
-                            maxLength={4}
-                            value={brb.pin}
-                            onChange={(e) => handleUpdateBarberField(brb.id, 'pin', e.target.value)}
-                            className="w-12 bg-transparent font-mono font-bold text-zinc-100 outline-none text-sm"
-                          />
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-bold text-base">{brb.name}</h4>
+                              {isLocked && (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30">
+                                  <Lock className="w-3 h-3" /> Bloqueado por PIN
+                                </span>
+                              )}
+                              <Link
+                                href={`/barbero?perfil=${brb.slug || brb.name.toLowerCase()}`}
+                                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-200"
+                              >
+                                <span>Ver Perfil</span>
+                                <ExternalLink className="w-3 h-3" />
+                              </Link>
+                            </div>
+                            <p className="text-xs text-zinc-400">Barbero</p>
+                          </div>
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteBarber(brb.id)}
-                          className="p-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-rose-400 cursor-pointer"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
+                        <div className="flex flex-wrap items-center gap-2.5">
+                          <div className="flex items-center space-x-1.5 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-1.5">
+                            <span className="text-xs text-zinc-400">Comisión:</span>
+                            <input
+                              type="number"
+                              min={0}
+                              max={100}
+                              value={brb.commissionRate}
+                              onChange={(e) =>
+                                handleUpdateBarberField(brb.id, 'commissionRate', e.target.value)
+                              }
+                              className="w-12 bg-transparent font-bold text-amber-400 outline-none text-sm text-right"
+                            />
+                            <span className="text-xs font-bold text-amber-400">%</span>
+                          </div>
 
-                    <div className="pt-3 border-t border-zinc-800/80 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <p className="text-xs text-zinc-400 font-medium">
-                          Servicios habilitados para {brb.name}:
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => handleSaveBarberChanges(brb.id)}
-                          className="px-3.5 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/40 hover:bg-emerald-500/25 text-emerald-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
-                        >
-                          <Save className="w-3.5 h-3.5" />
-                          <span>
-                            {savingBarberId === brb.id ? '¡Guardado!' : 'Guardar Servicios'}
-                          </span>
-                        </button>
-                      </div>
+                          <div className="flex items-center space-x-1.5 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-1.5">
+                            <KeyRound className="w-3.5 h-3.5 text-zinc-400" />
+                            <span className="text-xs text-zinc-400">PIN:</span>
+                            <input
+                              type="text"
+                              maxLength={4}
+                              value={brb.pin}
+                              onChange={(e) => handleUpdateBarberField(brb.id, 'pin', e.target.value)}
+                              className="w-12 bg-transparent font-mono font-bold text-zinc-100 outline-none text-sm"
+                            />
+                          </div>
 
-                      <div className="flex flex-wrap gap-2">
-                        {services.map((srv) => {
-                          const enabled = (brb.serviceIds || []).includes(srv.id);
-                          return (
+                          {isLocked && (
                             <button
-                              key={srv.id}
                               type="button"
-                              onClick={() => handleToggleBarberService(brb.id, srv.id)}
-                              className={`px-3 py-1.5 rounded-xl text-xs font-semibold border flex items-center gap-1.5 cursor-pointer transition-all ${
-                                enabled
-                                  ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
-                                  : 'bg-zinc-950 border-zinc-800 text-zinc-500 line-through'
-                              }`}
+                              onClick={() => handleUnblockBarberPin(brb.id, brb.name)}
+                              className="px-3.5 py-2 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-bold hover:bg-amber-500/30 transition-colors cursor-pointer flex items-center gap-1.5 animate-pulse"
+                              title="Desbloquear intentos fallidos de PIN"
                             >
-                              {enabled && <Check className="w-3 h-3" />}
-                              <span>
-                                {srv.name} (${srv.price})
-                              </span>
+                              <ShieldCheck className="w-4 h-4 text-amber-400" />
+                              <span>Desbloquear PIN</span>
                             </button>
-                          );
-                        })}
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteBarber(brb.id)}
+                            className="p-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-rose-400 cursor-pointer"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="pt-3 border-t border-zinc-800/80 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs text-zinc-400 font-medium">
+                            Servicios habilitados para {brb.name}:
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => handleSaveBarberChanges(brb.id)}
+                            className="px-3.5 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/40 hover:bg-emerald-500/25 text-emerald-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
+                          >
+                            <Save className="w-3.5 h-3.5" />
+                            <span>
+                              {savingBarberId === brb.id ? '¡Guardado!' : 'Guardar Servicios'}
+                            </span>
+                          </button>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          {services.map((srv) => {
+                            const enabled = (brb.serviceIds || []).includes(srv.id);
+                            return (
+                              <button
+                                key={srv.id}
+                                type="button"
+                                onClick={() => handleToggleBarberService(brb.id, srv.id)}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-semibold border flex items-center gap-1.5 cursor-pointer transition-all ${
+                                  enabled
+                                    ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                                    : 'bg-zinc-950 border-zinc-800 text-zinc-500 line-through'
+                                }`}
+                              >
+                                {enabled && <Check className="w-3 h-3" />}
+                                <span>
+                                  {srv.name} (${srv.price})
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
@@ -1269,7 +1336,7 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          {/* VISTA DE CONFIGURACIÓN DE LOCAL */}
+          {/* VISTA DE CONFIGURACIÓN DE LOCAL (CON GESTOR DE HORARIOS SEGURO) */}
           {activeTab === 'marca' && (
             <form
               onSubmit={handleSaveBrand}
@@ -1315,6 +1382,74 @@ export default function AdminDashboard() {
                     }
                     className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-sm outline-none"
                   />
+                </div>
+              </div>
+
+              {/* GESTOR DE HORARIOS POR DÍA (MULTI-TENANT SEGURO) */}
+              <div className="space-y-3 pt-4 border-t border-zinc-800">
+                <h4 className="font-bold text-sm text-zinc-200">Horarios de Atención Semanal</h4>
+                <p className="text-xs text-zinc-400">Definí qué días abre el negocio y en qué horario.</p>
+
+                <div className="space-y-2">
+                  {['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'].map((dia) => {
+                    const key = dia.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+                    const rawSchedule = (shopConfig as any).schedule || {};
+                    const dayConfig = rawSchedule[key] || { isOpen: true, openTime: '09:00', closeTime: '19:00' };
+
+                    return (
+                      <div key={key} className="bg-zinc-950 border border-zinc-800/80 rounded-xl p-3 flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex items-center space-x-3 w-32">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(dayConfig.isOpen)}
+                            onChange={(e) => {
+                              const updatedSchedule = {
+                                ...rawSchedule,
+                                [key]: { ...dayConfig, isOpen: e.target.checked },
+                              };
+                              setShopConfig({ ...shopConfig, schedule: updatedSchedule } as any);
+                            }}
+                            className="rounded border-zinc-700 bg-zinc-900 text-emerald-500 focus:ring-0 cursor-pointer"
+                          />
+                          <span className="text-xs font-bold text-zinc-200">{dia}</span>
+                        </div>
+
+                        {dayConfig.isOpen ? (
+                          <div className="flex items-center space-x-2 text-xs">
+                            <input
+                              type="time"
+                              value={dayConfig.openTime || '09:00'}
+                              onChange={(e) => {
+                                const updatedSchedule = {
+                                  ...rawSchedule,
+                                  [key]: { ...dayConfig, openTime: e.target.value },
+                                };
+                                setShopConfig({ ...shopConfig, schedule: updatedSchedule } as any);
+                              }}
+                              className="px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-200 outline-none"
+                            />
+                            <span className="text-zinc-500">hasta</span>
+                            <input
+                              type="time"
+                              value={dayConfig.closeTime || '19:00'}
+                              onChange={(e) => {
+                                const updatedSchedule = {
+                                  ...rawSchedule,
+                                  [key]: { ...dayConfig, closeTime: e.target.value },
+                                };
+                                setShopConfig({ ...shopConfig, schedule: updatedSchedule } as any);
+                              }}
+                              className="px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-200 outline-none"
+                            />
+                          </div>
+                        ) : (
+                          <span className="text-xs font-semibold text-rose-400 px-2 py-1 bg-rose-500/10 rounded-lg border border-rose-500/20">
+                            Cerrado
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
 

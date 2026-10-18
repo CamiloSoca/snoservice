@@ -86,36 +86,44 @@ export interface DaySchedule {
 }
 
 export type WeeklySchedule = Record<number, DaySchedule>;
-
 export interface ShopConfig {
   id: string;
-  slug?: string;
   name: string;
-  tagline: string;
   address: string;
-  city: string;
   phone: string;
-  instagramHandle: string;
-  instagramUrl: string;
-  openingHours: string;
-  accent: BrandAccent;
+  city?: string;
+  tagline?: string;
   logoUrl?: string;
   coverImageUrl?: string;
   backgroundImageUrl?: string;
+  instagramHandle?: string;
+  instagramUrl?: string;
+  // Agregamos esta línea para que TypeScript la reconozca sin errores:
+  schedule?: Record<string, { isOpen: boolean; openTime: string; closeTime: string }>;
 }
 
 export const DEFAULT_SHOP_CONFIG: ShopConfig = {
-  id: SHOP_UUID,
-  slug: '13cut',
+  id: 'default',
   name: '13´Cut',
-  tagline: 'Avenida Agraciada 3778, Montevideo',
   address: 'Avenida Agraciada 3778',
-  city: 'Montevideo',
   phone: '098509376',
+  city: 'Montevideo',
+  tagline: 'Reserva tu turno',
+  logoUrl: '',
+  coverImageUrl: '',
+  backgroundImageUrl: '',
   instagramHandle: '@13cut',
   instagramUrl: 'https://instagram.com',
-  openingHours: 'Mar a Vie • Sáb 9-18',
-  accent: 'mono',
+  // Horarios por defecto
+  schedule: {
+    lunes: { isOpen: false, openTime: '09:00', closeTime: '19:00' },
+    martes: { isOpen: true, openTime: '09:00', closeTime: '22:00' },
+    miercoles: { isOpen: true, openTime: '10:00', closeTime: '19:00' },
+    jueves: { isOpen: true, openTime: '10:00', closeTime: '19:00' },
+    viernes: { isOpen: true, openTime: '10:00', closeTime: '19:00' },
+    sabado: { isOpen: true, openTime: '09:00', closeTime: '18:00' },
+    domingo: { isOpen: false, openTime: '09:00', closeTime: '19:00' },
+  },
 };
 
 export const DEFAULT_SERVICES: ServiceItem[] = [
@@ -149,27 +157,30 @@ export interface DayOption {
   dayOfWeek: number;
 }
 
-export function buildRealOpenDays(): DayOption[] {
+export function buildRealOpenDays(totalDays = 30): DayOption[] {
   const days: DayOption[] = [];
-  const cursor = new Date();
-  while (days.length < 6) {
-    const dow = cursor.getDay();
-    const rule = DEFAULT_SCHEDULE[dow];
-    if (rule && !rule.closed) {
-      const dayName = cursor.toLocaleDateString('es-UY', { weekday: 'short' }).replace('.', '');
-      const capDay = dayName.charAt(0).toUpperCase() + dayName.slice(1);
-      const dayNumber = String(cursor.getDate());
-      const monthName = cursor.toLocaleDateString('es-UY', { month: 'short' }).replace('.', '');
-      const capMonth = monthName.charAt(0).toUpperCase() + monthName.slice(1);
+  const today = new Date();
+
+  for (let i = 0; i < totalDays; i++) {
+    const d = new Date(today);
+    d.setDate(today.getDate() + i);
+
+    const dayOfWeek = d.getDay(); // 0 = Domingo, 1 = Lunes
+    
+    // Si abren de Martes a Sábado (2 a 6):
+    if (dayOfWeek !== 0 && dayOfWeek !== 1) {
+      const dayName = d.toLocaleDateString('es-UY', { weekday: 'short' });
+      const dayNumber = String(d.getDate());
+      const monthName = d.toLocaleDateString('es-UY', { month: 'short' });
+
       days.push({
-        dateString: `${capDay} ${dayNumber} ${capMonth}`,
-        dayName: capDay,
+        dateString: `${dayName.charAt(0).toUpperCase() + dayName.slice(1)} ${dayNumber} ${monthName.charAt(0).toUpperCase() + monthName.slice(1)}`,
+        dayName,
         dayNumber,
-        monthName: capMonth,
-        dayOfWeek: dow,
+        monthName,
+        dayOfWeek,
       });
     }
-    cursor.setDate(cursor.getDate() + 1);
   }
   return days;
 }
@@ -327,38 +338,47 @@ async function callAdminOperation(payload: Record<string, any>): Promise<any> {
 }
 
 export async function getShopConfig(): Promise<ShopConfig> {
-  const { data, error } = await supabase
-    .from('shops')
-    .select(
-      'id, slug, name, tagline, address, city, phone, instagram_handle, instagram_url, opening_hours, accent, logo_url, cover_image_url, background_image_url'
-    )
-    .eq('id', SHOP_UUID)
-    .maybeSingle();
-
+  if (!supabase) return DEFAULT_SHOP_CONFIG;
+  const { data, error } = await supabase.from('shops').select('*').single();
   if (error || !data) return DEFAULT_SHOP_CONFIG;
+
   return {
-    id: data.id,
-    slug: data.slug,
-    name: data.name,
-    tagline: data.tagline || data.address,
-    address: data.address,
-    city: data.city || 'Montevideo',
-    phone: data.phone || '098509376',
-    instagramHandle: data.instagram_handle || '@13cut',
-    instagramUrl: data.instagram_url || 'https://instagram.com',
-    openingHours: data.opening_hours || 'Mar a Vie • Sáb 9-18',
-    accent: data.accent || 'mono',
-    logoUrl: data.logo_url,
-    coverImageUrl: data.cover_image_url,
-    backgroundImageUrl: data.background_image_url,
+    ...DEFAULT_SHOP_CONFIG,
+    id: data.id ?? DEFAULT_SHOP_CONFIG.id,
+    name: data.name ?? DEFAULT_SHOP_CONFIG.name,
+    address: data.address ?? DEFAULT_SHOP_CONFIG.address,
+    phone: data.phone ?? DEFAULT_SHOP_CONFIG.phone,
+    backgroundImageUrl: data.background_image_url || data.backgroundImageUrl || DEFAULT_SHOP_CONFIG.backgroundImageUrl,
+    logoUrl: data.logo_url || data.logoUrl || DEFAULT_SHOP_CONFIG.logoUrl,
+    coverImageUrl: data.cover_image_url || data.coverImageUrl || DEFAULT_SHOP_CONFIG.coverImageUrl,
+    // Mapeamos el schedule de forma segura utilizando 'any' para evitar cualquier rojo en TS
+    schedule: (data as any).schedule || DEFAULT_SHOP_CONFIG.schedule,
   };
 }
 
 export async function saveShopConfig(config: ShopConfig): Promise<void> {
-  await callAdminOperation({
-    operation: 'SAVE_SHOP_CONFIG',
-    config,
-  });
+  if (!supabase) return;
+  
+  const payload = {
+    name: config.name,
+    address: config.address,
+    phone: config.phone,
+    background_image_url: config.backgroundImageUrl,
+    logo_url: config.logoUrl,
+    cover_image_url: config.coverImageUrl,
+    schedule: (config as any).schedule, // Enviamos el JSON de horarios
+  };
+
+  // Si tenés un ID fijo o actualizás el primer registro
+  const { error } = await supabase
+    .from('shops')
+    .update(payload)
+    .eq('id', config.id);
+
+  if (error) {
+    console.error('Error guardando shop config:', error.message);
+    throw new Error(error.message);
+  }
 }
 
 export async function getServices(): Promise<ServiceItem[]> {

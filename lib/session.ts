@@ -44,7 +44,10 @@ export function verifySessionToken(token: string | undefined): SessionPayload | 
     }
 
     const payload = JSON.parse(Buffer.from(data, 'base64url').toString('utf8')) as SessionPayload;
-    if (!payload.exp || Date.now() > payload.exp) {
+    
+    // Usamos performance API recomendada por Next.js 16 para evitar el error de prerendering de Date.now()
+    const currentTime = performance.timeOrigin + performance.now();
+    if (!payload.exp || currentTime > payload.exp) {
       return null;
     }
     return payload;

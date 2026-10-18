@@ -7,47 +7,56 @@ import { Home, Scissors, UserCheck, Lock } from 'lucide-react';
 export default function BottomNav() {
   const pathname = usePathname();
 
+  const isHome = pathname === '/';
+  const isAgendar = pathname.startsWith('/agendar');
+  const isBarbero = pathname.startsWith('/barbero');
+  const isAdmin = pathname.startsWith('/admin');
+
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-zinc-950/90 backdrop-blur-lg border-t border-zinc-800/80 px-4 py-2 sm:hidden">
-      <div className="max-w-md mx-auto flex items-center justify-around">
-        {/* Home */}
+    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-zinc-950/95 backdrop-blur-lg border-t border-zinc-800/80 px-3 py-2 sm:hidden shadow-2xl">
+      <div className="max-w-md mx-auto grid grid-cols-4 gap-1">
         <Link
           href="/"
-          className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-colors ${
-            pathname === '/' ? 'text-zinc-100 font-bold' : 'text-zinc-400 hover:text-zinc-200'
+          className={`flex flex-col items-center justify-center gap-1 py-1.5 rounded-2xl transition-all ${
+            isHome
+              ? 'bg-zinc-900 text-zinc-100 font-bold'
+              : 'text-zinc-500 hover:text-zinc-300'
           }`}
         >
           <Home className="w-5 h-5" />
           <span className="text-[10px]">Inicio</span>
         </Link>
 
-        {/* Agendar */}
         <Link
-          href="/#wizard"
-          className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-colors ${
-            pathname === '/#wizard' ? 'text-zinc-100 font-bold' : 'text-zinc-400 hover:text-zinc-200'
+          href="/agendar"
+          className={`flex flex-col items-center justify-center gap-1 py-1.5 rounded-2xl transition-all ${
+            isAgendar
+              ? 'bg-zinc-900 text-zinc-100 font-bold'
+              : 'text-zinc-500 hover:text-zinc-300'
           }`}
         >
           <Scissors className="w-5 h-5" />
           <span className="text-[10px]">Agendar</span>
         </Link>
 
-        {/* Panel de Barberos / PIN */}
         <Link
           href="/barbero"
-          className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-colors ${
-            pathname.startsWith('/barbero') ? 'text-emerald-400 font-bold' : 'text-zinc-400 hover:text-zinc-200'
+          className={`flex flex-col items-center justify-center gap-1 py-1.5 rounded-2xl transition-all ${
+            isBarbero
+              ? 'bg-emerald-500/15 text-emerald-400 font-bold'
+              : 'text-zinc-500 hover:text-emerald-400'
           }`}
         >
           <UserCheck className="w-5 h-5" />
           <span className="text-[10px]">Barberos</span>
         </Link>
 
-        {/* Admin */}
         <Link
           href="/admin"
-          className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-colors ${
-            pathname.startsWith('/admin') ? 'text-amber-400 font-bold' : 'text-zinc-400 hover:text-zinc-200'
+          className={`flex flex-col items-center justify-center gap-1 py-1.5 rounded-2xl transition-all ${
+            isAdmin
+              ? 'bg-amber-500/15 text-amber-400 font-bold'
+              : 'text-zinc-500 hover:text-amber-400'
           }`}
         >
           <Lock className="w-5 h-5" />

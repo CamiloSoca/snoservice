@@ -1,32 +1,23 @@
-// app/admin/layout.tsx
-import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import { requireAdminSession } from '@/lib/session';
 
-async function AdminAuthGuard({ children }: { children: React.ReactNode }) {
-  const session = await requireAdminSession();
+// Permitimos que esta ruta sea bloqueante y dinámica en tiempo de request
+export const instant = false;
 
-  if (!session) {
-    redirect('/login');
-  }
-
-  return <>{children}</>;
-}
-
-export default function AdminLayout({
+export default async function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const session = await requireAdminSession();
+
+  if (!session) {
+    redirect('/admin/login');
+  }
+
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen bg-zinc-950 text-amber-500 flex items-center justify-center font-bold text-sm">
-          Verificando acceso de administrador...
-        </div>
-      }
-    >
-      <AdminAuthGuard>{children}</AdminAuthGuard>
-    </Suspense>
+    <div className="min-h-screen bg-zinc-950 text-zinc-100">
+      {children}
+    </div>
   );
 }

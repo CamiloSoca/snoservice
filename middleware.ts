@@ -1,6 +1,9 @@
+// middleware.ts
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { ADMIN_COOKIE_NAME } from '@/lib/session';
+
+// Definimos la constante directamente aquí para evitar importar módulos de Node/crypto en el Edge Runtime
+const ADMIN_COOKIE_NAME = 'barber_admin_session';
 
 export function middleware(request: NextRequest) {
   const sessionCookie = request.cookies.get(ADMIN_COOKIE_NAME)?.value;
