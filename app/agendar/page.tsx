@@ -9,7 +9,6 @@ import {
   Check,
   ArrowRight,
   ArrowLeft,
-  User,
   CheckCircle2,
   RotateCcw,
   Phone,
@@ -51,6 +50,7 @@ const MONTH_MAP: Record<string, number> = {
 
 const BOOKING_COOLDOWN_MS = 5 * 60 * 1000;
 const BOOKING_STORAGE_KEY = '13cut_last_booking_ts';
+const CACHE_KEY = '13cut_fast_cache_v1';
 
 function getUruguayNow() {
   const formatter = new Intl.DateTimeFormat('en-US', {
@@ -95,7 +95,6 @@ function isStrictUruguayanMobile(phone: string): boolean {
   return true;
 }
 
-// Generador dinámico de turnos basado en el horario comercial configurado
 function getDynamicSlotsForDay(dayConfig: { isOpen: boolean; openTime: string; closeTime: string }, stepMinutes: number = 30) {
   if (!dayConfig || !dayConfig.isOpen) return { morning: [], afternoon: [] };
 
@@ -107,7 +106,6 @@ function getDynamicSlotsForDay(dayConfig: { isOpen: boolean; openTime: string; c
   let current = openMins;
   while (current < closeMins) {
     const timeStr = minutesToTime(current);
-    // Dividimos antes o después de las 13:00 (780 minutos) para organizar Mañana / Tarde
     if (current < 780) {
       morning.push(timeStr);
     } else {
@@ -127,6 +125,7 @@ function AgendarContent() {
   const [activeTab, setActiveTab] = useState<'reservar' | 'cancelar'>('reservar');
   const [step, setStep] = useState<number>(1);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [isLoadingInitial, setIsLoadingInitial] = useState<boolean>(true);
   const [preselectedFromUrl, setPreselectedFromUrl] = useState<boolean>(false);
 
   const [shopConfig, setShopConfig] = useState<ShopConfig>(DEFAULT_SHOP_CONFIG);
@@ -153,10 +152,25 @@ function AgendarContent() {
 
   const bookingSectionRef = useRef<HTMLDivElement>(null);
 
+  // 1. Carga ultra rápida con Caché en Memoria + Sincronización con Supabase
   useEffect(() => {
     const realDays = buildRealOpenDays(30);
     setDays(realDays);
     if (realDays.length > 0) setSelectedDate(realDays[0].dateString);
+
+    // Intentamos hidratar al instante desde sessionStorage para velocidad 0ms
+    try {
+      const cached = sessionStorage.getItem(CACHE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed.config) setShopConfig(parsed.config);
+        if (Array.isArray(parsed.services) && parsed.services.length > 0) setServices(parsed.services);
+        if (Array.isArray(parsed.barbers) && parsed.barbers.length > 0) setBarbers(parsed.barbers);
+        setIsLoadingInitial(false);
+      }
+    } catch {
+      // Ignorar errores de caché
+    }
 
     async function loadData() {
       try {
@@ -166,48 +180,87 @@ function AgendarContent() {
           getBarbers(),
           getPublicBookedSlots(),
         ]);
+sessionStorage.setItem('13cut_fast_cache_v1', JSON.stringify({ config, barbers: brbs }))
+        const activeServices = (Array.isArray(srvs) && srvs.length > 0 ? srvs : DEFAULT_SERVICES).filter(
+          (s) => s.active !== false
+        );
+        const activeBarbers = (Array.isArray(brbs) && brbs.length > 0 ? brbs : DEFAULT_BARBERS).filter(
+          (b) => b.active !== false
+        );
 
-        const activeServices = srvs.filter((s) => s.active);
-        const activeBarbers = brbs.filter((b) => b.active);
-
-        setShopConfig(config);
+        setShopConfig(config || DEFAULT_SHOP_CONFIG);
         setServices(activeServices);
         setBarbers(activeBarbers);
-        setAppointments(publicSlots);
+        setAppointments(Array.isArray(publicSlots) ? publicSlots : []);
 
-        if (barberoParam) {
-          const foundBarber = activeBarbers.find(
-            (b) => (b.slug || b.name.toLowerCase()) === barberoParam.toLowerCase()
+        // Guardamos en caché para que la navegación entre páginas sea instantánea
+        try {
+          sessionStorage.setItem(
+            CACHE_KEY,
+            JSON.stringify({
+              config: config || DEFAULT_SHOP_CONFIG,
+              services: activeServices,
+              barbers: activeBarbers,
+              ts: Date.now(),
+            })
           );
-          if (foundBarber) {
-            setSelectedBarber(foundBarber);
-            setPreselectedFromUrl(true);
-          }
-        }
+        } catch {}
+
+        // Si el usuario tocó un servicio rápido antes de que terminara de cargar Supabase,
+        // sincronizamos su ID con el servicio real de la base de datos para que coincida con los barberos
+        setSelectedService((prev) => {
+          if (!prev) return null;
+          return (
+            activeServices.find(
+              (s) => s.id === prev.id || s.name.trim().toLowerCase() === prev.name.trim().toLowerCase()
+            ) || prev
+          );
+        });
       } catch (err) {
         console.error('Error cargando agenda:', err);
+      } finally {
+        setIsLoadingInitial(false);
       }
     }
 
     loadData();
-  }, [barberoParam]);
+  }, []);
+
+  // 2. Efecto separado y limpio para detectar el parámetro ?barbero= de la URL
+  useEffect(() => {
+    if (barberoParam && barbers.length > 0) {
+      const cleanParam = barberoParam.trim().toLowerCase();
+      const foundBarber = barbers.find(
+        (b) =>
+          (b.slug || '').toLowerCase() === cleanParam ||
+          b.name.trim().toLowerCase() === cleanParam
+      );
+      if (foundBarber) {
+        setSelectedBarber(foundBarber);
+        setPreselectedFromUrl(true);
+      }
+    }
+  }, [barberoParam, barbers]);
 
   const activeDayObj = days.find((d) => d.dateString === selectedDate) || days[0];
 
-  // Obtenemos la configuración del día actual desde el schedule dinámico de shopConfig
   const dayKeyMap = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
   const currentDayKey = activeDayObj ? dayKeyMap[activeDayObj.dayOfWeek] : 'lunes';
   const rawSchedule = (shopConfig as any).schedule || {};
   const currentDayRule = rawSchedule[currentDayKey] || { isOpen: true, openTime: '09:00', closeTime: '19:00' };
 
-  // Generamos los horarios de forma dinámica según lo configurado en Admin
   const { morning: morningSlots, afternoon: afternoonSlots } = getDynamicSlotsForDay(currentDayRule, 30);
 
   const scrollToTop = () => {
-    bookingSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      bookingSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   };
 
   const isSlotPastForSelectedDay = (dayObj: DayOption, timeSlot: string): boolean => {
+    if (!dayObj) return false;
     const uyNow = getUruguayNow();
     const parts = dayObj.dateString.split(' ');
     const dayNumStr = parts.find((p) => !isNaN(Number(p))) || parts[1];
@@ -242,6 +295,30 @@ function AgendarContent() {
     return minutesToTime(timeToMinutes(startTime) + dur);
   };
 
+  // FIX DEFINITIVO DE FILTRADO DE SERVICIOS Y BARBEROS (Con Fallback Inteligente)
+  const displayedServices = (() => {
+    if (preselectedFromUrl && selectedBarber) {
+      const filtered = services.filter(
+        (s) =>
+          !selectedBarber.serviceIds ||
+          selectedBarber.serviceIds.length === 0 ||
+          selectedBarber.serviceIds.includes(s.id)
+      );
+      return filtered.length > 0 ? filtered : services;
+    }
+    return services;
+  })();
+
+  const availableBarbersForService = (() => {
+    if (!selectedService) return barbers;
+    const matched = barbers.filter((b) => {
+      if (!b.serviceIds || !Array.isArray(b.serviceIds) || b.serviceIds.length === 0) return true;
+      return b.serviceIds.includes(selectedService.id);
+    });
+    // Si por desincronización de IDs o servicio nuevo la lista queda vacía, mostramos todos los barberos activos
+    return matched.length > 0 ? matched : barbers;
+  })();
+
   const canProceed = () => {
     if (step === 1) return selectedService !== null;
     if (step === 2) return selectedBarber !== null;
@@ -253,6 +330,31 @@ function AgendarContent() {
       return !isSubmitting && clientName.trim().length >= 3 && isStrictUruguayanMobile(clientPhone);
     }
     return false;
+  };
+
+  // Selección rápida pensada para móvil: avanza automáticamente al tocar una opción
+  const handleSelectService = (service: ServiceItem) => {
+    setSelectedService(service);
+    setSelectedTime(null);
+    setFormError('');
+    setTimeout(() => {
+      if (preselectedFromUrl && selectedBarber) {
+        setStep(3);
+      } else {
+        setStep(2);
+      }
+      scrollToTop();
+    }, 120);
+  };
+
+  const handleSelectBarber = (barber: BarberItem) => {
+    setSelectedBarber(barber);
+    setSelectedTime(null);
+    setFormError('');
+    setTimeout(() => {
+      setStep(3);
+      scrollToTop();
+    }, 120);
   };
 
   const handleNext = async () => {
@@ -433,27 +535,10 @@ function AgendarContent() {
     return `https://wa.me/${formattedShopPhone}?text=${text}`;
   };
 
-  const displayedServices =
-    preselectedFromUrl && selectedBarber
-      ? services.filter(
-          (s) =>
-            !selectedBarber.serviceIds ||
-            selectedBarber.serviceIds.length === 0 ||
-            selectedBarber.serviceIds.includes(s.id)
-        )
-      : services;
-
-  const availableBarbersForService = selectedService
-    ? barbers.filter(
-        (b) =>
-          !b.serviceIds || b.serviceIds.length === 0 || b.serviceIds.includes(selectedService.id)
-      )
-    : barbers;
-
   const logoImage = shopConfig.logoUrl || DEFAULT_SHOP_CONFIG.logoUrl;
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
+    <div className="min-h-screen bg-zinc-950 text-zinc-100 pb-28 lg:pb-12">
       <header className="sticky top-0 z-30 bg-zinc-950/90 backdrop-blur-md border-b border-zinc-800 px-4 py-3">
         <div className="max-w-5xl mx-auto flex items-center justify-between gap-2">
           <div className="flex items-center space-x-2.5">
@@ -467,14 +552,14 @@ function AgendarContent() {
               </div>
             )}
             <div>
-              <h1 className="font-bold text-sm sm:text-base">{shopConfig.name}</h1>
-              <p className="text-[11px] text-zinc-400">Gestión de Turnos Online</p>
+              <h1 className="font-bold text-sm sm:text-base leading-tight">{shopConfig.name}</h1>
+              <p className="text-[11px] text-zinc-400">Reserva rápida online</p>
             </div>
           </div>
 
           <Link
             href="/"
-            className="px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-200 text-xs font-semibold flex items-center space-x-1.5"
+            className="px-3.5 py-2 rounded-xl bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 active:scale-95 transition-transform text-zinc-200 text-xs font-semibold flex items-center space-x-1.5 touch-manipulation"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             <span>Inicio</span>
@@ -482,7 +567,7 @@ function AgendarContent() {
         </div>
       </header>
 
-      <main ref={bookingSectionRef} className="max-w-5xl mx-auto px-4 py-5 space-y-5">
+      <main ref={bookingSectionRef} className="max-w-5xl mx-auto px-4 py-4 sm:py-6 space-y-4 sm:space-y-5">
         <div className="max-w-md mx-auto grid grid-cols-2 gap-1.5 bg-zinc-900 p-1.5 rounded-2xl border border-zinc-800">
           <button
             type="button"
@@ -491,7 +576,7 @@ function AgendarContent() {
               setCancelError('');
               setCancelSuccess(false);
             }}
-            className={`py-2.5 px-4 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+            className={`py-2.5 px-4 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 touch-manipulation ${
               activeTab === 'reservar'
                 ? 'bg-zinc-100 text-zinc-950 shadow-sm'
                 : 'text-zinc-400 hover:text-zinc-200'
@@ -504,23 +589,23 @@ function AgendarContent() {
           <button
             type="button"
             onClick={() => setActiveTab('cancelar')}
-            className={`py-2.5 px-4 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+            className={`py-2.5 px-4 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 touch-manipulation ${
               activeTab === 'cancelar'
                 ? 'bg-rose-500 text-white shadow-sm'
                 : 'text-zinc-400 hover:text-rose-400'
             }`}
           >
             <XCircle className="w-3.5 h-3.5" />
-            <span>Cancelar mi Turno</span>
+            <span>Cancelar Turno</span>
           </button>
         </div>
 
         {activeTab === 'cancelar' ? (
-          <div className="max-w-lg mx-auto border rounded-3xl p-6 sm:p-8 bg-zinc-900/90 border-zinc-800 space-y-5">
+          <div className="max-w-lg mx-auto border rounded-3xl p-5 sm:p-8 bg-zinc-900/90 border-zinc-800 space-y-5">
             <div className="space-y-1">
               <h2 className="text-xl font-extrabold tracking-tight">Cancelar un turno</h2>
               <p className="text-xs text-zinc-400">
-                Ingresá el código de tu turno y tu celular para liberar el horario.
+                Ingresá el código de tu turno y tu celular para liberar el horario al instante.
               </p>
             </div>
 
@@ -536,7 +621,7 @@ function AgendarContent() {
                     setCancelSuccess(false);
                     setActiveTab('reservar');
                   }}
-                  className="px-5 py-2.5 rounded-xl bg-zinc-100 text-zinc-950 font-bold text-xs cursor-pointer"
+                  className="px-5 py-3 rounded-xl bg-zinc-100 text-zinc-950 font-bold text-xs cursor-pointer touch-manipulation"
                 >
                   Agendar nuevo turno
                 </button>
@@ -555,7 +640,7 @@ function AgendarContent() {
                       placeholder="Ej: A4F2"
                       value={cancelCode}
                       onChange={(e) => setCancelCode(e.target.value.toUpperCase())}
-                      className="w-full pl-10 pr-4 py-3 rounded-xl border text-base outline-none font-mono uppercase bg-zinc-950 border-zinc-800 text-zinc-100"
+                      className="w-full pl-10 pr-4 py-3.5 rounded-xl border text-base outline-none font-mono uppercase bg-zinc-950 border-zinc-800 text-zinc-100 focus:border-zinc-500"
                     />
                   </div>
                 </div>
@@ -573,7 +658,7 @@ function AgendarContent() {
                       placeholder="098 509 376"
                       value={cancelPhone}
                       onChange={(e) => setCancelPhone(formatUruguayanPhoneInput(e.target.value))}
-                      className="w-full pl-10 pr-4 py-3 rounded-xl border text-base outline-none font-mono bg-zinc-950 border-zinc-800 text-zinc-100"
+                      className="w-full pl-10 pr-4 py-3.5 rounded-xl border text-base outline-none font-mono bg-zinc-950 border-zinc-800 text-zinc-100 focus:border-zinc-500"
                     />
                   </div>
                 </div>
@@ -588,7 +673,7 @@ function AgendarContent() {
                 <button
                   type="submit"
                   disabled={isCancelling}
-                  className="w-full py-3.5 rounded-xl bg-rose-500 hover:bg-rose-600 text-white font-bold text-xs sm:text-sm cursor-pointer disabled:opacity-50"
+                  className="w-full py-4 rounded-xl bg-rose-500 hover:bg-rose-600 active:scale-[0.99] text-white font-bold text-sm cursor-pointer disabled:opacity-50 touch-manipulation"
                 >
                   {isCancelling ? 'Cancelando...' : 'Confirmar Cancelación'}
                 </button>
@@ -597,18 +682,37 @@ function AgendarContent() {
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            <div className="lg:col-span-7 border rounded-3xl p-5 sm:p-7 bg-zinc-900/90 border-zinc-800 backdrop-blur-sm">
+            <div className="lg:col-span-7 border rounded-3xl p-4 sm:p-7 bg-zinc-900/90 border-zinc-800 backdrop-blur-sm">
+              {/* Indicador visual de pasos para orientar al cliente en móvil */}
+              {!confirmedAppointment && (
+                <div className="mb-5">
+                  <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-2">
+                    <span>Paso {step} de 4</span>
+                    <span className="text-emerald-400">
+                      {step === 1 && '1. Servicio'}
+                      {step === 2 && '2. Barbero'}
+                      {step === 3 && '3. Día y Hora'}
+                      {step === 4 && '4. Confirmación'}
+                    </span>
+                  </div>
+                  <div className="w-full h-1.5 bg-zinc-950 rounded-full overflow-hidden border border-zinc-800/80">
+                    <div
+                      className="h-full bg-emerald-400 transition-all duration-300 rounded-full"
+                      style={{ width: `${(step / 4) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
               {preselectedFromUrl && selectedBarber && !confirmedAppointment && (
-                <div className="mb-5 p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between gap-2">
+                <div className="mb-4 p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between gap-2">
                   <div className="flex items-center space-x-2.5">
-                    <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-300 font-bold text-xs flex items-center justify-center">
+                    <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-300 font-bold text-xs flex items-center justify-center shrink-0">
                       <UserCheck className="w-4 h-4" />
                     </div>
-                    <div>
-                      <p className="text-xs font-bold text-emerald-300">
-                        Agendando directo con {selectedBarber.name}
-                      </p>
-                    </div>
+                    <p className="text-xs font-bold text-emerald-300">
+                      Atiende: {selectedBarber.name}
+                    </p>
                   </div>
                   <button
                     type="button"
@@ -618,9 +722,9 @@ function AgendarContent() {
                       setStep(1);
                       router.replace('/agendar', { scroll: false });
                     }}
-                    className="text-[11px] font-semibold text-zinc-300 hover:text-white underline cursor-pointer shrink-0"
+                    className="text-xs font-semibold text-zinc-300 hover:text-white underline cursor-pointer shrink-0 px-2 py-1 touch-manipulation"
                   >
-                    Cambiar
+                    Cambiar barbero
                   </button>
                 </div>
               )}
@@ -634,7 +738,7 @@ function AgendarContent() {
                     <span className="inline-block px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-400">
                       Código #{confirmedAppointment.code}
                     </span>
-                    <h2 className="text-xl sm:text-2xl font-bold tracking-tight">Turno Confirmado</h2>
+                    <h2 className="text-xl sm:text-2xl font-bold tracking-tight">¡Turno Confirmado!</h2>
                   </div>
 
                   <div className="border rounded-2xl p-4 space-y-2.5 text-xs sm:text-sm bg-zinc-950/70 border-zinc-800">
@@ -654,7 +758,7 @@ function AgendarContent() {
                     </div>
                     <div className="flex justify-between pt-2.5 border-t border-zinc-800">
                       <span className="opacity-60">Fecha y hora</span>
-                      <span className="font-bold">
+                      <span className="font-bold text-emerald-400">
                         {confirmedAppointment.dateString} • {confirmedAppointment.timeSlot} hs
                       </span>
                     </div>
@@ -665,16 +769,16 @@ function AgendarContent() {
                       href={getWhatsAppReceiptUrl()}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex-1 py-3.5 px-4 rounded-xl text-xs sm:text-sm flex items-center justify-center space-x-2 bg-zinc-100 hover:bg-white text-zinc-950 font-bold"
+                      className="flex-1 py-4 px-4 rounded-xl text-sm flex items-center justify-center space-x-2 bg-zinc-100 hover:bg-white text-zinc-950 font-extrabold active:scale-[0.99] touch-manipulation"
                     >
                       <MessageSquare className="w-4 h-4" />
-                      <span>Enviar por WhatsApp</span>
+                      <span>Enviar comprobante por WhatsApp</span>
                     </a>
 
                     <button
                       type="button"
                       onClick={handleReset}
-                      className="py-3.5 px-4 rounded-xl border border-zinc-800 text-zinc-300 hover:bg-zinc-800 font-semibold text-xs flex items-center justify-center space-x-1.5 cursor-pointer"
+                      className="py-3.5 px-4 rounded-xl border border-zinc-800 text-zinc-300 hover:bg-zinc-800 font-semibold text-xs flex items-center justify-center space-x-1.5 cursor-pointer touch-manipulation"
                     >
                       <RotateCcw className="w-4 h-4" />
                       <span>Nuevo turno</span>
@@ -683,61 +787,79 @@ function AgendarContent() {
                 </div>
               ) : (
                 <div>
+                  {/* PASO 1: ELEGIR SERVICIO */}
                   {step === 1 && (
                     <div className="space-y-4">
                       <div>
                         <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight">
                           Elegí el servicio
                         </h2>
-                        <p className="text-xs mt-1 text-zinc-400">Seleccioná qué querés hacerte hoy</p>
+                        <p className="text-xs mt-0.5 text-zinc-400">
+                          Tocá un servicio para continuar automáticamente
+                        </p>
                       </div>
 
-                      <div className="space-y-3">
-                        {displayedServices.map((service) => {
-                          const isSelected = selectedService?.id === service.id;
-                          return (
-                            <button
-                              key={service.id}
-                              type="button"
-                              onClick={() => {
-                                setSelectedService(service);
-                                setSelectedTime(null);
-                              }}
-                              className={`w-full p-3.5 rounded-2xl border text-left transition-all flex items-center justify-between gap-3 cursor-pointer ${
-                                isSelected
-                                  ? 'border-zinc-200 bg-zinc-800/80 ring-1 ring-zinc-200/30'
-                                  : 'bg-zinc-950/60 border-zinc-800/90 hover:border-zinc-700'
-                              }`}
-                            >
-                              <div className="flex items-center space-x-3.5 min-w-0">
-                                <div className="p-3 rounded-xl shrink-0 bg-zinc-800 text-zinc-100">
-                                  <Scissors className="w-4 h-4" />
+                      {isLoadingInitial && displayedServices.length === 0 ? (
+                        <div className="space-y-2.5">
+                          {[1, 2, 3].map((n) => (
+                            <div key={n} className="h-16 rounded-2xl bg-zinc-950/60 border border-zinc-800/60 animate-pulse" />
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="space-y-2.5">
+                          {displayedServices.map((service) => {
+                            const isSelected = selectedService?.id === service.id;
+                            return (
+                              <button
+                                key={service.id}
+                                type="button"
+                                onClick={() => handleSelectService(service)}
+                                className={`w-full p-4 rounded-2xl border text-left transition-all flex items-center justify-between gap-3 cursor-pointer active:scale-[0.99] touch-manipulation ${
+                                  isSelected
+                                    ? 'border-emerald-400 bg-zinc-800/90 ring-1 ring-emerald-400/30'
+                                    : 'bg-zinc-950/70 border-zinc-800/90 hover:border-zinc-700'
+                                }`}
+                              >
+                                <div className="flex items-center space-x-3.5 min-w-0">
+                                  <div className={`p-3 rounded-xl shrink-0 ${isSelected ? 'bg-emerald-500/20 text-emerald-300' : 'bg-zinc-800 text-zinc-100'}`}>
+                                    <Scissors className="w-4 h-4" />
+                                  </div>
+                                  <div className="truncate">
+                                    <h3 className="font-bold text-sm sm:text-base truncate">
+                                      {service.name}
+                                    </h3>
+                                    <span className="inline-flex items-center text-xs mt-0.5 text-zinc-400">
+                                      <Clock className="w-3 h-3 mr-1" />
+                                      {service.durationMinutes} min
+                                    </span>
+                                  </div>
                                 </div>
-                                <div className="truncate">
-                                  <h3 className="font-bold text-sm sm:text-base truncate">
-                                    {service.name}
-                                  </h3>
-                                  <span className="inline-flex items-center text-xs mt-0.5 text-zinc-400">
-                                    <Clock className="w-3 h-3 mr-1" />
-                                    Duración: {service.durationMinutes} min
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <span className="font-extrabold text-sm sm:text-base text-emerald-400">
+                                    ${service.price}
                                   </span>
+                                  <ArrowRight className="w-4 h-4 text-zinc-500" />
                                 </div>
-                              </div>
-                              <span className="font-extrabold text-sm">${service.price}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   )}
 
+                  {/* PASO 2: ELEGIR BARBERO */}
                   {step === 2 && (
                     <div className="space-y-4">
                       <div>
                         <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight">
-                          Elegí el barbero
+                          Elegí con quién atenderte
                         </h2>
+                        <p className="text-xs mt-0.5 text-zinc-400">
+                          Seleccioná a tu barbero para ver sus horarios disponibles
+                        </p>
                       </div>
+
                       <div className="grid grid-cols-1 gap-3">
                         {availableBarbersForService.map((barber) => {
                           const isSelected = selectedBarber?.id === barber.id;
@@ -745,25 +867,23 @@ function AgendarContent() {
                             <button
                               key={barber.id}
                               type="button"
-                              onClick={() => {
-                                setSelectedBarber(barber);
-                                setSelectedTime(null);
-                              }}
-                              className={`w-full p-3.5 rounded-2xl border transition-all flex items-center justify-between gap-2 text-left cursor-pointer ${
+                              onClick={() => handleSelectBarber(barber)}
+                              className={`w-full p-4 rounded-2xl border transition-all flex items-center justify-between gap-3 text-left cursor-pointer active:scale-[0.99] touch-manipulation ${
                                 isSelected
-                                  ? 'border-zinc-200 bg-zinc-800/80'
-                                  : 'bg-zinc-950/60 border-zinc-800 hover:border-zinc-700'
+                                  ? 'border-emerald-400 bg-zinc-800/90 ring-1 ring-emerald-400/30'
+                                  : 'bg-zinc-950/70 border-zinc-800 hover:border-zinc-700'
                               }`}
                             >
                               <div className="flex items-center space-x-3.5">
-                                <div className="w-11 h-11 rounded-xl flex items-center justify-center font-bold text-sm bg-zinc-800 text-zinc-100">
+                                <div className="w-12 h-12 rounded-xl flex items-center justify-center font-extrabold text-base bg-zinc-800 border border-zinc-700 text-zinc-100 shrink-0">
                                   {barber.name.charAt(0)}
                                 </div>
                                 <div>
-                                  <h3 className="font-bold text-sm">{barber.name}</h3>
-                                  <p className="text-xs text-zinc-400">{barber.role}</p>
+                                  <h3 className="font-bold text-base">{barber.name}</h3>
+                                  <p className="text-xs text-zinc-400">{barber.role || 'Barbero Profesional'}</p>
                                 </div>
                               </div>
+                              <ArrowRight className="w-4 h-4 text-zinc-400 shrink-0" />
                             </button>
                           );
                         })}
@@ -771,23 +891,25 @@ function AgendarContent() {
                     </div>
                   )}
 
+                  {/* PASO 3: FECHA Y HORA */}
                   {step === 3 && (
                     <div className="space-y-5">
-                      <div>
-                        <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight">
-                          Fecha y hora
-                        </h2>
-                        <p className="text-xs mt-0.5 text-zinc-400">
-                          Atiende: <span className="font-semibold text-white">{selectedBarber?.name}</span>
-                        </p>
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight">
+                            Fecha y hora
+                          </h2>
+                          <p className="text-xs mt-0.5 text-zinc-400">
+                            Barbero: <strong className="text-white">{selectedBarber?.name}</strong> • {selectedService?.name}
+                          </p>
+                        </div>
                       </div>
 
-                      {/* CARRUSEL DE DÍAS */}
                       <div>
                         <label className="text-[11px] font-semibold uppercase tracking-wider opacity-60 block mb-2">
-                          Deslizá para elegir día (Próximos 30 días)
+                          Deslizá para elegir el día
                         </label>
-                        <div className="flex overflow-x-auto gap-2.5 pb-2 scrollbar-none snap-x [-webkit-overflow-scrolling:touch]">
+                        <div className="flex overflow-x-auto gap-2 pb-2 scrollbar-none snap-x [-webkit-overflow-scrolling:touch]">
                           {days.map((day) => {
                             const isSelected = selectedDate === day.dateString;
                             return (
@@ -798,10 +920,10 @@ function AgendarContent() {
                                   setSelectedDate(day.dateString);
                                   setSelectedTime(null);
                                 }}
-                                className={`flex-shrink-0 w-20 py-3 px-2 rounded-2xl border text-center transition-all flex flex-col items-center cursor-pointer snap-start ${
+                                className={`flex-shrink-0 w-[4.5rem] py-3 px-2 rounded-2xl border text-center transition-all flex flex-col items-center cursor-pointer snap-start active:scale-95 touch-manipulation ${
                                   isSelected
-                                    ? 'bg-zinc-100 text-zinc-950 font-bold border-transparent shadow-md scale-[1.02]'
-                                    : 'bg-zinc-950/60 border-zinc-800 text-zinc-300 hover:border-zinc-700'
+                                    ? 'bg-zinc-100 text-zinc-950 font-bold border-transparent shadow-md'
+                                    : 'bg-zinc-950/70 border-zinc-800 text-zinc-300 hover:border-zinc-700'
                                 }`}
                               >
                                 <span className="text-[10px] opacity-75 uppercase tracking-wider">
@@ -815,24 +937,23 @@ function AgendarContent() {
                         </div>
                       </div>
 
-                      {/* HORARIOS DINÁMICOS SEGÚN EL LOCAL */}
                       <div className="space-y-3 pt-2 border-t border-zinc-800/40">
                         <label className="text-[11px] font-semibold uppercase tracking-wider opacity-60 block">
-                          Horarios ({selectedDate})
+                          Horarios disponibles ({selectedDate})
                         </label>
 
                         {!currentDayRule.isOpen ? (
                           <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-semibold text-center">
-                            El local se encuentra cerrado este día. Elegí otra fecha.
+                            El local se encuentra cerrado este día. Tocá otra fecha arriba.
                           </div>
                         ) : (
-                          <div className="space-y-3">
+                          <div className="space-y-4">
                             {morningSlots.length > 0 && (
                               <div>
-                                <span className="text-[11px] font-medium text-emerald-400 block mb-1.5">
-                                  ☀️ Mañana ({currentDayRule.openTime} hs en adelante)
+                                <span className="text-[11px] font-medium text-emerald-400 block mb-2">
+                                  ☀️ Mañana
                                 </span>
-                                <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
                                   {morningSlots.map((time) => {
                                     const isPast = isSlotPastForSelectedDay(activeDayObj, time);
                                     const booked = selectedBarber
@@ -847,12 +968,12 @@ function AgendarContent() {
                                         type="button"
                                         disabled={unavailable}
                                         onClick={() => setSelectedTime(time)}
-                                        className={`py-2 px-1 rounded-xl border text-xs font-semibold transition-all flex flex-col items-center justify-center ${
+                                        className={`py-3 px-2 rounded-xl border text-xs font-bold transition-all flex items-center justify-center touch-manipulation active:scale-95 ${
                                           unavailable
-                                            ? 'bg-zinc-950/20 border-zinc-800/40 text-zinc-600 line-through cursor-not-allowed opacity-50'
+                                            ? 'bg-zinc-950/20 border-zinc-800/40 text-zinc-600 line-through cursor-not-allowed opacity-45'
                                             : isSelected
-                                            ? 'bg-zinc-100 text-zinc-950 font-bold border-transparent'
-                                            : 'bg-zinc-950/70 border-zinc-800 text-zinc-200 cursor-pointer'
+                                            ? 'bg-emerald-400 text-zinc-950 font-extrabold border-transparent shadow-md'
+                                            : 'bg-zinc-950/80 border-zinc-800 text-zinc-200 cursor-pointer hover:border-zinc-600'
                                         }`}
                                       >
                                         <span>{time}</span>
@@ -865,10 +986,10 @@ function AgendarContent() {
 
                             {afternoonSlots.length > 0 && (
                               <div>
-                                <span className="text-[11px] font-medium text-indigo-400 block mb-1.5">
-                                  🌙 Tarde / Noche (hasta {currentDayRule.closeTime} hs)
+                                <span className="text-[11px] font-medium text-indigo-400 block mb-2">
+                                  🌙 Tarde / Noche
                                 </span>
-                                <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
                                   {afternoonSlots.map((time) => {
                                     const isPast = isSlotPastForSelectedDay(activeDayObj, time);
                                     const booked = selectedBarber
@@ -883,12 +1004,12 @@ function AgendarContent() {
                                         type="button"
                                         disabled={unavailable}
                                         onClick={() => setSelectedTime(time)}
-                                        className={`py-2 px-1 rounded-xl border text-xs font-semibold transition-all flex flex-col items-center justify-center ${
+                                        className={`py-3 px-2 rounded-xl border text-xs font-bold transition-all flex items-center justify-center touch-manipulation active:scale-95 ${
                                           unavailable
-                                            ? 'bg-zinc-950/20 border-zinc-800/40 text-zinc-600 line-through cursor-not-allowed opacity-50'
+                                            ? 'bg-zinc-950/20 border-zinc-800/40 text-zinc-600 line-through cursor-not-allowed opacity-45'
                                             : isSelected
-                                            ? 'bg-zinc-100 text-zinc-950 font-bold border-transparent'
-                                            : 'bg-zinc-950/70 border-zinc-800 text-zinc-200 cursor-pointer'
+                                            ? 'bg-emerald-400 text-zinc-950 font-extrabold border-transparent shadow-md'
+                                            : 'bg-zinc-950/80 border-zinc-800 text-zinc-200 cursor-pointer hover:border-zinc-600'
                                         }`}
                                       >
                                         <span>{time}</span>
@@ -904,10 +1025,14 @@ function AgendarContent() {
                     </div>
                   )}
 
+                  {/* PASO 4: DATOS DEL CLIENTE */}
                   {step === 4 && (
                     <div className="space-y-4">
                       <div>
                         <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight">Tus datos</h2>
+                        <p className="text-xs mt-0.5 text-zinc-400">
+                          Completá tu nombre y celular para confirmar el turno
+                        </p>
                       </div>
                       <div className="space-y-3.5">
                         <div>
@@ -917,10 +1042,11 @@ function AgendarContent() {
                           <input
                             type="text"
                             maxLength={50}
-                            placeholder="Tu nombre"
+                            autoComplete="name"
+                            placeholder="Ej: Martín Rodríguez"
                             value={clientName}
                             onChange={(e) => setClientName(e.target.value)}
-                            className="w-full px-4 py-3 rounded-xl border text-base outline-none bg-zinc-950 border-zinc-800 text-zinc-100"
+                            className="w-full px-4 py-3.5 rounded-xl border text-base outline-none bg-zinc-950 border-zinc-800 text-zinc-100 focus:border-zinc-500"
                           />
                         </div>
 
@@ -931,13 +1057,14 @@ function AgendarContent() {
                           <input
                             type="tel"
                             inputMode="numeric"
+                            autoComplete="tel"
                             maxLength={11}
                             placeholder="098 509 376"
                             value={clientPhone}
                             onChange={(e) =>
                               setClientPhone(formatUruguayanPhoneInput(e.target.value))
                             }
-                            className="w-full px-4 py-3 rounded-xl border text-base outline-none font-mono bg-zinc-950 border-zinc-800 text-zinc-100"
+                            className="w-full px-4 py-3.5 rounded-xl border text-base outline-none font-mono bg-zinc-950 border-zinc-800 text-zinc-100 focus:border-zinc-500"
                           />
                         </div>
 
@@ -951,7 +1078,8 @@ function AgendarContent() {
                     </div>
                   )}
 
-                  <div className="mt-6 pt-4 border-t border-zinc-800 flex items-center justify-between gap-3">
+                  {/* Botonera Desktop (oculta en móvil porque usamos barra fija inferior) */}
+                  <div className="hidden lg:flex mt-6 pt-4 border-t border-zinc-800 items-center justify-between gap-3">
                     {step > 1 ? (
                       <button
                         type="button"
@@ -968,7 +1096,7 @@ function AgendarContent() {
                       type="button"
                       disabled={!canProceed()}
                       onClick={handleNext}
-                      className={`flex-1 sm:flex-initial px-6 py-3.5 rounded-xl font-semibold text-xs flex items-center justify-center space-x-2 transition-all ${
+                      className={`px-6 py-3.5 rounded-xl font-semibold text-xs flex items-center justify-center space-x-2 transition-all ${
                         canProceed()
                           ? 'bg-zinc-100 hover:bg-white text-zinc-950 font-bold cursor-pointer'
                           : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
@@ -991,7 +1119,7 @@ function AgendarContent() {
             <aside className="lg:col-span-5 space-y-4 lg:sticky lg:top-20">
               <div className="border rounded-3xl p-5 space-y-3.5 bg-zinc-900/90 border-zinc-800">
                 <div className="flex items-center justify-between border-b pb-3 border-zinc-800/60">
-                  <h3 className="font-bold text-sm">Resumen de reserva</h3>
+                  <h3 className="font-bold text-sm">Resumen de tu turno</h3>
                 </div>
                 <div className="space-y-2.5 text-xs sm:text-sm">
                   <div className="flex justify-between">
@@ -1004,10 +1132,12 @@ function AgendarContent() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-zinc-400">Fecha y hora</span>
-                    <span className="font-semibold">{selectedTime ? `${selectedDate} • ${selectedTime} hs` : selectedDate || '—'}</span>
+                    <span className="font-semibold">
+                      {selectedTime ? `${selectedDate} • ${selectedTime} hs` : selectedDate || '—'}
+                    </span>
                   </div>
-                  <div className="pt-3 border-t border-zinc-800 flex justify-between">
-                    <span className="font-semibold">Total</span>
+                  <div className="pt-3 border-t border-zinc-800 flex justify-between items-center">
+                    <span className="font-semibold">Total a abonar</span>
                     <span className="text-lg font-extrabold text-emerald-400">
                       ${selectedService?.price || 0}
                     </span>
@@ -1018,6 +1148,50 @@ function AgendarContent() {
           </div>
         )}
       </main>
+
+      {/* BARRA INFERIOR FIJA PARA CELULARES (Óptima navegación móvil a una mano) */}
+      {activeTab === 'reservar' && !confirmedAppointment && (
+        <div className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-zinc-950/95 backdrop-blur-lg border-t border-zinc-800 p-3 px-4">
+          <div className="max-w-md mx-auto flex items-center justify-between gap-3">
+            {step > 1 ? (
+              <button
+                type="button"
+                onClick={handleBack}
+                className="px-4 py-3.5 rounded-xl border border-zinc-800 text-zinc-200 bg-zinc-900 active:scale-95 font-bold text-xs cursor-pointer touch-manipulation shrink-0"
+              >
+                Atrás
+              </button>
+            ) : (
+              <div className="text-xs">
+                <span className="text-zinc-400 block">Total</span>
+                <span className="font-extrabold text-base text-emerald-400">
+                  ${selectedService?.price || 0}
+                </span>
+              </div>
+            )}
+
+            <button
+              type="button"
+              disabled={!canProceed()}
+              onClick={handleNext}
+              className={`flex-1 py-3.5 px-5 rounded-xl text-xs font-extrabold flex items-center justify-center space-x-2 transition-all touch-manipulation active:scale-[0.98] ${
+                canProceed()
+                  ? 'bg-zinc-100 text-zinc-950 shadow-lg'
+                  : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+              }`}
+            >
+              <span>
+                {step === 4
+                  ? isSubmitting
+                    ? 'Confirmando...'
+                    : `Confirmar Turno ($${selectedService?.price || 0})`
+                  : 'Continuar'}
+              </span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1027,7 +1201,7 @@ export default function AgendarPage() {
     <Suspense
       fallback={
         <div className="min-h-screen bg-zinc-950 text-zinc-400 flex items-center justify-center text-sm">
-          Cargando...
+          Cargando agenda...
         </div>
       }
     >

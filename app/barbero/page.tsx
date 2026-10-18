@@ -22,9 +22,9 @@ import {
   ShopConfig,
   DayOption,
   DEFAULT_SHOP_CONFIG,
-  DEFAULT_BARBERS,
   getBarbers,
   getShopConfig,
+  getCachedInitialData,
   updateAppointmentStatus,
   unlockBarberPanelWithPin,
   buildRealOpenDays,
@@ -37,16 +37,22 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null;
 
 const MAX_PIN_ATTEMPTS = 5;
-const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutos de bloqueo
+const LOCKOUT_DURATION_MS = 15 * 60 * 1000;
 
 function BarberPinPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const perfilParam = searchParams.get('perfil');
 
-  const [shopConfig, setShopConfig] = useState<ShopConfig>(DEFAULT_SHOP_CONFIG);
-  const [barbers, setBarbers] = useState<BarberItem[]>(DEFAULT_BARBERS);
-  const [days, setDays] = useState<DayOption[]>([]);
+  const initialCache = getCachedInitialData();
+
+  const [shopConfig, setShopConfig] = useState<ShopConfig>(initialCache.shopConfig);
+  const [barbers, setBarbers] = useState<BarberItem[]>(
+    initialCache.barbers.filter((b) => b.active !== false)
+  );
+  const [days, setDays] = useState<DayOption[]>(() =>
+    buildRealOpenDays(30, initialCache.shopConfig.schedule)
+  );
   const [selectedBarber, setSelectedBarber] = useState<BarberItem | null>(null);
 
   const [pinInput, setPinInput] = useState('');
@@ -57,22 +63,25 @@ function BarberPinPageContent() {
   const [unlockedBarberId, setUnlockedBarberId] = useState<string | null>(null);
   const [unlockedCommissionRate, setUnlockedCommissionRate] = useState<number>(50);
   const [privateAppointments, setPrivateAppointments] = useState<AppointmentItem[]>([]);
-  const [calendarDateFilter, setCalendarDateFilter] = useState<string>('');
+  const [calendarDateFilter, setCalendarDateFilter] = useState<string>(() => {
+    const initialDays = buildRealOpenDays(30, initialCache.shopConfig.schedule);
+    return initialDays[0]?.dateString || '';
+  });
 
   useEffect(() => {
-    const openDays = buildRealOpenDays();
-    setDays(openDays);
-    if (openDays.length > 0) {
-      setCalendarDateFilter(openDays[0].dateString);
-    }
-
     async function initData() {
       try {
         const [cfg, brbs] = await Promise.all([getShopConfig(), getBarbers()]);
-        const activeBarbers = brbs.filter((b) => b.active);
+        const activeBarbers = brbs.filter((b) => b.active !== false);
 
         setShopConfig(cfg || DEFAULT_SHOP_CONFIG);
         setBarbers(activeBarbers);
+
+        const openDays = buildRealOpenDays(30, cfg?.schedule);
+        setDays(openDays);
+        if (openDays.length > 0) {
+          setCalendarDateFilter((prev) => prev || openDays[0].dateString);
+        }
 
         if (activeBarbers.length > 0) {
           const matched = perfilParam
@@ -80,7 +89,7 @@ function BarberPinPageContent() {
                 (b) => (b.slug || b.name.toLowerCase()) === perfilParam.toLowerCase()
               )
             : null;
-          setSelectedBarber(matched || activeBarbers[0]);
+          setSelectedBarber((prev) => matched || prev || activeBarbers[0]);
         }
       } catch (err) {
         console.error('Error cargando panel de barbero:', err);
@@ -92,7 +101,6 @@ function BarberPinPageContent() {
 
   const currentBarber = selectedBarber || barbers[0];
 
-  // Verificar si el barbero actual está bloqueado temporalmente en este dispositivo
   useEffect(() => {
     if (!currentBarber) return;
     const lockKey = `pin_lock_${currentBarber.id}`;
@@ -131,9 +139,7 @@ function BarberPinPageContent() {
     if (lockUntil > Date.now()) {
       const waitMins = Math.ceil((lockUntil - Date.now()) / 60000);
       setLockoutRemainingMins(waitMins);
-      setPinError(
-        `Demasiados intentos fallidos. Acceso bloqueado por ${waitMins} min.`
-      );
+      setPinError(`Demasiados intentos fallidos. Acceso bloqueado por ${waitMins} min.`);
       return;
     }
 
@@ -141,7 +147,6 @@ function BarberPinPageContent() {
       setIsVerifyingPin(true);
       setPinError('');
 
-      // 1. Si existe la RPC en Supabase, verifica primero el bloqueo de fuerza bruta en el servidor
       if (supabase) {
         const { error: rpcError } = await supabase.rpc('verify_barber_pin_secure', {
           p_barber_id: currentBarber.id,
@@ -152,10 +157,8 @@ function BarberPinPageContent() {
         }
       }
 
-      // 2. Desbloquea y trae las finanzas/agenda
       const result = await unlockBarberPanelWithPin(currentBarber.id, pinInput.trim());
 
-      // Éxito: limpiar contadores de fallos
       localStorage.removeItem(attemptsKey);
       localStorage.removeItem(lockKey);
       setLockoutRemainingMins(0);
@@ -218,7 +221,7 @@ function BarberPinPageContent() {
   );
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
+    <div className="min-h-[100dvh] bg-zinc-950 text-zinc-100">
       <header className="sticky top-0 z-30 bg-zinc-950/90 backdrop-blur-md border-b border-zinc-800 px-4 py-3">
         <div className="max-w-4xl mx-auto flex items-center justify-between gap-2">
           <div className="flex items-center space-x-2.5">
@@ -227,13 +230,16 @@ function BarberPinPageContent() {
             </div>
             <div>
               <h1 className="font-bold text-sm sm:text-base">Acceso Barberos (PIN)</h1>
-              <p className="text-[11px] text-zinc-400">{shopConfig.name} • Agenda y Comisiones</p>
+              <p className="text-[11px] text-zinc-400">
+                {shopConfig.name} • Agenda y Comisiones
+              </p>
             </div>
           </div>
 
           <Link
             href="/"
-            className="px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-200 text-xs font-semibold flex items-center space-x-1.5"
+            prefetch={true}
+            className="px-3.5 py-2 rounded-xl bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 active:scale-95 transition-transform text-zinc-200 text-xs font-semibold flex items-center space-x-1.5 touch-manipulation"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             <span>Inicio</span>
@@ -242,7 +248,6 @@ function BarberPinPageContent() {
       </header>
 
       <main className="max-w-4xl mx-auto p-4 space-y-5 pt-5">
-        {/* SELECTOR DE BARBERO */}
         <div className="space-y-2">
           <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 block">
             Seleccioná tu perfil para ingresar PIN
@@ -255,7 +260,7 @@ function BarberPinPageContent() {
                   key={b.id}
                   type="button"
                   onClick={() => handleSelectBarber(b)}
-                  className={`px-4 py-2.5 rounded-2xl text-xs font-bold border transition-all flex items-center space-x-2 cursor-pointer ${
+                  className={`px-4 py-2.5 rounded-2xl text-xs font-bold border transition-all flex items-center space-x-2 cursor-pointer active:scale-95 touch-manipulation ${
                     isSelected
                       ? 'bg-zinc-100 text-zinc-950 border-zinc-100 shadow-sm'
                       : 'bg-zinc-900 border-zinc-800 text-zinc-300 hover:border-zinc-700'
@@ -271,7 +276,6 @@ function BarberPinPageContent() {
           </div>
         </div>
 
-        {/* PANEL PRIVADO PROTEGIDO POR PIN */}
         {currentBarber && (
           <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 sm:p-6 backdrop-blur-sm">
             {!isPanelUnlocked ? (
@@ -306,7 +310,7 @@ function BarberPinPageContent() {
                       placeholder="••••"
                       value={pinInput}
                       onChange={(e) => setPinInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                      className="w-full text-center tracking-[0.5em] font-mono text-xl py-3 rounded-xl bg-zinc-950 border border-zinc-800 outline-none text-zinc-100"
+                      className="w-full text-center tracking-[0.5em] font-mono text-xl py-3.5 rounded-xl bg-zinc-950 border border-zinc-800 outline-none text-zinc-100 focus:border-zinc-500"
                     />
 
                     {pinError && <p className="text-xs text-rose-400">{pinError}</p>}
@@ -314,7 +318,7 @@ function BarberPinPageContent() {
                     <button
                       type="submit"
                       disabled={isVerifyingPin || pinInput.length < 4}
-                      className="w-full py-3.5 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-extrabold text-xs cursor-pointer disabled:opacity-50"
+                      className="w-full py-3.5 rounded-xl bg-zinc-100 hover:bg-white active:scale-[0.98] text-zinc-950 font-extrabold text-xs cursor-pointer disabled:opacity-50 touch-manipulation"
                     >
                       {isVerifyingPin ? 'Verificando...' : 'Entrar a mi Agenda'}
                     </button>
@@ -336,14 +340,13 @@ function BarberPinPageContent() {
                       setUnlockedBarberId(null);
                       setPrivateAppointments([]);
                     }}
-                    className="px-3 py-1.5 rounded-xl bg-zinc-950 border border-zinc-800 text-xs text-zinc-400 hover:text-rose-400 flex items-center gap-1 cursor-pointer"
+                    className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-xs text-zinc-400 hover:text-rose-400 flex items-center gap-1 cursor-pointer touch-manipulation"
                   >
                     <LogOut className="w-3.5 h-3.5" />
                     <span>Salir</span>
                   </button>
                 </div>
 
-                {/* RESUMEN FINANCIERO */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4">
                     <span className="text-xs text-zinc-400">Turnos Activos</span>
@@ -366,7 +369,6 @@ function BarberPinPageContent() {
                   </div>
                 </div>
 
-                {/* CALENDARIO DE TURNOS */}
                 <div className="space-y-4 pt-2 border-t border-zinc-800">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <h4 className="font-bold text-sm flex items-center gap-2">
@@ -377,7 +379,7 @@ function BarberPinPageContent() {
                     <select
                       value={calendarDateFilter}
                       onChange={(e) => setCalendarDateFilter(e.target.value)}
-                      className="px-3.5 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-xs text-zinc-200 outline-none font-semibold cursor-pointer"
+                      className="px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-xs text-zinc-200 outline-none font-semibold cursor-pointer"
                     >
                       {days.map((d) => (
                         <option key={d.dateString} value={d.dateString}>
@@ -436,7 +438,7 @@ function BarberPinPageContent() {
                                 <button
                                   type="button"
                                   onClick={() => handleStatusChange(apt.id, 'completado')}
-                                  className="px-3 py-2 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-bold flex items-center gap-1 cursor-pointer"
+                                  className="px-3.5 py-2.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-bold flex items-center gap-1 cursor-pointer active:scale-95 touch-manipulation"
                                 >
                                   <CheckCircle2 className="w-3.5 h-3.5" />
                                   <span>Completar</span>
@@ -445,7 +447,7 @@ function BarberPinPageContent() {
                               <button
                                 type="button"
                                 onClick={() => handleStatusChange(apt.id, 'cancelado')}
-                                className="px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-rose-400 text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                                className="px-3.5 py-2.5 rounded-xl bg-zinc-900 border border-zinc-800 text-rose-400 text-xs font-semibold flex items-center gap-1 cursor-pointer active:scale-95 touch-manipulation"
                               >
                                 <XCircle className="w-3.5 h-3.5" />
                                 <span>Cancelar</span>
@@ -470,7 +472,7 @@ export default function BarberPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-zinc-950 text-zinc-400 flex items-center justify-center text-sm">
+        <div className="min-h-[100dvh] bg-zinc-950 text-zinc-400 flex items-center justify-center text-sm">
           Cargando panel...
         </div>
       }
