@@ -221,8 +221,9 @@ function BarberPinPageContent() {
   );
 
   return (
-    <div className="min-h-[100dvh] bg-zinc-950 text-zinc-100">
-      <header className="sticky top-0 z-30 bg-zinc-950/90 backdrop-blur-md border-b border-zinc-800 px-4 py-3">
+    <div className="min-h-screen bg-zinc-950 text-zinc-100 pb-28 sm:pb-12">
+      {/* HEADER CON SAFE-AREA PARA MÓVILES / PWA */}
+      <header className="sticky top-0 z-30 bg-zinc-950/90 backdrop-blur-md border-b border-zinc-800 px-4 pt-[max(0.75rem,calc(env(safe-area-inset-top)+0.5rem))] pb-3">
         <div className="max-w-4xl mx-auto flex items-center justify-between gap-2">
           <div className="flex items-center space-x-2.5">
             <div className="w-9 h-9 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center">
@@ -472,7 +473,7 @@ export default function BarberPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-[100dvh] bg-zinc-950 text-zinc-400 flex items-center justify-center text-sm">
+        <div className="min-h-screen bg-zinc-950 text-zinc-400 flex items-center justify-center text-sm">
           Cargando panel...
         </div>
       }

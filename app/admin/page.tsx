@@ -140,26 +140,27 @@ export default function AdminDashboard() {
     async function loadAdminData() {
       try {
         setAdminError('');
-        const openDays = buildRealOpenDays();
+        const [apts, srvs, brbs, exps, cfg] = await Promise.all([
+          getAppointments(),
+          getServices(true),
+          getAdminBarbers(),
+          getExpenses(),
+          getShopConfig(true),
+        ]);
+
+        const freshConfig = cfg || DEFAULT_SHOP_CONFIG;
+        const openDays = buildRealOpenDays(30, freshConfig.schedule);
         setDays(openDays);
         if (openDays.length > 0) {
           setAdminAgendaDate(openDays[0].dateString);
         }
-
-        const [apts, srvs, brbs, exps, cfg] = await Promise.all([
-          getAppointments(),
-          getServices(),
-          getAdminBarbers(),
-          getExpenses(),
-          getShopConfig(),
-        ]);
 
         const freshBarbers = Array.isArray(brbs) ? brbs : [];
         setAppointments(Array.isArray(apts) ? apts : []);
         setServices(Array.isArray(srvs) ? srvs : []);
         setBarbers(freshBarbers);
         setExpenses(Array.isArray(exps) ? exps : []);
-        setShopConfig(cfg || DEFAULT_SHOP_CONFIG);
+        setShopConfig(freshConfig);
 
         checkBarberLocks(freshBarbers);
       } catch (err: any) {
@@ -406,18 +407,17 @@ export default function AdminDashboard() {
       setAdminError(err?.message || 'Error al eliminar el gasto.');
     }
   };
-const handleSaveBrand = async (e: React.FormEvent) => {
+
+  const handleSaveBrand = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       setAdminError('');
-      
-      // Aseguramos que el schedule actual viaje correctamente en la configuración
-      const configToSave = {
+      const configToSave: ShopConfig = {
         ...shopConfig,
-        schedule: (shopConfig as any).schedule || {},
+        schedule: shopConfig.schedule || DEFAULT_SHOP_CONFIG.schedule,
       };
-
       await saveShopConfig(configToSave);
+      setDays(buildRealOpenDays(30, configToSave.schedule));
       setSavedBanner(true);
       setTimeout(() => setSavedBanner(false), 2500);
     } catch (err: any) {
@@ -494,7 +494,7 @@ const handleSaveBrand = async (e: React.FormEvent) => {
   const logoImage = shopConfig.logoUrl || DEFAULT_SHOP_CONFIG.logoUrl;
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 pb-16 relative">
+    <div className="min-h-screen bg-zinc-950 text-zinc-100 pb-28 sm:pb-16 relative">
       <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
         <img
           src={bgImage}
@@ -505,7 +505,8 @@ const handleSaveBrand = async (e: React.FormEvent) => {
       </div>
 
       <div className="relative z-10">
-        <header className="sticky top-0 z-30 bg-zinc-950/90 backdrop-blur-md border-b border-zinc-800/80 px-4 py-3">
+        {/* HEADER CON SAFE-AREA PARA MÓVILES / PWA */}
+        <header className="sticky top-0 z-30 bg-zinc-950/90 backdrop-blur-md border-b border-zinc-800/80 px-4 pt-[max(0.75rem,calc(env(safe-area-inset-top)+0.5rem))] pb-3">
           <div className="max-w-5xl mx-auto flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center space-x-2.5">
               {logoImage ? (
@@ -527,7 +528,8 @@ const handleSaveBrand = async (e: React.FormEvent) => {
             <div className="flex items-center space-x-1.5">
               <Link
                 href="/barbero"
-                className="px-2.5 py-2 rounded-xl bg-zinc-900 border border-zinc-700 hover:bg-zinc-800 text-zinc-100 text-xs font-semibold flex items-center space-x-1"
+                prefetch={true}
+                className="px-2.5 py-2 rounded-xl bg-zinc-900 border border-zinc-700 hover:bg-zinc-800 active:scale-95 transition-transform text-zinc-100 text-xs font-semibold flex items-center space-x-1 touch-manipulation"
               >
                 <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
                 <span>Barberos</span>
@@ -535,16 +537,17 @@ const handleSaveBrand = async (e: React.FormEvent) => {
 
               <Link
                 href="/"
-                className="px-2.5 py-2 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 text-xs font-bold flex items-center space-x-1"
+                prefetch={true}
+                className="px-3 py-2 rounded-xl bg-zinc-100 hover:bg-white active:scale-95 transition-transform text-zinc-950 text-xs font-bold flex items-center space-x-1 touch-manipulation"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
-                <span>Web</span>
+                <span>Inicio</span>
               </Link>
 
               <button
                 type="button"
                 onClick={handleLogout}
-                className="p-2 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-rose-400 text-xs font-medium cursor-pointer"
+                className="p-2 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-rose-400 text-xs font-medium cursor-pointer touch-manipulation active:scale-95"
               >
                 <LogOut className="w-4 h-4" />
               </button>
@@ -573,7 +576,7 @@ const handleSaveBrand = async (e: React.FormEvent) => {
             <button
               type="button"
               onClick={() => setActiveTab('caja')}
-              className={`py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+              className={`py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 touch-manipulation ${
                 activeTab === 'caja'
                   ? 'bg-zinc-100 text-zinc-950 shadow-sm'
                   : 'text-zinc-400 hover:text-zinc-200'
@@ -586,7 +589,7 @@ const handleSaveBrand = async (e: React.FormEvent) => {
             <button
               type="button"
               onClick={() => setActiveTab('agenda')}
-              className={`py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+              className={`py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 touch-manipulation ${
                 activeTab === 'agenda'
                   ? 'bg-zinc-100 text-zinc-950 shadow-sm'
                   : 'text-zinc-400 hover:text-zinc-200'
@@ -599,7 +602,7 @@ const handleSaveBrand = async (e: React.FormEvent) => {
             <button
               type="button"
               onClick={() => setActiveTab('turnos')}
-              className={`py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+              className={`py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 touch-manipulation ${
                 activeTab === 'turnos'
                   ? 'bg-zinc-100 text-zinc-950 shadow-sm'
                   : 'text-zinc-400 hover:text-zinc-200'
@@ -612,7 +615,7 @@ const handleSaveBrand = async (e: React.FormEvent) => {
             <button
               type="button"
               onClick={() => setActiveTab('barberos')}
-              className={`py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+              className={`py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 touch-manipulation ${
                 activeTab === 'barberos'
                   ? 'bg-zinc-100 text-zinc-950 shadow-sm'
                   : 'text-zinc-400 hover:text-zinc-200'
@@ -625,7 +628,7 @@ const handleSaveBrand = async (e: React.FormEvent) => {
             <button
               type="button"
               onClick={() => setActiveTab('servicios')}
-              className={`py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+              className={`py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 touch-manipulation ${
                 activeTab === 'servicios'
                   ? 'bg-zinc-100 text-zinc-950 shadow-sm'
                   : 'text-zinc-400 hover:text-zinc-200'
@@ -638,7 +641,7 @@ const handleSaveBrand = async (e: React.FormEvent) => {
             <button
               type="button"
               onClick={() => setActiveTab('marca')}
-              className={`py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+              className={`py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 touch-manipulation ${
                 activeTab === 'marca'
                   ? 'bg-zinc-100 text-zinc-950 shadow-sm'
                   : 'text-zinc-400 hover:text-zinc-200'
@@ -665,7 +668,7 @@ const handleSaveBrand = async (e: React.FormEvent) => {
                       key={item.id}
                       type="button"
                       onClick={() => setPeriod(item.id)}
-                      className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                      className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer touch-manipulation ${
                         period === item.id
                           ? 'bg-zinc-100 text-zinc-950'
                           : 'text-zinc-400 hover:text-zinc-200'
@@ -799,12 +802,12 @@ const handleSaveBrand = async (e: React.FormEvent) => {
                     placeholder="Descripción del gasto..."
                     value={expenseDesc}
                     onChange={(e) => setExpenseDesc(e.target.value)}
-                    className="sm:col-span-5 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-sm outline-none"
+                    className="sm:col-span-5 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
                   />
                   <select
                     value={expenseCategory}
                     onChange={(e) => setExpenseCategory(e.target.value as ExpenseCategory)}
-                    className="sm:col-span-3 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-sm outline-none text-zinc-200"
+                    className="sm:col-span-3 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none text-zinc-200"
                   >
                     <option value="Insumos">Insumos</option>
                     <option value="Alquiler / Servicios">Alquiler / Luz</option>
@@ -816,11 +819,11 @@ const handleSaveBrand = async (e: React.FormEvent) => {
                     placeholder="Monto $"
                     value={expenseAmount}
                     onChange={(e) => setExpenseAmount(e.target.value)}
-                    className="sm:col-span-2 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-sm outline-none"
+                    className="sm:col-span-2 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
                   />
                   <button
                     type="submit"
-                    className="sm:col-span-2 py-2.5 px-4 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-bold text-xs cursor-pointer flex items-center justify-center gap-1"
+                    className="sm:col-span-2 py-2.5 px-4 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-bold text-xs cursor-pointer flex items-center justify-center gap-1 touch-manipulation"
                   >
                     <Plus className="w-4 h-4" />
                     <span>Agregar</span>
@@ -1072,7 +1075,7 @@ const handleSaveBrand = async (e: React.FormEvent) => {
                     placeholder="Nombre"
                     value={newBarberName}
                     onChange={(e) => setNewBarberName(e.target.value)}
-                    className="sm:col-span-6 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-sm outline-none"
+                    className="sm:col-span-6 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
                   />
                   <div className="sm:col-span-2 flex items-center bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2">
                     <Percent className="w-3.5 h-3.5 text-zinc-500 mr-1.5 shrink-0" />
@@ -1082,7 +1085,7 @@ const handleSaveBrand = async (e: React.FormEvent) => {
                       max={100}
                       value={newBarberCommission}
                       onChange={(e) => setNewBarberCommission(e.target.value)}
-                      className="w-full bg-transparent text-sm outline-none"
+                      className="w-full bg-transparent text-base sm:text-sm outline-none"
                     />
                   </div>
                   <div className="sm:col-span-2 flex items-center bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2">
@@ -1092,13 +1095,13 @@ const handleSaveBrand = async (e: React.FormEvent) => {
                       maxLength={4}
                       value={newBarberPin}
                       onChange={(e) => setNewBarberPin(e.target.value)}
-                      className="w-full bg-transparent text-sm outline-none"
+                      className="w-full bg-transparent text-base sm:text-sm outline-none"
                     />
                   </div>
                   <button
                     type="button"
                     onClick={handleAddBarber}
-                    className="sm:col-span-2 py-2.5 px-3 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-bold text-xs cursor-pointer"
+                    className="sm:col-span-2 py-2.5 px-3 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-bold text-xs cursor-pointer touch-manipulation"
                   >
                     Sumar
                   </button>
@@ -1248,21 +1251,21 @@ const handleSaveBrand = async (e: React.FormEvent) => {
                     placeholder="Nombre (ej: Corte)"
                     value={newServiceName}
                     onChange={(e) => setNewServiceName(e.target.value)}
-                    className="sm:col-span-5 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-sm outline-none"
+                    className="sm:col-span-5 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
                   />
                   <input
                     type="number"
                     placeholder="Precio $"
                     value={newServicePrice}
                     onChange={(e) => setNewServicePrice(e.target.value)}
-                    className="sm:col-span-3 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-sm outline-none"
+                    className="sm:col-span-3 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
                   />
                   <input
                     type="number"
                     placeholder="Minutos (ej: 45)"
                     value={newServiceDuration}
                     onChange={(e) => setNewServiceDuration(e.target.value)}
-                    className="sm:col-span-2 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-sm outline-none"
+                    className="sm:col-span-2 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
                   />
                   <button
                     type="button"
@@ -1351,7 +1354,7 @@ const handleSaveBrand = async (e: React.FormEvent) => {
                     type="text"
                     value={shopConfig.name}
                     onChange={(e) => setShopConfig({ ...shopConfig, name: e.target.value })}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-sm outline-none"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
                   />
                 </div>
 
@@ -1361,7 +1364,7 @@ const handleSaveBrand = async (e: React.FormEvent) => {
                     type="text"
                     value={shopConfig.address}
                     onChange={(e) => setShopConfig({ ...shopConfig, address: e.target.value })}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-sm outline-none"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
                   />
                 </div>
 
@@ -1380,12 +1383,11 @@ const handleSaveBrand = async (e: React.FormEvent) => {
                         coverImageUrl: e.target.value,
                       })
                     }
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-sm outline-none"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
                   />
                 </div>
               </div>
 
-              {/* GESTOR DE HORARIOS POR DÍA (MULTI-TENANT SEGURO) */}
               <div className="space-y-3 pt-4 border-t border-zinc-800">
                 <h4 className="font-bold text-sm text-zinc-200">Horarios de Atención Semanal</h4>
                 <p className="text-xs text-zinc-400">Definí qué días abre el negocio y en qué horario.</p>
@@ -1393,7 +1395,7 @@ const handleSaveBrand = async (e: React.FormEvent) => {
                 <div className="space-y-2">
                   {['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'].map((dia) => {
                     const key = dia.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-                    const rawSchedule = (shopConfig as any).schedule || {};
+                    const rawSchedule = shopConfig.schedule || {};
                     const dayConfig = rawSchedule[key] || { isOpen: true, openTime: '09:00', closeTime: '19:00' };
 
                     return (
@@ -1407,7 +1409,7 @@ const handleSaveBrand = async (e: React.FormEvent) => {
                                 ...rawSchedule,
                                 [key]: { ...dayConfig, isOpen: e.target.checked },
                               };
-                              setShopConfig({ ...shopConfig, schedule: updatedSchedule } as any);
+                              setShopConfig({ ...shopConfig, schedule: updatedSchedule });
                             }}
                             className="rounded border-zinc-700 bg-zinc-900 text-emerald-500 focus:ring-0 cursor-pointer"
                           />
@@ -1424,7 +1426,7 @@ const handleSaveBrand = async (e: React.FormEvent) => {
                                   ...rawSchedule,
                                   [key]: { ...dayConfig, openTime: e.target.value },
                                 };
-                                setShopConfig({ ...shopConfig, schedule: updatedSchedule } as any);
+                                setShopConfig({ ...shopConfig, schedule: updatedSchedule });
                               }}
                               className="px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-200 outline-none"
                             />
@@ -1437,7 +1439,7 @@ const handleSaveBrand = async (e: React.FormEvent) => {
                                   ...rawSchedule,
                                   [key]: { ...dayConfig, closeTime: e.target.value },
                                 };
-                                setShopConfig({ ...shopConfig, schedule: updatedSchedule } as any);
+                                setShopConfig({ ...shopConfig, schedule: updatedSchedule });
                               }}
                               className="px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-200 outline-none"
                             />

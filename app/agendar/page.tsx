@@ -6,7 +6,6 @@ import Link from 'next/link';
 import {
   Scissors,
   Clock,
-  Check,
   ArrowRight,
   ArrowLeft,
   CheckCircle2,
@@ -25,15 +24,15 @@ import {
   AppointmentItem,
   ShopConfig,
   DayOption,
-  DEFAULT_SERVICES,
-  DEFAULT_BARBERS,
   DEFAULT_SHOP_CONFIG,
   getServices,
   getBarbers,
   getPublicBookedSlots,
   getShopConfig,
+  getCachedInitialData,
   createAppointment,
   buildRealOpenDays,
+  getSlotsForDayOfWeek,
   isSlotAvailable,
   timeToMinutes,
   minutesToTime,
@@ -50,7 +49,6 @@ const MONTH_MAP: Record<string, number> = {
 
 const BOOKING_COOLDOWN_MS = 5 * 60 * 1000;
 const BOOKING_STORAGE_KEY = '13cut_last_booking_ts';
-const CACHE_KEY = '13cut_fast_cache_v1';
 
 function getUruguayNow() {
   const formatter = new Intl.DateTimeFormat('en-US', {
@@ -64,7 +62,7 @@ function getUruguayNow() {
   });
 
   const parts = formatter.formatToParts(new Date());
-  let year = 2026, month = 9, day = 16, hour = 0, minute = 0;
+  let year = 2026, month = 9, day = 18, hour = 0, minute = 0;
 
   for (const p of parts) {
     if (p.type === 'year') year = parseInt(p.value, 10) || 2026;
@@ -95,48 +93,36 @@ function isStrictUruguayanMobile(phone: string): boolean {
   return true;
 }
 
-function getDynamicSlotsForDay(dayConfig: { isOpen: boolean; openTime: string; closeTime: string }, stepMinutes: number = 30) {
-  if (!dayConfig || !dayConfig.isOpen) return { morning: [], afternoon: [] };
-
-  const openMins = timeToMinutes(dayConfig.openTime);
-  const closeMins = timeToMinutes(dayConfig.closeTime);
-  const morning: string[] = [];
-  const afternoon: string[] = [];
-
-  let current = openMins;
-  while (current < closeMins) {
-    const timeStr = minutesToTime(current);
-    if (current < 780) {
-      morning.push(timeStr);
-    } else {
-      afternoon.push(timeStr);
-    }
-    current += stepMinutes;
-  }
-
-  return { morning, afternoon };
-}
-
 function AgendarContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const barberoParam = searchParams.get('barbero');
 
+  const initialCache = getCachedInitialData();
+
   const [activeTab, setActiveTab] = useState<'reservar' | 'cancelar'>('reservar');
   const [step, setStep] = useState<number>(1);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
-  const [isLoadingInitial, setIsLoadingInitial] = useState<boolean>(true);
   const [preselectedFromUrl, setPreselectedFromUrl] = useState<boolean>(false);
 
-  const [shopConfig, setShopConfig] = useState<ShopConfig>(DEFAULT_SHOP_CONFIG);
-  const [services, setServices] = useState<ServiceItem[]>(DEFAULT_SERVICES);
-  const [barbers, setBarbers] = useState<BarberItem[]>(DEFAULT_BARBERS);
+  const [shopConfig, setShopConfig] = useState<ShopConfig>(initialCache.shopConfig);
+  const [services, setServices] = useState<ServiceItem[]>(
+    initialCache.services.filter((s) => s.active !== false)
+  );
+  const [barbers, setBarbers] = useState<BarberItem[]>(
+    initialCache.barbers.filter((b) => b.active !== false)
+  );
   const [appointments, setAppointments] = useState<AppointmentItem[]>([]);
-  const [days, setDays] = useState<DayOption[]>([]);
+  const [days, setDays] = useState<DayOption[]>(() =>
+    buildRealOpenDays(30, initialCache.shopConfig.schedule)
+  );
 
   const [selectedService, setSelectedService] = useState<ServiceItem | null>(null);
   const [selectedBarber, setSelectedBarber] = useState<BarberItem | null>(null);
-  const [selectedDate, setSelectedDate] = useState<string>('');
+  const [selectedDate, setSelectedDate] = useState<string>(() => {
+    const initialDays = buildRealOpenDays(30, initialCache.shopConfig.schedule);
+    return initialDays.length > 0 ? initialDays[0].dateString : '';
+  });
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
 
   const [clientName, setClientName] = useState<string>('');
@@ -152,26 +138,7 @@ function AgendarContent() {
 
   const bookingSectionRef = useRef<HTMLDivElement>(null);
 
-  // 1. Carga ultra rápida con Caché en Memoria + Sincronización con Supabase
   useEffect(() => {
-    const realDays = buildRealOpenDays(30);
-    setDays(realDays);
-    if (realDays.length > 0) setSelectedDate(realDays[0].dateString);
-
-    // Intentamos hidratar al instante desde sessionStorage para velocidad 0ms
-    try {
-      const cached = sessionStorage.getItem(CACHE_KEY);
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (parsed.config) setShopConfig(parsed.config);
-        if (Array.isArray(parsed.services) && parsed.services.length > 0) setServices(parsed.services);
-        if (Array.isArray(parsed.barbers) && parsed.barbers.length > 0) setBarbers(parsed.barbers);
-        setIsLoadingInitial(false);
-      }
-    } catch {
-      // Ignorar errores de caché
-    }
-
     async function loadData() {
       try {
         const [config, srvs, brbs, publicSlots] = await Promise.all([
@@ -180,34 +147,22 @@ function AgendarContent() {
           getBarbers(),
           getPublicBookedSlots(),
         ]);
-sessionStorage.setItem('13cut_fast_cache_v1', JSON.stringify({ config, barbers: brbs }))
-        const activeServices = (Array.isArray(srvs) && srvs.length > 0 ? srvs : DEFAULT_SERVICES).filter(
-          (s) => s.active !== false
-        );
-        const activeBarbers = (Array.isArray(brbs) && brbs.length > 0 ? brbs : DEFAULT_BARBERS).filter(
-          (b) => b.active !== false
-        );
 
-        setShopConfig(config || DEFAULT_SHOP_CONFIG);
+        const activeServices = srvs.filter((s) => s.active !== false);
+        const activeBarbers = brbs.filter((b) => b.active !== false);
+
+        setShopConfig(config);
         setServices(activeServices);
         setBarbers(activeBarbers);
-        setAppointments(Array.isArray(publicSlots) ? publicSlots : []);
+        setAppointments(publicSlots);
 
-        // Guardamos en caché para que la navegación entre páginas sea instantánea
-        try {
-          sessionStorage.setItem(
-            CACHE_KEY,
-            JSON.stringify({
-              config: config || DEFAULT_SHOP_CONFIG,
-              services: activeServices,
-              barbers: activeBarbers,
-              ts: Date.now(),
-            })
-          );
-        } catch {}
+        const updatedDays = buildRealOpenDays(30, config.schedule);
+        setDays(updatedDays);
+        setSelectedDate((prev) => {
+          if (prev && updatedDays.some((d) => d.dateString === prev)) return prev;
+          return updatedDays[0]?.dateString || '';
+        });
 
-        // Si el usuario tocó un servicio rápido antes de que terminara de cargar Supabase,
-        // sincronizamos su ID con el servicio real de la base de datos para que coincida con los barberos
         setSelectedService((prev) => {
           if (!prev) return null;
           return (
@@ -218,15 +173,12 @@ sessionStorage.setItem('13cut_fast_cache_v1', JSON.stringify({ config, barbers: 
         });
       } catch (err) {
         console.error('Error cargando agenda:', err);
-      } finally {
-        setIsLoadingInitial(false);
       }
     }
 
     loadData();
   }, []);
 
-  // 2. Efecto separado y limpio para detectar el parámetro ?barbero= de la URL
   useEffect(() => {
     if (barberoParam && barbers.length > 0) {
       const cleanParam = barberoParam.trim().toLowerCase();
@@ -245,11 +197,19 @@ sessionStorage.setItem('13cut_fast_cache_v1', JSON.stringify({ config, barbers: 
   const activeDayObj = days.find((d) => d.dateString === selectedDate) || days[0];
 
   const dayKeyMap = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
-  const currentDayKey = activeDayObj ? dayKeyMap[activeDayObj.dayOfWeek] : 'lunes';
-  const rawSchedule = (shopConfig as any).schedule || {};
-  const currentDayRule = rawSchedule[currentDayKey] || { isOpen: true, openTime: '09:00', closeTime: '19:00' };
+  const currentDayKey = activeDayObj ? dayKeyMap[activeDayObj.dayOfWeek] : 'martes';
+  const rawSchedule = shopConfig.schedule || {};
+  const currentDayRule = rawSchedule[currentDayKey] || {
+    isOpen: true,
+    openTime: '09:00',
+    closeTime: '19:00',
+  };
 
-  const { morning: morningSlots, afternoon: afternoonSlots } = getDynamicSlotsForDay(currentDayRule, 30);
+  const { morning: morningSlots, afternoon: afternoonSlots } = getSlotsForDayOfWeek(
+    activeDayObj?.dayOfWeek ?? 2,
+    30,
+    shopConfig.schedule
+  );
 
   const scrollToTop = () => {
     if (typeof window !== 'undefined' && window.innerWidth < 768) {
@@ -259,15 +219,17 @@ sessionStorage.setItem('13cut_fast_cache_v1', JSON.stringify({ config, barbers: 
     }
   };
 
-  const isSlotPastForSelectedDay = (dayObj: DayOption, timeSlot: string): boolean => {
+  const isSlotPastForSelectedDay = (dayObj: DayOption | undefined, timeSlot: string): boolean => {
     if (!dayObj) return false;
     const uyNow = getUruguayNow();
     const parts = dayObj.dateString.split(' ');
     const dayNumStr = parts.find((p) => !isNaN(Number(p))) || parts[1];
-    const monthStr = parts.find((p) => MONTH_MAP[(p || '').toLowerCase()] !== undefined) || parts[2];
+    const monthStr =
+      parts.find((p) => MONTH_MAP[(p || '').toLowerCase().replace('.', '')] !== undefined) ||
+      parts[2];
 
     const targetDay = parseInt(dayNumStr, 10);
-    const targetMonth = MONTH_MAP[(monthStr || '').toLowerCase()];
+    const targetMonth = MONTH_MAP[(monthStr || '').toLowerCase().replace('.', '')];
 
     if (isNaN(targetDay) || targetMonth === undefined) return false;
     if (targetDay !== uyNow.day || targetMonth !== uyNow.month) return false;
@@ -295,7 +257,6 @@ sessionStorage.setItem('13cut_fast_cache_v1', JSON.stringify({ config, barbers: 
     return minutesToTime(timeToMinutes(startTime) + dur);
   };
 
-  // FIX DEFINITIVO DE FILTRADO DE SERVICIOS Y BARBEROS (Con Fallback Inteligente)
   const displayedServices = (() => {
     if (preselectedFromUrl && selectedBarber) {
       const filtered = services.filter(
@@ -315,7 +276,6 @@ sessionStorage.setItem('13cut_fast_cache_v1', JSON.stringify({ config, barbers: 
       if (!b.serviceIds || !Array.isArray(b.serviceIds) || b.serviceIds.length === 0) return true;
       return b.serviceIds.includes(selectedService.id);
     });
-    // Si por desincronización de IDs o servicio nuevo la lista queda vacía, mostramos todos los barberos activos
     return matched.length > 0 ? matched : barbers;
   })();
 
@@ -332,7 +292,6 @@ sessionStorage.setItem('13cut_fast_cache_v1', JSON.stringify({ config, barbers: 
     return false;
   };
 
-  // Selección rápida pensada para móvil: avanza automáticamente al tocar una opción
   const handleSelectService = (service: ServiceItem) => {
     setSelectedService(service);
     setSelectedTime(null);
@@ -344,7 +303,7 @@ sessionStorage.setItem('13cut_fast_cache_v1', JSON.stringify({ config, barbers: 
         setStep(2);
       }
       scrollToTop();
-    }, 120);
+    }, 90);
   };
 
   const handleSelectBarber = (barber: BarberItem) => {
@@ -354,7 +313,7 @@ sessionStorage.setItem('13cut_fast_cache_v1', JSON.stringify({ config, barbers: 
     setTimeout(() => {
       setStep(3);
       scrollToTop();
-    }, 120);
+    }, 90);
   };
 
   const handleNext = async () => {
@@ -396,7 +355,7 @@ sessionStorage.setItem('13cut_fast_cache_v1', JSON.stringify({ config, barbers: 
           return;
         }
 
-        const freshSlots = await getPublicBookedSlots();
+        const freshSlots = await getPublicBookedSlots(true);
         setAppointments(freshSlots);
 
         const cleanInputPhone = clientPhone.replace(/\D/g, '');
@@ -439,7 +398,7 @@ sessionStorage.setItem('13cut_fast_cache_v1', JSON.stringify({ config, barbers: 
         });
 
         localStorage.setItem(BOOKING_STORAGE_KEY, String(Date.now()));
-        const updatedSlots = await getPublicBookedSlots();
+        const updatedSlots = await getPublicBookedSlots(true);
         setAppointments(updatedSlots);
         setConfirmedAppointment(created);
         scrollToTop();
@@ -499,7 +458,7 @@ sessionStorage.setItem('13cut_fast_cache_v1', JSON.stringify({ config, barbers: 
 
       if (error) throw new Error(error.message);
 
-      const updatedSlots = await getPublicBookedSlots();
+      const updatedSlots = await getPublicBookedSlots(true);
       setAppointments(updatedSlots);
       setCancelSuccess(true);
       setCancelCode('');
@@ -539,7 +498,8 @@ sessionStorage.setItem('13cut_fast_cache_v1', JSON.stringify({ config, barbers: 
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 pb-28 lg:pb-12">
-      <header className="sticky top-0 z-30 bg-zinc-950/90 backdrop-blur-md border-b border-zinc-800 px-4 py-3">
+      {/* HEADER CON SAFE-AREA PARA MÓVILES / PWA */}
+      <header className="sticky top-0 z-30 bg-zinc-950/90 backdrop-blur-md border-b border-zinc-800 px-4 pt-[max(0.75rem,calc(env(safe-area-inset-top)+0.5rem))] pb-3">
         <div className="max-w-5xl mx-auto flex items-center justify-between gap-2">
           <div className="flex items-center space-x-2.5">
             {logoImage ? (
@@ -559,6 +519,7 @@ sessionStorage.setItem('13cut_fast_cache_v1', JSON.stringify({ config, barbers: 
 
           <Link
             href="/"
+            prefetch={true}
             className="px-3.5 py-2 rounded-xl bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 active:scale-95 transition-transform text-zinc-200 text-xs font-semibold flex items-center space-x-1.5 touch-manipulation"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
@@ -683,7 +644,6 @@ sessionStorage.setItem('13cut_fast_cache_v1', JSON.stringify({ config, barbers: 
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
             <div className="lg:col-span-7 border rounded-3xl p-4 sm:p-7 bg-zinc-900/90 border-zinc-800 backdrop-blur-sm">
-              {/* Indicador visual de pasos para orientar al cliente en móvil */}
               {!confirmedAppointment && (
                 <div className="mb-5">
                   <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-2">
@@ -692,7 +652,7 @@ sessionStorage.setItem('13cut_fast_cache_v1', JSON.stringify({ config, barbers: 
                       {step === 1 && '1. Servicio'}
                       {step === 2 && '2. Barbero'}
                       {step === 3 && '3. Día y Hora'}
-                      {step === 4 && '4. Confirmación'}
+                      {step === 4 && '4. Tus Datos'}
                     </span>
                   </div>
                   <div className="w-full h-1.5 bg-zinc-950 rounded-full overflow-hidden border border-zinc-800/80">
@@ -787,7 +747,6 @@ sessionStorage.setItem('13cut_fast_cache_v1', JSON.stringify({ config, barbers: 
                 </div>
               ) : (
                 <div>
-                  {/* PASO 1: ELEGIR SERVICIO */}
                   {step === 1 && (
                     <div className="space-y-4">
                       <div>
@@ -795,60 +754,57 @@ sessionStorage.setItem('13cut_fast_cache_v1', JSON.stringify({ config, barbers: 
                           Elegí el servicio
                         </h2>
                         <p className="text-xs mt-0.5 text-zinc-400">
-                          Tocá un servicio para continuar automáticamente
+                          Tocá un servicio para avanzar automáticamente
                         </p>
                       </div>
 
-                      {isLoadingInitial && displayedServices.length === 0 ? (
-                        <div className="space-y-2.5">
-                          {[1, 2, 3].map((n) => (
-                            <div key={n} className="h-16 rounded-2xl bg-zinc-950/60 border border-zinc-800/60 animate-pulse" />
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="space-y-2.5">
-                          {displayedServices.map((service) => {
-                            const isSelected = selectedService?.id === service.id;
-                            return (
-                              <button
-                                key={service.id}
-                                type="button"
-                                onClick={() => handleSelectService(service)}
-                                className={`w-full p-4 rounded-2xl border text-left transition-all flex items-center justify-between gap-3 cursor-pointer active:scale-[0.99] touch-manipulation ${
-                                  isSelected
-                                    ? 'border-emerald-400 bg-zinc-800/90 ring-1 ring-emerald-400/30'
-                                    : 'bg-zinc-950/70 border-zinc-800/90 hover:border-zinc-700'
-                                }`}
-                              >
-                                <div className="flex items-center space-x-3.5 min-w-0">
-                                  <div className={`p-3 rounded-xl shrink-0 ${isSelected ? 'bg-emerald-500/20 text-emerald-300' : 'bg-zinc-800 text-zinc-100'}`}>
-                                    <Scissors className="w-4 h-4" />
-                                  </div>
-                                  <div className="truncate">
-                                    <h3 className="font-bold text-sm sm:text-base truncate">
-                                      {service.name}
-                                    </h3>
-                                    <span className="inline-flex items-center text-xs mt-0.5 text-zinc-400">
-                                      <Clock className="w-3 h-3 mr-1" />
-                                      {service.durationMinutes} min
-                                    </span>
-                                  </div>
+                      <div className="space-y-2.5">
+                        {displayedServices.map((service) => {
+                          const isSelected = selectedService?.id === service.id;
+                          return (
+                            <button
+                              key={service.id}
+                              type="button"
+                              onClick={() => handleSelectService(service)}
+                              className={`w-full p-4 rounded-2xl border text-left transition-all flex items-center justify-between gap-3 cursor-pointer active:scale-[0.99] touch-manipulation ${
+                                isSelected
+                                  ? 'border-emerald-400 bg-zinc-800/90 ring-1 ring-emerald-400/30'
+                                  : 'bg-zinc-950/70 border-zinc-800/90 hover:border-zinc-700'
+                              }`}
+                            >
+                              <div className="flex items-center space-x-3.5 min-w-0">
+                                <div
+                                  className={`p-3 rounded-xl shrink-0 ${
+                                    isSelected
+                                      ? 'bg-emerald-500/20 text-emerald-300'
+                                      : 'bg-zinc-800 text-zinc-100'
+                                  }`}
+                                >
+                                  <Scissors className="w-4 h-4" />
                                 </div>
-                                <div className="flex items-center gap-2 shrink-0">
-                                  <span className="font-extrabold text-sm sm:text-base text-emerald-400">
-                                    ${service.price}
+                                <div className="truncate">
+                                  <h3 className="font-bold text-sm sm:text-base truncate">
+                                    {service.name}
+                                  </h3>
+                                  <span className="inline-flex items-center text-xs mt-0.5 text-zinc-400">
+                                    <Clock className="w-3 h-3 mr-1" />
+                                    {service.durationMinutes} min
                                   </span>
-                                  <ArrowRight className="w-4 h-4 text-zinc-500" />
                                 </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className="font-extrabold text-sm sm:text-base text-emerald-400">
+                                  ${service.price}
+                                </span>
+                                <ArrowRight className="w-4 h-4 text-zinc-500" />
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
                   )}
 
-                  {/* PASO 2: ELEGIR BARBERO */}
                   {step === 2 && (
                     <div className="space-y-4">
                       <div>
@@ -880,7 +836,9 @@ sessionStorage.setItem('13cut_fast_cache_v1', JSON.stringify({ config, barbers: 
                                 </div>
                                 <div>
                                   <h3 className="font-bold text-base">{barber.name}</h3>
-                                  <p className="text-xs text-zinc-400">{barber.role || 'Barbero Profesional'}</p>
+                                  <p className="text-xs text-zinc-400">
+                                    {barber.role || 'Barbero Profesional'}
+                                  </p>
                                 </div>
                               </div>
                               <ArrowRight className="w-4 h-4 text-zinc-400 shrink-0" />
@@ -891,25 +849,23 @@ sessionStorage.setItem('13cut_fast_cache_v1', JSON.stringify({ config, barbers: 
                     </div>
                   )}
 
-                  {/* PASO 3: FECHA Y HORA */}
                   {step === 3 && (
                     <div className="space-y-5">
-                      <div className="flex items-center justify-between gap-2">
-                        <div>
-                          <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight">
-                            Fecha y hora
-                          </h2>
-                          <p className="text-xs mt-0.5 text-zinc-400">
-                            Barbero: <strong className="text-white">{selectedBarber?.name}</strong> • {selectedService?.name}
-                          </p>
-                        </div>
+                      <div>
+                        <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight">
+                          Fecha y hora
+                        </h2>
+                        <p className="text-xs mt-0.5 text-zinc-400">
+                          Barbero: <strong className="text-white">{selectedBarber?.name}</strong> •{' '}
+                          {selectedService?.name}
+                        </p>
                       </div>
 
                       <div>
                         <label className="text-[11px] font-semibold uppercase tracking-wider opacity-60 block mb-2">
                           Deslizá para elegir el día
                         </label>
-                        <div className="flex overflow-x-auto gap-2 pb-2 scrollbar-none snap-x [-webkit-overflow-scrolling:touch]">
+                        <div className="flex overflow-x-auto gap-2 pb-2 no-scrollbar snap-x [-webkit-overflow-scrolling:touch]">
                           {days.map((day) => {
                             const isSelected = selectedDate === day.dateString;
                             return (
@@ -1025,7 +981,6 @@ sessionStorage.setItem('13cut_fast_cache_v1', JSON.stringify({ config, barbers: 
                     </div>
                   )}
 
-                  {/* PASO 4: DATOS DEL CLIENTE */}
                   {step === 4 && (
                     <div className="space-y-4">
                       <div>
@@ -1078,7 +1033,6 @@ sessionStorage.setItem('13cut_fast_cache_v1', JSON.stringify({ config, barbers: 
                     </div>
                   )}
 
-                  {/* Botonera Desktop (oculta en móvil porque usamos barra fija inferior) */}
                   <div className="hidden lg:flex mt-6 pt-4 border-t border-zinc-800 items-center justify-between gap-3">
                     {step > 1 ? (
                       <button
@@ -1149,9 +1103,9 @@ sessionStorage.setItem('13cut_fast_cache_v1', JSON.stringify({ config, barbers: 
         )}
       </main>
 
-      {/* BARRA INFERIOR FIJA PARA CELULARES (Óptima navegación móvil a una mano) */}
+      {/* BARRA INFERIOR FIJA PARA MÓVILES CON SOPORTE SAFE-AREA DE SAFARI iOS */}
       {activeTab === 'reservar' && !confirmedAppointment && (
-        <div className="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-zinc-950/95 backdrop-blur-lg border-t border-zinc-800 p-3 px-4">
+        <div className="lg:hidden fixed bottom-0 inset-x-0 z-50 bg-zinc-950/95 backdrop-blur-xl border-t border-zinc-800 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] shadow-2xl">
           <div className="max-w-md mx-auto flex items-center justify-between gap-3">
             {step > 1 ? (
               <button
