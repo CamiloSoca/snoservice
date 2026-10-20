@@ -185,6 +185,15 @@ const DAY_INDEX_TO_KEY: Record<number, string> = {
   6: 'sabado',
 };
 
+export function getCachedInitialData() {
+  return {
+    shopConfig: DEFAULT_SHOP_CONFIG,
+    services: DEFAULT_SERVICES,
+    barbers: DEFAULT_BARBERS,
+    hasCache: false,
+  };
+}
+
 export function buildRealOpenDays(
   totalDays = 30,
   customSchedule?: CustomScheduleMap
@@ -348,7 +357,10 @@ async function callAdminOperation(payload: Record<string, any>): Promise<any> {
   return data;
 }
 
-// Consultas paralelizadas con Promise.all para máxima velocidad
+// ==========================================
+// CONSULTAS OPTIMIZADAS Y PARALELIZADAS
+// ==========================================
+
 export async function getShopConfig(forceRefresh = true): Promise<ShopConfig> {
   try {
     if (!supabase) return DEFAULT_SHOP_CONFIG;
