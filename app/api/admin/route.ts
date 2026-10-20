@@ -7,6 +7,7 @@ import {
   isValidUUID,
   sanitizeInput,
   ExpenseCategory,
+  DEFAULT_SHOP_CONFIG,
 } from '@/lib/booking-store';
 
 const VALID_EXPENSE_CATEGORIES: ExpenseCategory[] = [
@@ -70,7 +71,10 @@ export async function POST(request: Request) {
 
   const session = await requireAdminSession();
   if (!session) {
-    return NextResponse.json({ error: 'No autorizado. Iniciá sesión como administrador.' }, { status: 401 });
+    return NextResponse.json(
+      { error: 'No autorizado. Iniciá sesión como administrador.' },
+      { status: 401 }
+    );
   }
 
   try {
@@ -85,7 +89,10 @@ export async function POST(request: Request) {
           const id = isValidUUID(b.id) ? b.id : generateUUID();
           const name = sanitizeInput(String(b.name || '')).slice(0, 80);
           if (!name) {
-            return NextResponse.json({ error: 'El nombre del barbero es obligatorio.' }, { status: 400 });
+            return NextResponse.json(
+              { error: 'El nombre del barbero es obligatorio.' },
+              { status: 400 }
+            );
           }
           const slug =
             sanitizeInput(String(b.slug || '')) ||
@@ -151,7 +158,10 @@ export async function POST(request: Request) {
           const id = isValidUUID(s.id) ? s.id : generateUUID();
           const name = sanitizeInput(String(s.name || '')).slice(0, 80);
           if (!name) {
-            return NextResponse.json({ error: 'El nombre del servicio es obligatorio.' }, { status: 400 });
+            return NextResponse.json(
+              { error: 'El nombre del servicio es obligatorio.' },
+              { status: 400 }
+            );
           }
           const price = Math.max(0, Number(s.price) || 0);
           const durationMinutes = Math.max(15, Number(s.durationMinutes) || 60);
@@ -162,7 +172,9 @@ export async function POST(request: Request) {
             name,
             price,
             duration_minutes: durationMinutes,
-            description: sanitizeInput(String(s.description || `${durationMinutes} min`)).slice(0, 120),
+            description: sanitizeInput(
+              String(s.description || `${durationMinutes} min`)
+            ).slice(0, 120),
             image_url: s.imageUrl ? String(s.imageUrl).slice(0, 500) : null,
             active: s.active ?? true,
           };
@@ -198,21 +210,33 @@ export async function POST(request: Request) {
         const cfg = body.config || {};
         const name = sanitizeInput(String(cfg.name || '')).slice(0, 80);
         const address = sanitizeInput(String(cfg.address || '')).slice(0, 150);
+        const city = sanitizeInput(String(cfg.city || 'Montevideo')).slice(0, 80);
         const phone = sanitizeInput(String(cfg.phone || '')).slice(0, 30);
         const tagline = sanitizeInput(String(cfg.tagline || address)).slice(0, 150);
         const backgroundImageUrl = cfg.backgroundImageUrl
           ? String(cfg.backgroundImageUrl).trim().slice(0, 500)
           : null;
+        const logoUrl = cfg.logoUrl ? String(cfg.logoUrl).trim().slice(0, 500) : null;
+        const coverImageUrl = cfg.coverImageUrl
+          ? String(cfg.coverImageUrl).trim().slice(0, 500)
+          : backgroundImageUrl;
+        const schedule = cfg.schedule || DEFAULT_SHOP_CONFIG.schedule;
+
+        const updatePayload: Record<string, any> = {
+          name,
+          address,
+          city,
+          phone,
+          tagline,
+          background_image_url: backgroundImageUrl,
+          logo_url: logoUrl,
+          cover_image_url: coverImageUrl,
+          schedule,
+        };
 
         const { error } = await supabase
           .from('shops')
-          .update({
-            name,
-            address,
-            phone,
-            tagline,
-            background_image_url: backgroundImageUrl,
-          })
+          .update(updatePayload)
           .eq('id', SHOP_UUID);
 
         if (error) {
@@ -245,10 +269,15 @@ export async function POST(request: Request) {
         const category = VALID_EXPENSE_CATEGORIES.includes(exp.category)
           ? exp.category
           : 'Insumos';
-        const expenseDate = sanitizeInput(String(exp.date || new Date().toISOString().split('T')[0])).slice(0, 20);
+        const expenseDate = sanitizeInput(
+          String(exp.date || new Date().toISOString().split('T')[0])
+        ).slice(0, 20);
 
         if (!description || isNaN(amount) || amount <= 0) {
-          return NextResponse.json({ error: 'Descripción y monto mayor a 0 son obligatorios.' }, { status: 400 });
+          return NextResponse.json(
+            { error: 'Descripción y monto mayor a 0 son obligatorios.' },
+            { status: 400 }
+          );
         }
 
         const { error } = await supabase.from('expenses').insert([
@@ -287,6 +316,9 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Operación no reconocida.' }, { status: 400 });
     }
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message || 'Error interno del servidor.' }, { status: 500 });
+    return NextResponse.json(
+      { error: err?.message || 'Error interno del servidor.' },
+      { status: 500 }
+    );
   }
 }

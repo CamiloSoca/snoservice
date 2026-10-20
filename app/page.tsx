@@ -20,10 +20,10 @@ import {
   BarberItem,
   ShopConfig,
   DEFAULT_SHOP_CONFIG,
+  DEFAULT_BARBERS,
   getBarbers,
   getShopConfig,
   getServices,
-  getCachedInitialData,
 } from '@/lib/booking-store';
 
 const INSTAGRAM_POSTS = [
@@ -49,7 +49,7 @@ const INSTAGRAM_POSTS = [
     id: 'ig-4',
     image:
       'https://zdhuymfapknpogdrbksn.supabase.co/storage/v1/object/public/media/0f5ab934-db55-46d2-a829-ecd59150d61a/branch/f9079cf5-877b-4054-aa9b-8345d7679b0e.jpg?v=1792010015139',
-    tag: '13´Cut',
+    tag: 'Local',
   },
 ];
 
@@ -59,21 +59,24 @@ const GOOGLE_REVIEWS = [
     author: 'Matías Cabrera',
     rating: 5,
     comment:
-      'Excelente atención en 13´Cut. Reservé turno con Nahuel por la web y me atendieron en hora.',
+      'Excelente atención. Reservé turno por la web y me atendieron en hora.',
   },
   {
     id: 'rev-2',
     author: 'Facundo Silvera',
     rating: 5,
-    comment: 'Me hice mechas con Alexander, impecable el trabajo y muy práctico para agendar.',
+    comment: 'Impecable el trabajo y muy práctico para agendar desde el celular.',
   },
   {
     id: 'rev-3',
     author: 'Rodrigo Techera',
     rating: 5,
-    comment: 'Emanuel un crack. Que abran los martes hasta las 22 hs salva después del trabajo.',
+    comment: 'Muy buena atención y los horarios son súper cómodos.',
   },
 ];
+
+const DEFAULT_BANNER_URL =
+  'https://zdhuymfapknpogdrbksn.supabase.co/storage/v1/object/public/media/0f5ab934-db55-46d2-a829-ecd59150d61a/branch/f9079cf5-877b-4054-aa9b-8345d7679b0e.jpg?v=1792010015139';
 
 function InstagramSvg({ className = 'w-5 h-5' }: { className?: string }) {
   return (
@@ -117,14 +120,13 @@ function GoogleLogoSvg({ className = 'w-5 h-5' }: { className?: string }) {
 }
 
 export default function HomePage() {
-  const initialCache = getCachedInitialData();
+  const [mounted, setMounted] = useState(false);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
-  const [shopConfig, setShopConfig] = useState<ShopConfig>(initialCache.shopConfig);
-  const [barbers, setBarbers] = useState<BarberItem[]>(
-    initialCache.barbers.filter((b) => b.active !== false)
-  );
+  const [shopConfig, setShopConfig] = useState<ShopConfig>(DEFAULT_SHOP_CONFIG);
+  const [barbers, setBarbers] = useState<BarberItem[]>(DEFAULT_BARBERS);
 
   useEffect(() => {
+    setMounted(true);
     const savedTheme = localStorage.getItem('barber_theme') as 'dark' | 'light' | null;
     if (savedTheme === 'light' || savedTheme === 'dark') {
       setTheme(savedTheme);
@@ -133,9 +135,9 @@ export default function HomePage() {
     async function loadData() {
       try {
         const [config, brbs] = await Promise.all([
-          getShopConfig(),
-          getBarbers(),
-          getServices(),
+          getShopConfig(true),
+          getBarbers(true),
+          getServices(true),
         ]);
         setShopConfig(config);
         setBarbers(brbs.filter((b) => b.active !== false));
@@ -160,9 +162,18 @@ export default function HomePage() {
   const bgImage =
     shopConfig.backgroundImageUrl ||
     'https://www.bookly.uy/uploads/medium/c380e86bd0228e2fce4f447ba1742899_medium-1401x1123.png';
-  const bannerUrl =
-    'https://zdhuymfapknpogdrbksn.supabase.co/storage/v1/object/public/media/0f5ab934-db55-46d2-a829-ecd59150d61a/branch/f9079cf5-877b-4054-aa9b-8345d7679b0e.jpg?v=1792010015139';
+  
+  const bannerUrl = shopConfig.coverImageUrl || shopConfig.backgroundImageUrl || DEFAULT_BANNER_URL;
   const logoImage = shopConfig.logoUrl || DEFAULT_SHOP_CONFIG.logoUrl;
+  const shopCity = shopConfig.city || 'Montevideo';
+  const shopAddress = shopConfig.address || DEFAULT_SHOP_CONFIG.address;
+  const shopPhone = shopConfig.phone || DEFAULT_SHOP_CONFIG.phone;
+  const activeSchedule = shopConfig.schedule || DEFAULT_SHOP_CONFIG.schedule;
+  const activeBarbers = barbers.length > 0 ? barbers : DEFAULT_BARBERS;
+
+  if (!mounted) {
+    return <div className="min-h-screen bg-zinc-950 text-zinc-100" />;
+  }
 
   return (
     <div
@@ -171,14 +182,16 @@ export default function HomePage() {
       }`}
     >
       <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
-        <img
-          src={bgImage}
-          alt="Fondo"
-          decoding="async"
-          className={`w-full h-full object-cover object-center filter blur-md scale-105 grayscale transition-opacity duration-700 ${
-            isDark ? 'opacity-20 contrast-125' : 'opacity-10 contrast-100'
-          }`}
-        />
+        {bgImage ? (
+          <img
+            src={bgImage}
+            alt="Fondo"
+            decoding="async"
+            className={`w-full h-full object-cover object-center filter blur-md scale-105 grayscale transition-opacity duration-700 ${
+              isDark ? 'opacity-20 contrast-125' : 'opacity-10 contrast-100'
+            }`}
+          />
+        ) : null}
         <div
           className={`absolute inset-0 bg-gradient-to-b transition-colors duration-500 ${
             isDark
@@ -189,7 +202,7 @@ export default function HomePage() {
       </div>
 
       <div className="relative z-10 w-full">
-        {/* HEADER CON SAFE-AREA PARA MÓVILES / PWA */}
+        {/* HEADER */}
         <header
           className={`sticky top-0 z-30 w-full backdrop-blur-md border-b transition-colors px-4 pt-[max(0.75rem,calc(env(safe-area-inset-top)+0.5rem))] pb-3 ${
             isDark ? 'bg-zinc-950/90 border-zinc-800/80' : 'bg-white/90 border-zinc-200'
@@ -211,7 +224,7 @@ export default function HomePage() {
                   {shopConfig.name}
                 </h1>
                 <p className={`text-[11px] truncate ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                  {shopConfig.address}
+                  {shopAddress}
                 </p>
               </div>
             </div>
@@ -255,7 +268,7 @@ export default function HomePage() {
           </div>
         </header>
 
-        {/* HERO BANNER PRINCIPAL */}
+        {/* HERO BANNER */}
         <section className="max-w-5xl mx-auto px-4 pt-4 sm:pt-5">
           <div className="relative rounded-3xl overflow-hidden border border-zinc-800 text-white shadow-2xl">
             <div className="absolute inset-0">
@@ -284,11 +297,11 @@ export default function HomePage() {
                   <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-x-4 gap-y-1 text-xs sm:text-sm text-zinc-300">
                     <span className="flex items-center">
                       <MapPin className="w-3.5 h-3.5 mr-1.5 text-zinc-100 shrink-0" />
-                      {shopConfig.address}, {shopConfig.city}
+                      {shopAddress}, {shopCity}
                     </span>
                     <span className="flex items-center">
                       <Phone className="w-3.5 h-3.5 mr-1.5 text-emerald-400 shrink-0" />
-                      {shopConfig.phone}
+                      {shopPhone}
                     </span>
                   </div>
                 </div>
@@ -307,7 +320,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* UBICACIÓN Y HORARIOS DE ATENCIÓN ORDENADOS DE CORRIDO */}
+        {/* UBICACIÓN Y HORARIOS */}
         <section className="max-w-5xl mx-auto px-4 py-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div
@@ -327,10 +340,10 @@ export default function HomePage() {
                   isDark ? 'text-zinc-300' : 'text-zinc-600'
                 }`}
               >
-                {shopConfig.schedule ? (
+                {activeSchedule ? (
                   ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'].map(
                     (dayKey) => {
-                      const rawSchedule = shopConfig.schedule || {};
+                      const rawSchedule = activeSchedule || {};
                       const val = rawSchedule[dayKey] || {
                         isOpen: false,
                         openTime: '09:00',
@@ -372,15 +385,19 @@ export default function HomePage() {
                   </div>
                   <h3 className="font-extrabold text-base">Nuestro Local</h3>
                 </div>
+                
+                <p>Reservá tu lugar online sin esperas.</p>
+                
                 <p className={`text-xs sm:text-sm ${isDark ? 'text-zinc-300' : 'text-zinc-600'}`}>
-                  {shopConfig.address}, {shopConfig.city}. Reservá tu lugar online sin esperas.
-                </p>
+                  {shopAddress}, {shopCity}. </p>
+                  
               </div>
 
               <div className="flex flex-wrap gap-2">
+                {/* BOTÓN CÓMO LLEGAR DIRECTO A LA DIRECCIÓN */}
                 <a
                   href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-                    `${shopConfig.name} ${shopConfig.address}${shopConfig.city}`
+                    `${shopAddress},${shopCity}`
                   )}`}
                   target="_blank"
                   rel="noopener noreferrer"
@@ -418,12 +435,12 @@ export default function HomePage() {
                 Equipo de {shopConfig.name}
               </h2>
               <span className={`text-xs ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                Tocá para agendar directo
+                Elegí tu barbero
               </span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-              {barbers.map((b) => {
+              {activeBarbers.map((b) => {
                 const slug = b.slug || b.name.toLowerCase();
                 return (
                   <div
@@ -439,7 +456,7 @@ export default function HomePage() {
                       <div>
                         <h3 className="font-bold text-base">{b.name}</h3>
                         <p className={`text-xs ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                          {b.role || 'Barbero Profesional'}
+                          Barbero
                         </p>
                       </div>
                     </div>
@@ -476,13 +493,13 @@ export default function HomePage() {
                     Instagram
                   </h2>
                   <p className={`text-xs ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                    {shopConfig.instagramHandle}
+                    {shopConfig.instagramHandle || '@barberia'}
                   </p>
                 </div>
               </div>
 
               <a
-                href={shopConfig.instagramUrl}
+                href={shopConfig.instagramUrl || 'https://instagram.com'}
                 target="_blank"
                 rel="noopener noreferrer"
                 className={`inline-flex items-center space-x-1.5 px-3.5 py-2.5 rounded-xl border text-xs font-semibold shrink-0 active:scale-95 touch-manipulation ${
@@ -541,7 +558,7 @@ export default function HomePage() {
                     Opiniones en Google
                   </h2>
                   <p className={`text-xs ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                    {shopConfig.address}
+                    {shopAddress}
                   </p>
                 </div>
               </div>
@@ -589,7 +606,7 @@ export default function HomePage() {
       >
         <div className="max-w-5xl mx-auto px-4 flex items-center justify-between gap-2">
           <div>
-            <span className="font-semibold">{shopConfig.name}</span> • {shopConfig.address}
+            <span className="font-semibold">{shopConfig.name}</span> • {shopAddress}
           </div>
           <div className="flex items-center space-x-4">
             <Link href="/agendar" className="hover:underline">

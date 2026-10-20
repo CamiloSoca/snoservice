@@ -1,6 +1,6 @@
 // app/api/public/booking/route.ts
 import { NextResponse } from 'next/server';
-import { getSupabaseServer, SHOP_UUID } from '@/lib/supabase-server';
+import { getSupabaseServer, SHOP_UUID, SHOP_PREFIX } from '@/lib/supabase-server';
 import {
   isSlotAvailable,
   isValidUUID,
@@ -13,7 +13,6 @@ import {
 export async function GET() {
   try {
     const supabase = getSupabaseServer();
-    console.log("SHOP_UUID actual:", SHOP_UUID);
 
     const { data, error } = await supabase
       .from('appointments')
@@ -23,11 +22,13 @@ export async function GET() {
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error("Error detallado de Supabase en GET /booking:", error);
-      return NextResponse.json({ error: `Error de base de datos: ${error.message}` }, { status: 500 });
+      console.error('Error detallado de Supabase en GET /booking:', error);
+      return NextResponse.json(
+        { error: `Error de base de datos: ${error.message}` },
+        { status: 500 }
+      );
     }
 
-    // Devuelve solo horarios ocupados, CERO datos personales de clientes
     const sanitizedSlots: AppointmentItem[] = (data || []).map((apt) => ({
       id: apt.id,
       code: '',
@@ -84,7 +85,6 @@ export async function POST(request: Request) {
 
     const supabase = getSupabaseServer();
 
-    // 1. Verificar servicio y barbero reales y activos en el servidor
     const [{ data: serviceRow, error: srvErr }, { data: barberRow, error: brbErr }] =
       await Promise.all([
         supabase
@@ -102,11 +102,17 @@ export async function POST(request: Request) {
       ]);
 
     if (srvErr || !serviceRow || !serviceRow.active) {
-      return NextResponse.json({ error: 'El servicio seleccionado no está disponible.' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'El servicio seleccionado no está disponible.' },
+        { status: 400 }
+      );
     }
 
     if (brbErr || !barberRow || !barberRow.active) {
-      return NextResponse.json({ error: 'El barbero seleccionado no está disponible.' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'El barbero seleccionado no está disponible.' },
+        { status: 400 }
+      );
     }
 
     const barberServiceIds: string[] = Array.isArray(barberRow.service_ids)
@@ -122,7 +128,6 @@ export async function POST(request: Request) {
     const realPrice = Number(serviceRow.price) || 0;
     const realDuration = Number(serviceRow.duration_minutes) || 60;
 
-    // 2. Comprobar disponibilidad real en el servidor contra turnos existentes
     const { data: existingRows, error: aptErr } = await supabase
       .from('appointments')
       .select('id, barber_id, service_id, date_string, time_slot, duration_minutes, status, created_at')
@@ -180,7 +185,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const randomCode = '13C-' + Math.floor(1000 + Math.random() * 9000);
+    const randomCode = `${SHOP_PREFIX}-` + Math.floor(1000 + Math.random() * 9000);
 
     const insertPayload: Record<string, any> = {
       shop_id: SHOP_UUID,

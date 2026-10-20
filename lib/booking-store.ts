@@ -3,7 +3,22 @@ import { supabase } from './supabase';
 
 export type BrandAccent = 'navy' | 'emerald' | 'bronze' | 'mono';
 
-const SHOP_UUID = '11111111-1111-1111-1111-111111111113';
+export const SHOP_UUID =
+  process.env.NEXT_PUBLIC_SHOP_ID || '11111111-1111-1111-1111-111111111113';
+
+// Función inteligente para generar prefijo basado en el nombre de la barbería
+export function getShopPrefix(shopName?: string): string {
+  if (!shopName) return process.env.NEXT_PUBLIC_SHOP_PREFIX || '13C';
+  const clean = shopName.replace(/[^a-zA-Z0-9]/g, '').trim();
+  if (clean.length >= 3) {
+    return clean.slice(0, 3).toUpperCase();
+  } else if (clean.length > 0) {
+    return clean.toUpperCase();
+  }
+  return 'TC';
+}
+
+export const SHOP_PREFIX = process.env.NEXT_PUBLIC_SHOP_PREFIX || '13C';
 
 export function generateUUID(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -109,10 +124,10 @@ export interface ShopConfig {
 
 export const DEFAULT_SHOP_CONFIG: ShopConfig = {
   id: SHOP_UUID,
-  name: '13´Cut',
-  address: 'Avenida Agraciada 3778',
-  phone: '098509376',
-  city: 'Montevideo',
+  name: process.env.NEXT_PUBLIC_SHOP_NAME || '13´Cut',
+  address: process.env.NEXT_PUBLIC_SHOP_ADDRESS || 'Avenida Agraciada 3778',
+  phone: process.env.NEXT_PUBLIC_SHOP_PHONE || '098509376',
+  city: process.env.NEXT_PUBLIC_SHOP_CITY || 'Montevideo',
   tagline: 'Reserva tu turno',
   logoUrl: '',
   coverImageUrl: '',
@@ -171,100 +186,20 @@ const DAY_INDEX_TO_KEY: Record<number, string> = {
   6: 'sabado',
 };
 
-// ============================================================================
-// MOTOR DE CACHÉ ULTRA RÁPIDO (RAM + SESSION STORAGE + DEDUPLICACIÓN)
-// ============================================================================
-
-const SESSION_CACHE_KEY = '13cut_global_store_cache_v2';
-const CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutos para config/barberos/servicios
-const SLOTS_TTL_MS = 25 * 1000; // 25 segundos para turnos ocupados
-
-interface MemoryCache {
-  shopConfig?: { data: ShopConfig; ts: number };
-  services?: { data: ServiceItem[]; ts: number };
-  barbers?: { data: BarberItem[]; ts: number };
-  bookedSlots?: { data: AppointmentItem[]; ts: number };
-}
-
-const memCache: MemoryCache = {};
-const inflightRequests: Record<string, Promise<any> | undefined> = {};
-
-function syncToSessionStorage() {
-  if (typeof window === 'undefined') return;
-  try {
-    sessionStorage.setItem(
-      SESSION_CACHE_KEY,
-      JSON.stringify({
-        shopConfig: memCache.shopConfig,
-        services: memCache.services,
-        barbers: memCache.barbers,
-      })
-    );
-  } catch {
-    // Ignorar errores de cuota
-  }
-}
-
-function hydrateFromSessionStorage() {
-  if (typeof window === 'undefined') return;
-  if (memCache.shopConfig && memCache.services && memCache.barbers) return;
-  try {
-    const raw = sessionStorage.getItem(SESSION_CACHE_KEY);
-    if (!raw) return;
-    const parsed = JSON.parse(raw);
-    if (parsed.shopConfig && !memCache.shopConfig) memCache.shopConfig = parsed.shopConfig;
-    if (parsed.services && !memCache.services) memCache.services = parsed.services;
-    if (parsed.barbers && !memCache.barbers) memCache.barbers = parsed.barbers;
-  } catch {
-    // Ignorar errores de parseo
-  }
-}
-
-/**
- * Permite a cualquier pantalla (Home, Agendar, Barbero) obtener los datos en 0ms
- * en el primer renderizado si ya fueron cargados en otra pestaña.
- */
-export function getCachedInitialData(): {
-  shopConfig: ShopConfig;
-  services: ServiceItem[];
-  barbers: BarberItem[];
-  hasCache: boolean;
-} {
-  hydrateFromSessionStorage();
+export function getCachedInitialData() {
   return {
-    shopConfig: memCache.shopConfig?.data || DEFAULT_SHOP_CONFIG,
-    services: memCache.services?.data || DEFAULT_SERVICES,
-    barbers: memCache.barbers?.data || DEFAULT_BARBERS,
-    hasCache: Boolean(memCache.shopConfig || memCache.barbers || memCache.services),
+    shopConfig: DEFAULT_SHOP_CONFIG,
+    services: DEFAULT_SERVICES,
+    barbers: DEFAULT_BARBERS,
+    hasCache: false,
   };
 }
-
-export function invalidateStoreCache() {
-  delete memCache.shopConfig;
-  delete memCache.services;
-  delete memCache.barbers;
-  delete memCache.bookedSlots;
-  if (typeof window !== 'undefined') {
-    try {
-      sessionStorage.removeItem(SESSION_CACHE_KEY);
-    } catch {}
-  }
-}
-
-// ============================================================================
-// GENERADORES DE DÍAS Y HORARIOS SINCRONIZADOS CON EL SCHEDULE DEL LOCAL
-// ============================================================================
 
 export function buildRealOpenDays(
   totalDays = 30,
   customSchedule?: CustomScheduleMap
 ): DayOption[] {
-  hydrateFromSessionStorage();
-  const activeSchedule =
-    customSchedule ||
-    memCache.shopConfig?.data?.schedule ||
-    DEFAULT_SHOP_CONFIG.schedule;
-
+  const activeSchedule = customSchedule || DEFAULT_SHOP_CONFIG.schedule;
   const days: DayOption[] = [];
   const today = new Date();
 
@@ -276,7 +211,6 @@ export function buildRealOpenDays(
     const dayKey = DAY_INDEX_TO_KEY[dayOfWeek];
     const dayRule = activeSchedule?.[dayKey];
 
-    // Si existe configuración dinámica, respetamos isOpen; sino usamos el fallback de Mar a Sáb
     const isOpenDay = dayRule ? Boolean(dayRule.isOpen) : dayOfWeek !== 0 && dayOfWeek !== 1;
 
     if (isOpenDay) {
@@ -315,12 +249,7 @@ export function getSlotsForDayOfWeek(
   stepMinutes: number = 30,
   customSchedule?: CustomScheduleMap
 ): { morning: string[]; afternoon: string[] } {
-  hydrateFromSessionStorage();
-  const activeSchedule =
-    customSchedule ||
-    memCache.shopConfig?.data?.schedule ||
-    DEFAULT_SHOP_CONFIG.schedule;
-
+  const activeSchedule = customSchedule || DEFAULT_SHOP_CONFIG.schedule;
   const dayKey = DAY_INDEX_TO_KEY[dayOfWeek];
   const dynamicRule = activeSchedule?.[dayKey];
 
@@ -388,7 +317,6 @@ export function isSlotAvailable(params: {
 
   for (const apt of barberDayApts) {
     const aptStart = timeToMinutes(apt.timeSlot);
-
     let aptDuration = Number(apt.durationMinutes) || 0;
     if (!aptDuration && allServices.length > 0) {
       const matchedSrv = allServices.find((s) => s.id === apt.serviceId);
@@ -397,51 +325,11 @@ export function isSlotAvailable(params: {
     if (!aptDuration) aptDuration = 60;
 
     const aptEnd = aptStart + aptDuration;
-
     if (candidateStart >= aptStart && candidateStart < aptEnd) {
       return false;
     }
   }
-
   return true;
-}
-
-export function getAvailableSlotsForBooking(params: {
-  dayOfWeek: number;
-  dateString: string;
-  barberId: string;
-  serviceDurationMinutes: number;
-  existingAppointments: AppointmentItem[];
-  allServices?: ServiceItem[];
-  stepMinutes?: number;
-}): { morning: string[]; afternoon: string[] } {
-  const {
-    dayOfWeek,
-    dateString,
-    barberId,
-    serviceDurationMinutes,
-    existingAppointments,
-    allServices,
-    stepMinutes = 30,
-  } = params;
-
-  const rawSlots = getSlotsForDayOfWeek(dayOfWeek, stepMinutes);
-
-  const filterFn = (slot: string) =>
-    isSlotAvailable({
-      candidateTime: slot,
-      serviceDurationMinutes,
-      barberId,
-      dateString,
-      dayOfWeek,
-      existingAppointments,
-      allServices,
-    });
-
-  return {
-    morning: rawSlots.morning.filter(filterFn),
-    afternoon: rawSlots.afternoon.filter(filterFn),
-  };
 }
 
 export function isValidUruguayanPhone(phone: string): boolean {
@@ -457,10 +345,6 @@ export function sanitizeInput(input: string): string {
   return input.replace(/[<>]/g, '').trim();
 }
 
-// ============================================================================
-// CAPA DE ACCESO A DATOS CON CACHÉ Y DEDUPLICACIÓN
-// ============================================================================
-
 async function callAdminOperation(payload: Record<string, any>): Promise<any> {
   const res = await fetch('/api/admin', {
     method: 'POST',
@@ -471,118 +355,72 @@ async function callAdminOperation(payload: Record<string, any>): Promise<any> {
   if (!res.ok) {
     throw new Error(data.error || 'No se pudo completar la operación administrativa.');
   }
-  invalidateStoreCache();
   return data;
 }
 
-export async function getShopConfig(forceRefresh = false): Promise<ShopConfig> {
-  hydrateFromSessionStorage();
-  const now = Date.now();
-  if (!forceRefresh && memCache.shopConfig && now - memCache.shopConfig.ts < CACHE_TTL_MS) {
-    return memCache.shopConfig.data;
+export async function getShopConfig(forceRefresh = true): Promise<ShopConfig> {
+  try {
+    if (!supabase) return DEFAULT_SHOP_CONFIG;
+    const { data, error } = await supabase
+      .from('shops')
+      .select('*')
+      .eq('id', SHOP_UUID)
+      .maybeSingle();
+
+    if (error || !data) return DEFAULT_SHOP_CONFIG;
+
+    return {
+      ...DEFAULT_SHOP_CONFIG,
+      id: data.id ?? DEFAULT_SHOP_CONFIG.id,
+      name: data.name ?? DEFAULT_SHOP_CONFIG.name,
+      address: data.address ?? DEFAULT_SHOP_CONFIG.address,
+      phone: data.phone ?? DEFAULT_SHOP_CONFIG.phone,
+      city: data.city ?? DEFAULT_SHOP_CONFIG.city,
+      backgroundImageUrl:
+        data.background_image_url ||
+        data.backgroundImageUrl ||
+        DEFAULT_SHOP_CONFIG.backgroundImageUrl,
+      logoUrl: data.logo_url || data.logoUrl || DEFAULT_SHOP_CONFIG.logoUrl,
+      coverImageUrl:
+        data.cover_image_url || data.coverImageUrl || DEFAULT_SHOP_CONFIG.coverImageUrl,
+      schedule: (data as any).schedule || DEFAULT_SHOP_CONFIG.schedule,
+    };
+  } catch {
+    return DEFAULT_SHOP_CONFIG;
   }
-
-  if (inflightRequests.shopConfig) return inflightRequests.shopConfig;
-
-  inflightRequests.shopConfig = (async () => {
-    try {
-      if (!supabase) return DEFAULT_SHOP_CONFIG;
-      const { data, error } = await supabase.from('shops').select('*').single();
-      if (error || !data) return memCache.shopConfig?.data || DEFAULT_SHOP_CONFIG;
-
-      const mapped: ShopConfig = {
-        ...DEFAULT_SHOP_CONFIG,
-        id: data.id ?? DEFAULT_SHOP_CONFIG.id,
-        name: data.name ?? DEFAULT_SHOP_CONFIG.name,
-        address: data.address ?? DEFAULT_SHOP_CONFIG.address,
-        phone: data.phone ?? DEFAULT_SHOP_CONFIG.phone,
-        backgroundImageUrl:
-          data.background_image_url ||
-          data.backgroundImageUrl ||
-          DEFAULT_SHOP_CONFIG.backgroundImageUrl,
-        logoUrl: data.logo_url || data.logoUrl || DEFAULT_SHOP_CONFIG.logoUrl,
-        coverImageUrl:
-          data.cover_image_url || data.coverImageUrl || DEFAULT_SHOP_CONFIG.coverImageUrl,
-        schedule: (data as any).schedule || DEFAULT_SHOP_CONFIG.schedule,
-      };
-
-      memCache.shopConfig = { data: mapped, ts: Date.now() };
-      syncToSessionStorage();
-      return mapped;
-    } finally {
-      delete inflightRequests.shopConfig;
-    }
-  })();
-
-  return inflightRequests.shopConfig;
 }
 
 export async function saveShopConfig(config: ShopConfig): Promise<void> {
-  if (!supabase) return;
-
-  const payload = {
-    name: config.name,
-    address: config.address,
-    phone: config.phone,
-    background_image_url: config.backgroundImageUrl,
-    logo_url: config.logoUrl,
-    cover_image_url: config.coverImageUrl,
-    schedule: config.schedule || DEFAULT_SHOP_CONFIG.schedule,
-  };
-
-  const targetId = isValidUUID(config.id) ? config.id : SHOP_UUID;
-
-  const { error } = await supabase.from('shops').update(payload).eq('id', targetId);
-
-  if (error) {
-    console.error('Error guardando shop config:', error.message);
-    throw new Error(error.message);
-  }
-
-  memCache.shopConfig = { data: { ...config, id: targetId }, ts: Date.now() };
-  syncToSessionStorage();
+  await callAdminOperation({
+    operation: 'SAVE_SHOP_CONFIG',
+    config,
+  });
 }
 
-export async function getServices(forceRefresh = false): Promise<ServiceItem[]> {
-  hydrateFromSessionStorage();
-  const now = Date.now();
-  if (!forceRefresh && memCache.services && now - memCache.services.ts < CACHE_TTL_MS) {
-    return memCache.services.data;
-  }
+export async function getServices(forceRefresh = true): Promise<ServiceItem[]> {
+  try {
+    const { data, error } = await supabase
+      .from('services')
+      .select('id, name, price, duration_minutes, description, image_url, active')
+      .eq('shop_id', SHOP_UUID)
+      .order('price', { ascending: true });
 
-  if (inflightRequests.services) return inflightRequests.services;
-
-  inflightRequests.services = (async () => {
-    try {
-      const { data, error } = await supabase
-        .from('services')
-        .select('id, name, price, duration_minutes, description, image_url, active')
-        .eq('shop_id', SHOP_UUID)
-        .order('price', { ascending: true });
-
-      if (error || !data || data.length === 0) {
-        return memCache.services?.data || DEFAULT_SERVICES;
-      }
-
-      const mapped: ServiceItem[] = data.map((s) => ({
-        id: s.id,
-        name: s.name,
-        price: Number(s.price),
-        durationMinutes: Number(s.duration_minutes) || 60,
-        description: s.description || `${s.duration_minutes || 60} min`,
-        imageUrl: s.image_url,
-        active: s.active ?? true,
-      }));
-
-      memCache.services = { data: mapped, ts: Date.now() };
-      syncToSessionStorage();
-      return mapped;
-    } finally {
-      delete inflightRequests.services;
+    if (error || !data || data.length === 0) {
+      return DEFAULT_SERVICES;
     }
-  })();
 
-  return inflightRequests.services;
+    return data.map((s) => ({
+      id: s.id,
+      name: s.name,
+      price: Number(s.price),
+      durationMinutes: Number(s.duration_minutes) || 60,
+      description: s.description || `${s.duration_minutes || 60} min`,
+      imageUrl: s.image_url,
+      active: s.active ?? true,
+    }));
+  } catch {
+    return DEFAULT_SERVICES;
+  }
 }
 
 export async function saveServices(services: ServiceItem[]): Promise<void> {
@@ -600,56 +438,40 @@ export async function deleteServiceFromDb(id: string): Promise<void> {
   });
 }
 
-export async function getBarbers(forceRefresh = false): Promise<BarberItem[]> {
-  hydrateFromSessionStorage();
-  const now = Date.now();
-  if (!forceRefresh && memCache.barbers && now - memCache.barbers.ts < CACHE_TTL_MS) {
-    return memCache.barbers.data;
-  }
+export async function getBarbers(forceRefresh = true): Promise<BarberItem[]> {
+  try {
+    const { data, error } = await supabase
+      .from('barbers')
+      .select('id, slug, name, role, bio, specialties, service_ids, active')
+      .eq('shop_id', SHOP_UUID);
 
-  if (inflightRequests.barbers) return inflightRequests.barbers;
-
-  inflightRequests.barbers = (async () => {
-    try {
-      const { data, error } = await supabase
-        .from('barbers')
-        .select('id, slug, name, role, bio, specialties, service_ids, active')
-        .eq('shop_id', SHOP_UUID);
-
-      if (error || !data || data.length === 0) {
-        return memCache.barbers?.data || DEFAULT_BARBERS;
-      }
-
-      const mapped: BarberItem[] = data.map((b) => ({
-        id: b.id,
-        slug: b.slug || b.name.toLowerCase(),
-        name: b.name,
-        role: b.role || 'Barbero',
-        bio: b.bio || '',
-        specialties: b.specialties || ['Corte'],
-        serviceIds: Array.isArray(b.service_ids) ? b.service_ids : [],
-        active: b.active ?? true,
-        commissionRate: 0,
-        pin: '',
-        isOwner: false,
-      }));
-
-      memCache.barbers = { data: mapped, ts: Date.now() };
-      syncToSessionStorage();
-      return mapped;
-    } finally {
-      delete inflightRequests.barbers;
+    if (error || !data || data.length === 0) {
+      return DEFAULT_BARBERS;
     }
-  })();
 
-  return inflightRequests.barbers;
+    return data.map((b) => ({
+      id: b.id,
+      slug: b.slug || b.name.toLowerCase(),
+      name: b.name,
+      role: b.role || 'Barbero',
+      bio: b.bio || '',
+      specialties: b.specialties || ['Corte'],
+      serviceIds: Array.isArray(b.service_ids) ? b.service_ids : [],
+      active: b.active ?? true,
+      commissionRate: 0,
+      pin: '',
+      isOwner: false,
+    }));
+  } catch {
+    return DEFAULT_BARBERS;
+  }
 }
 
 export async function getAdminBarbers(): Promise<BarberItem[]> {
   const res = await fetch('/api/admin?resource=barbers', { cache: 'no-store' });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(json.error || 'No autorizado para leer barberos de administración.');
+    throw new Error(json.error || 'No autorizado para leer barberos.');
   }
   const data = Array.isArray(json.data) ? json.data : [];
   return data.map((b: any) => ({
@@ -682,28 +504,15 @@ export async function deleteBarberFromDb(id: string): Promise<void> {
   });
 }
 
-export async function getPublicBookedSlots(forceRefresh = false): Promise<AppointmentItem[]> {
-  const now = Date.now();
-  if (!forceRefresh && memCache.bookedSlots && now - memCache.bookedSlots.ts < SLOTS_TTL_MS) {
-    return memCache.bookedSlots.data;
+export async function getPublicBookedSlots(forceRefresh = true): Promise<AppointmentItem[]> {
+  try {
+    const res = await fetch('/api/public/booking', { cache: 'no-store' });
+    if (!res.ok) return [];
+    const json = await res.json().catch(() => ({}));
+    return Array.isArray(json.appointments) ? json.appointments : [];
+  } catch {
+    return [];
   }
-
-  if (inflightRequests.bookedSlots) return inflightRequests.bookedSlots;
-
-  inflightRequests.bookedSlots = (async () => {
-    try {
-      const res = await fetch('/api/public/booking', { cache: 'no-store' });
-      if (!res.ok) return memCache.bookedSlots?.data || [];
-      const json = await res.json().catch(() => ({}));
-      const list = Array.isArray(json.appointments) ? json.appointments : [];
-      memCache.bookedSlots = { data: list, ts: Date.now() };
-      return list;
-    } finally {
-      delete inflightRequests.bookedSlots;
-    }
-  })();
-
-  return inflightRequests.bookedSlots;
 }
 
 export async function getAppointments(): Promise<AppointmentItem[]> {
@@ -714,9 +523,18 @@ export async function getAppointments(): Promise<AppointmentItem[]> {
   const json = await res.json().catch(() => ({}));
   const data = Array.isArray(json.data) ? json.data : [];
 
+  // Obtenemos la config de la tienda para generar el prefijo del código dinámicamente
+  let shopPrefix = SHOP_PREFIX;
+  try {
+    const cfg = await getShopConfig(false);
+    if (cfg && cfg.name) {
+      shopPrefix = getShopPrefix(cfg.name);
+    }
+  } catch {}
+
   return data.map((apt: any) => ({
     id: apt.id,
-    code: apt.code || '13C-0000',
+    code: apt.code || `${shopPrefix}-${Math.floor(1000 + Math.random() * 9000)}`,
     serviceId: apt.service_id,
     serviceName: apt.services?.name || 'Servicio',
     servicePrice: Number(apt.price_snapshot ?? apt.services?.price ?? 0),
@@ -758,7 +576,6 @@ export async function createAppointment(
     throw new Error(json.error || 'No se pudo guardar el turno.');
   }
 
-  delete memCache.bookedSlots;
   return json.appointment as AppointmentItem;
 }
 
@@ -775,7 +592,6 @@ export async function updateAppointmentStatus(
   if (!res.ok) {
     throw new Error(json.error || 'No autorizado para actualizar el estado del turno.');
   }
-  delete memCache.bookedSlots;
   return await getAppointments();
 }
 

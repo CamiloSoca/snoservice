@@ -1,6 +1,6 @@
 // app/api/barber/route.ts
 import { NextResponse } from 'next/server';
-import { getSupabaseServer, SHOP_UUID } from '@/lib/supabase-server';
+import { getSupabaseServer, SHOP_UUID, SHOP_PREFIX } from '@/lib/supabase-server';
 import {
   BARBER_COOKIE_NAME,
   getBarberSession,
@@ -41,7 +41,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Emitir cookie firmada para este barbero por 12 horas
     const token = signSessionToken({
       role: 'barber',
       sub: barber.id,
@@ -57,7 +56,7 @@ export async function POST(request: Request) {
 
     const mappedAppointments = (apts || []).map((apt) => ({
       id: apt.id,
-      code: apt.code || '13C-0000',
+      code: apt.code || `${SHOP_PREFIX}-0000`,
       serviceId: apt.service_id,
       serviceName: apt.services?.name || 'Servicio',
       servicePrice: Number(apt.price_snapshot ?? apt.services?.price ?? 0),
@@ -125,7 +124,6 @@ export async function PATCH(request: Request) {
       .eq('id', id)
       .eq('shop_id', SHOP_UUID);
 
-    // Si es un barbero (y no admin), solo puede cambiar estados de sus propios turnos
     if (!adminSession && barberSession) {
       query = query.eq('barber_id', barberSession.sub);
     }
@@ -137,6 +135,9 @@ export async function PATCH(request: Request) {
 
     return NextResponse.json({ ok: true });
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message || 'Error al actualizar turno.' }, { status: 500 });
+    return NextResponse.json(
+      { error: err?.message || 'Error al actualizar turno.' },
+      { status: 500 }
+    );
   }
 }

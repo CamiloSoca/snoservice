@@ -10,6 +10,9 @@ const jakarta = Plus_Jakarta_Sans({
   display: "swap",
 });
 
+const shopName = process.env.NEXT_PUBLIC_SHOP_NAME || "13´Cut";
+const shopCity = process.env.NEXT_PUBLIC_SHOP_CITY || "Montevideo";
+
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
@@ -19,13 +22,13 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "13´Cut | Barbería en Montevideo",
-  description: "Reservá tu turno online en segundos en 13´Cut.",
+  title: `${shopName} | Barbería en ${shopCity}`,
+  description: `Reservá tu turno online en segundos en ${shopName}.`,
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "13´Cut",
+    title: shopName,
   },
   formatDetection: {
     telephone: false,

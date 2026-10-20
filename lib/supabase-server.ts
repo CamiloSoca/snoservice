@@ -1,29 +1,29 @@
 // lib/supabase-server.ts
-import 'server-only';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js';
 
-export const SHOP_UUID = '11111111-1111-1111-1111-111111111113';
+export const SHOP_UUID =
+  process.env.NEXT_PUBLIC_SHOP_ID ||
+  process.env.SHOP_ID ||
+  '11111111-1111-1111-1111-111111111113';
 
-let cachedServerClient: SupabaseClient | null = null;
+export const SHOP_PREFIX =
+  process.env.NEXT_PUBLIC_SHOP_PREFIX || '13C';
 
-export function getSupabaseServer(): SupabaseClient {
-  if (cachedServerClient) return cachedServerClient;
+export function getSupabaseServer() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+  const supabaseKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    '';
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !serviceRoleKey) {
-    throw new Error(
-      'Falta NEXT_PUBLIC_SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY en las variables de entorno del servidor.'
-    );
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error('Faltan las credenciales de Supabase en las variables de entorno.');
   }
 
-  cachedServerClient = createClient(supabaseUrl, serviceRoleKey, {
+  return createClient(supabaseUrl, supabaseKey, {
     auth: {
       persistSession: false,
       autoRefreshToken: false,
     },
   });
-
-  return cachedServerClient;
 }

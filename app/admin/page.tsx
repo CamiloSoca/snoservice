@@ -42,6 +42,8 @@ import {
   ShopConfig,
   DEFAULT_SHOP_CONFIG,
   generateUUID,
+  isValidUUID,
+  sanitizeInput,
   getServices,
   saveServices,
   deleteServiceFromDb,
@@ -414,6 +416,10 @@ export default function AdminDashboard() {
       setAdminError('');
       const configToSave: ShopConfig = {
         ...shopConfig,
+        name: shopConfig.name.trim(),
+        phone: shopConfig.phone.trim(),
+        address: shopConfig.address.trim(),
+        city: shopConfig.city ? shopConfig.city.trim() : 'Montevideo',
         schedule: shopConfig.schedule || DEFAULT_SHOP_CONFIG.schedule,
       };
       await saveShopConfig(configToSave);
@@ -496,16 +502,18 @@ export default function AdminDashboard() {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 pb-28 sm:pb-16 relative">
       <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
-        <img
-          src={bgImage}
-          alt="Fondo"
-          className="w-full h-full object-cover object-center grayscale opacity-[0.11]"
-        />
+        {bgImage ? (
+          <img
+            src={bgImage}
+            alt="Fondo"
+            className="w-full h-full object-cover object-center grayscale opacity-[0.11]"
+          />
+        ) : null}
         <div className="absolute inset-0 bg-gradient-to-b from-zinc-950/85 via-zinc-950/75 to-zinc-950/95" />
       </div>
 
       <div className="relative z-10">
-        {/* HEADER CON SAFE-AREA PARA MÓVILES / PWA */}
+        {/* HEADER */}
         <header className="sticky top-0 z-30 bg-zinc-950/90 backdrop-blur-md border-b border-zinc-800/80 px-4 pt-[max(0.75rem,calc(env(safe-area-inset-top)+0.5rem))] pb-3">
           <div className="max-w-5xl mx-auto flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center space-x-2.5">
@@ -977,7 +985,7 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          {/* VISTA DE TURNOS (LISTA) */}
+          {/* VISTA DE TURNOS */}
           {activeTab === 'turnos' && (
             <div className="space-y-3">
               {safeAppointments.length === 0 ? (
@@ -1339,7 +1347,7 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          {/* VISTA DE CONFIGURACIÓN DE LOCAL (CON GESTOR DE HORARIOS SEGURO) */}
+          {/* VISTA DE CONFIGURACIÓN DE LOCAL */}
           {activeTab === 'marca' && (
             <form
               onSubmit={handleSaveBrand}
@@ -1349,7 +1357,7 @@ export default function AdminDashboard() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-zinc-400 mb-1.5">Nombre</label>
+                  <label className="block text-xs font-medium text-zinc-400 mb-1.5">Nombre del Local</label>
                   <input
                     type="text"
                     value={shopConfig.name}
@@ -1359,11 +1367,48 @@ export default function AdminDashboard() {
                 </div>
 
                 <div>
+                  <label className="block text-xs font-medium text-zinc-400 mb-1.5">Teléfono de Contacto</label>
+                  <input
+                    type="text"
+                    value={shopConfig.phone}
+                    placeholder="Ej: 098509376"
+                    onChange={(e) => setShopConfig({ ...shopConfig, phone: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-zinc-400 mb-1.5">Ciudad</label>
+                  <input
+                    type="text"
+                    value={shopConfig.city || ''}
+                    placeholder="Ej: Montevideo"
+                    onChange={(e) => setShopConfig({ ...shopConfig, city: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
                   <label className="block text-xs font-medium text-zinc-400 mb-1.5">Dirección</label>
                   <input
                     type="text"
                     value={shopConfig.address}
+                    placeholder="Ej: Avenida Agraciada 3778"
                     onChange={(e) => setShopConfig({ ...shopConfig, address: e.target.value })}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-medium text-zinc-400 mb-1.5 flex items-center gap-1.5">
+                    <ImageIcon className="w-3.5 h-3.5" />
+                    URL del Logo (Aparece en el Header)
+                  </label>
+                  <input
+                    type="url"
+                    value={shopConfig.logoUrl || ''}
+                    placeholder="https://..."
+                    onChange={(e) => setShopConfig({ ...shopConfig, logoUrl: e.target.value })}
                     className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
                   />
                 </div>
