@@ -1,3 +1,4 @@
+// app/barbero/barbero.tsx
 'use client';
 
 import { useState, useEffect, Suspense } from 'react';
@@ -15,12 +16,14 @@ import {
   Coins,
   Plus,
   Trash2,
+  BarChart3,
 } from 'lucide-react';
 import {
   BarberItem,
   ShopConfig,
   AppointmentItem,
   TipItem,
+  ManualChargeItem,
   DEFAULT_SHOP_CONFIG,
   DEFAULT_BARBERS,
   getBarbers,
@@ -30,7 +33,11 @@ import {
   getTips,
   createTip,
   deleteTip,
+  getManualCharges,
+  createManualCharge,
+  deleteManualCharge,
   sortAppointmentsChronologically,
+  canCompleteAppointment,
 } from '@/lib/booking-store';
 
 const MONTH_NAMES = [
@@ -69,6 +76,7 @@ function BarberPortalContent() {
 
   const availableMonths = getRecentMonths(12);
   const [selectedMonth, setSelectedMonth] = useState<string>(availableMonths[0].value);
+  const [auditDate, setAuditDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
   const [mounted, setMounted] = useState(false);
   const [shopConfig, setShopConfig] = useState<ShopConfig>(DEFAULT_SHOP_CONFIG);
@@ -79,6 +87,7 @@ function BarberPortalContent() {
   const [isUnlocked, setIsUnlocked] = useState<boolean>(false);
   const [barberAppointments, setBarberAppointments] = useState<AppointmentItem[]>([]);
   const [barberTips, setBarberTips] = useState<TipItem[]>([]);
+  const [barberCharges, setBarberCharges] = useState<ManualChargeItem[]>([]);
   const [commissionRate, setCommissionRate] = useState<number>(50);
   const [loading, setLoading] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
@@ -86,6 +95,10 @@ function BarberPortalContent() {
   const [newTipAmount, setNewTipAmount] = useState<string>('');
   const [newTipNote, setNewTipNote] = useState<string>('');
   const [savingTip, setSavingTip] = useState<boolean>(false);
+
+  const [newChargeAmount, setNewChargeAmount] = useState<string>('');
+  const [newChargeNote, setNewChargeNote] = useState<string>('');
+  const [savingCharge, setSavingCharge] = useState<boolean>(false);
 
   useEffect(() => {
     setMounted(true);
@@ -121,13 +134,15 @@ function BarberPortalContent() {
     try {
       setLoading(true);
       setErrorMsg('');
-      const [res, myTips] = await Promise.all([
+      const [res, myTips, myCharges] = await Promise.all([
         unlockBarberPanelWithPin(selectedBarberId, pin.trim()),
         getTips(selectedBarberId),
+        getManualCharges(selectedBarberId),
       ]);
       setCommissionRate(res.commissionRate);
       setBarberAppointments(sortAppointmentsChronologically(res.appointments));
       setBarberTips(Array.isArray(myTips) ? myTips : []);
+      setBarberCharges(Array.isArray(myCharges) ? myCharges : []);
       setIsUnlocked(true);
     } catch (err: any) {
       setErrorMsg(err?.message || 'PIN incorrecto.');
@@ -182,28 +197,99 @@ function BarberPortalContent() {
     }
   };
 
+  const handleAddMyCharge = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedBarberId || !newChargeAmount || Number(newChargeAmount) <= 0) return;
+    try {
+      setSavingCharge(true);
+      setErrorMsg('');
+      await createManualCharge({
+        barberId: selectedBarberId,
+        amount: Number(newChargeAmount),
+        note: newChargeNote.trim() || 'Corte extra sin turno',
+      });
+      const updatedCharges = await getManualCharges(selectedBarberId);
+      setBarberCharges(Array.isArray(updatedCharges) ? updatedCharges : []);
+      setNewChargeAmount('');
+      setNewChargeNote('');
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'No se pudo registrar el cobro.');
+    } finally {
+      setSavingCharge(false);
+    }
+  };
+
+  const handleDeleteMyCharge = async (chargeId: string) => {
+    try {
+      setErrorMsg('');
+      await deleteManualCharge(chargeId);
+      const updatedCharges = await getManualCharges(selectedBarberId);
+      setBarberCharges(Array.isArray(updatedCharges) ? updatedCharges : []);
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'No se pudo borrar el cobro.');
+    }
+  };
+
   if (!mounted) {
     return <div className="min-h-screen bg-zinc-950 text-zinc-100" />;
   }
 
   const selectedBarberObj = barbers.find((b) => b.id === selectedBarberId);
 
-  // Filtramos turnos y propinas según el mes seleccionado en el historial
-  const activeAppointments = sortAppointmentsChronologically(
-    barberAppointments.filter((a) => a.status !== 'cancelado')
+  const completedAppointments = barberAppointments.filter(
+    (a) => a.status === 'completado' && isWithinSelectedMonth(a.createdAt, selectedMonth)
   );
-  const monthlyAppointments = activeAppointments.filter((a) =>
-    isWithinSelectedMonth(a.createdAt, selectedMonth)
-  );
+
   const monthlyTips = barberTips.filter((t) =>
     isWithinSelectedMonth(t.createdAt, selectedMonth)
   );
 
-  const totalEarned = monthlyAppointments.reduce(
-    (sum, a) => sum + Math.round((Number(a.priceSnapshot ?? a.servicePrice) * commissionRate) / 100),
+  const monthlyCharges = barberCharges.filter((c) =>
+    isWithinSelectedMonth(c.createdAt, selectedMonth)
+  );
+
+  const grossFromAppointments = completedAppointments.reduce(
+    (sum, a) => sum + Number(a.priceSnapshot ?? a.servicePrice),
     0
   );
+
+  const grossFromCharges = monthlyCharges.reduce((sum, c) => sum + Number(c.amount), 0);
+  const totalGrossMonthly = grossFromAppointments + grossFromCharges;
+
+  const totalEarned = Math.round((totalGrossMonthly * commissionRate) / 100);
   const totalTipsAmount = monthlyTips.reduce((sum, t) => sum + Number(t.amount), 0);
+
+  const dailyAppointments = barberAppointments.filter((a) => {
+    if (a.status !== 'completado') return false;
+    if (auditDate) {
+      const aDate = (a.createdAt || '').split('T')[0];
+      if (aDate !== auditDate) return false;
+    }
+    return true;
+  });
+
+  const dailyCharges = barberCharges.filter((c) => {
+    if (auditDate) {
+      const cDate = (c.createdAt || '').split('T')[0];
+      if (cDate !== auditDate) return false;
+    }
+    return true;
+  });
+
+  const dailyTips = barberTips.filter((t) => {
+    if (auditDate) {
+      const tDate = (t.createdAt || '').split('T')[0];
+      if (tDate !== auditDate) return false;
+    }
+    return true;
+  });
+
+  const dailyGross = 
+    dailyAppointments.reduce((sum, a) => sum + Number(a.priceSnapshot ?? a.servicePrice), 0) +
+    dailyCharges.reduce((sum, c) => sum + Number(c.amount), 0);
+
+  const dailyCommission = Math.round((dailyGross * commissionRate) / 100);
+  const dailyTipsTotal = dailyTips.reduce((sum, t) => sum + Number(t.amount), 0);
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 pb-28 sm:pb-16 relative">
@@ -365,36 +451,119 @@ function BarberPortalContent() {
               </div>
             </div>
 
+            <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800 pb-3">
+                <h3 className="font-bold text-sm flex items-center gap-2">
+                  <BarChart3 className="w-4 h-4 text-emerald-400" />
+                  Mis Ganancias Día a Día
+                </h3>
+                <input
+                  type="date"
+                  value={auditDate}
+                  onChange={(e) => setAuditDate(e.target.value)}
+                  className="px-3.5 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-xs font-bold text-emerald-400 outline-none cursor-pointer"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 space-y-1">
+                  <span className="text-xs text-zinc-400">Mi Comisión Generada (Día)</span>
+                  <p className="text-2xl font-extrabold text-emerald-400">${dailyCommission}</p>
+                  <span className="text-[11px] text-zinc-500">{dailyAppointments.length} turnos + {dailyCharges.length} extras</span>
+                </div>
+                <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 space-y-1">
+                  <span className="text-xs text-zinc-400">Mis Propinas (Día)</span>
+                  <p className="text-2xl font-extrabold text-amber-400">+${dailyTipsTotal}</p>
+                </div>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-1">
-                <span className="text-xs text-zinc-400">Turnos del mes</span>
-                <p className="text-3xl font-extrabold text-white">{monthlyAppointments.length}</p>
+                <span className="text-xs text-zinc-400">Turnos Completados (Mes)</span>
+                <p className="text-3xl font-extrabold text-white">{completedAppointments.length}</p>
               </div>
 
               <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-1">
-                <span className="text-xs text-emerald-400 font-bold">Mis Comisiones del Mes</span>
+                <span className="text-xs text-emerald-400 font-bold">Mis Comisiones (Mes)</span>
                 <p className="text-3xl font-extrabold text-emerald-400">${totalEarned}</p>
               </div>
 
               <div className="bg-zinc-900/90 border border-emerald-500/30 rounded-2xl p-5 space-y-1">
                 <span className="text-xs text-amber-400 font-bold flex items-center gap-1.5">
                   <Coins className="w-3.5 h-3.5" />
-                  Mis Propinas del Mes
+                  Mis Propinas (Mes)
                 </span>
                 <p className="text-3xl font-extrabold text-amber-400">+${totalTipsAmount}</p>
               </div>
             </div>
 
-            {/* SECCIÓN DE PROPINAS DEL BARBERO */}
+            <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 sm:p-6 space-y-4">
+              <div>
+                <h3 className="font-bold text-base flex items-center gap-2">
+                  <Coins className="w-4 h-4 text-emerald-400" />
+                  Registrar Cobro Manual (Corte sin turno previo)
+                </h3>
+              </div>
+
+              <form onSubmit={handleAddMyCharge} className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+                <input
+                  type="number"
+                  placeholder="Monto $"
+                  value={newChargeAmount}
+                  onChange={(e) => setNewChargeAmount(e.target.value)}
+                  className="sm:col-span-4 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
+                />
+                <input
+                  type="text"
+                  placeholder="Nota..."
+                  value={newChargeNote}
+                  onChange={(e) => setNewChargeNote(e.target.value)}
+                  className="sm:col-span-6 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
+                />
+                <button
+                  type="submit"
+                  disabled={savingCharge}
+                  className="sm:col-span-2 py-2.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-extrabold text-xs cursor-pointer flex items-center justify-center gap-1 touch-manipulation"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>{savingCharge ? '...' : 'Sumar'}</span>
+                </button>
+              </form>
+
+              {monthlyCharges.length > 0 && (
+                <div className="space-y-2 pt-2">
+                  {monthlyCharges.map((chg) => (
+                    <div
+                      key={chg.id}
+                      className="bg-zinc-950 border border-zinc-800/80 rounded-xl p-3 flex items-center justify-between gap-3"
+                    >
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="text-zinc-400 font-medium">{chg.dateString}</span>
+                        {chg.note && <span className="text-zinc-200">• {chg.note}</span>}
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="font-bold text-sm text-emerald-400">+${chg.amount}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteMyCharge(chg.id)}
+                          className="p-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-rose-400 cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 sm:p-6 space-y-4">
               <div>
                 <h3 className="font-bold text-base flex items-center gap-2">
                   <Coins className="w-4 h-4 text-amber-400" />
                   Cuenta de Propinas ({selectedBarberObj?.name})
                 </h3>
-                <p className="text-xs text-zinc-400">
-                  Anotá tus propinas del día para llevar tu control mensual.
-                </p>
               </div>
 
               <form onSubmit={handleAddMyTip} className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
@@ -407,7 +576,7 @@ function BarberPortalContent() {
                 />
                 <input
                   type="text"
-                  placeholder="Nota opcional (ej: Efectivo / Transferencia)..."
+                  placeholder="Nota opcional..."
                   value={newTipNote}
                   onChange={(e) => setNewTipNote(e.target.value)}
                   className="sm:col-span-6 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
@@ -439,7 +608,6 @@ function BarberPortalContent() {
                           type="button"
                           onClick={() => handleDeleteMyTip(tp.id)}
                           className="p-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-rose-400 cursor-pointer"
-                          title="Eliminar propina"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -450,24 +618,22 @@ function BarberPortalContent() {
               )}
             </div>
 
-            {/* MIS TURNOS ASIGNADOS ORDENADOS CRONOLÓGICAMENTE */}
             <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 sm:p-6 space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="font-bold text-base flex items-center gap-2">
                   <CalendarIcon className="w-4 h-4 text-emerald-400" />
                   Mis Turnos Asignados
                 </h3>
-                <span className="text-[11px] text-zinc-400">Ordenados por fecha y hora</span>
               </div>
 
-              {monthlyAppointments.length === 0 ? (
+              {barberAppointments.length === 0 ? (
                 <div className="p-12 text-center bg-zinc-950 border border-zinc-800 rounded-2xl space-y-2">
                   <CalendarIcon className="w-8 h-8 text-zinc-600 mx-auto" />
-                  <p className="text-xs text-zinc-400">No hay turnos registrados en este mes.</p>
+                  <p className="text-xs text-zinc-400">No hay turnos registrados.</p>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {monthlyAppointments.map((apt) => (
+                  {barberAppointments.map((apt) => (
                     <div
                       key={apt.id}
                       className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
@@ -502,7 +668,13 @@ function BarberPortalContent() {
                         {apt.status !== 'completado' && (
                           <button
                             type="button"
-                            onClick={() => handleStatusChange(apt.id, 'completado')}
+                            onClick={() => {
+                              if (!canCompleteAppointment(apt.dateString)) {
+                                alert('No podés completar un turno que corresponde a una fecha futura.');
+                                return;
+                              }
+                              handleStatusChange(apt.id, 'completado');
+                            }}
                             className="px-3.5 py-2 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-bold flex items-center gap-1 cursor-pointer"
                           >
                             <CheckCircle2 className="w-3.5 h-3.5" />

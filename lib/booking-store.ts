@@ -1,61 +1,67 @@
 // lib/booking-store.ts
-import { supabase } from './supabase';
+import { createClient } from '@supabase/supabase-js';
 
-export type BrandAccent = 'navy' | 'emerald' | 'bronze' | 'mono';
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null;
 
-export const SHOP_UUID =
-  process.env.NEXT_PUBLIC_SHOP_ID || '11111111-1111-1111-1111-111111111113';
+export const SHOP_UUID = '11111111-1111-1111-1111-111111111113';
+export const SHOP_PREFIX = '13C';
 
-export function getShopPrefix(shopName?: string): string {
-  if (!shopName) return process.env.NEXT_PUBLIC_SHOP_PREFIX || '13C';
-  const clean = shopName.replace(/[^a-zA-Z0-9]/g, '').trim();
-  if (clean.length >= 3) {
-    return clean.slice(0, 3).toUpperCase();
-  } else if (clean.length > 0) {
-    return clean.toUpperCase();
-  }
-  return 'TC';
+export interface ShopConfig {
+  id: string;
+  name: string;
+  phone: string;
+  address: string;
+  city: string;
+  logoUrl?: string;
+  backgroundImageUrl?: string;
+  coverImageUrl?: string;
+  schedule: Record<string, { isOpen: boolean; openTime: string; closeTime: string }>;
 }
 
-export const SHOP_PREFIX = process.env.NEXT_PUBLIC_SHOP_PREFIX || '13C';
-
-export function generateUUID(): string {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-    return crypto.randomUUID();
-  }
-  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
-    const r = (Math.random() * 16) | 0;
-    const v = c === 'x' ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
-}
-
-export function isValidUUID(id: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-}
+export const DEFAULT_SHOP_CONFIG: ShopConfig = {
+  id: SHOP_UUID,
+  name: '13-Cut Barbería',
+  phone: '098509376',
+  address: 'Avenida Agraciada 3778',
+  city: 'Montevideo',
+  logoUrl: '',
+  backgroundImageUrl: '',
+  coverImageUrl: '',
+  schedule: {
+    lunes: { isOpen: false, openTime: '09:00', closeTime: '19:00' },
+    martes: { isOpen: true, openTime: '09:00', closeTime: '19:00' },
+    miercoles: { isOpen: true, openTime: '09:00', closeTime: '19:00' },
+    jueves: { isOpen: true, openTime: '09:00', closeTime: '19:00' },
+    viernes: { isOpen: true, openTime: '09:00', closeTime: '19:00' },
+    sabado: { isOpen: true, openTime: '09:00', closeTime: '19:00' },
+    domingo: { isOpen: false, openTime: '09:00', closeTime: '19:00' },
+  },
+};
 
 export interface ServiceItem {
   id: string;
   name: string;
   price: number;
   durationMinutes: number;
-  description: string;
+  description?: string;
   imageUrl?: string;
-  active: boolean;
+  active?: boolean;
 }
 
 export interface BarberItem {
   id: string;
-  slug: string;
+  slug?: string;
   name: string;
-  role: string;
-  bio: string;
-  specialties: string[];
-  serviceIds: string[];
-  active: boolean;
+  role?: string;
+  bio?: string;
+  specialties?: string[];
+  serviceIds?: string[];
+  isOwner?: boolean;
+  active?: boolean;
   commissionRate: number;
   pin: string;
-  isOwner?: boolean;
 }
 
 export interface AppointmentItem {
@@ -71,19 +77,14 @@ export interface AppointmentItem {
   dateString: string;
   timeSlot: string;
   clientName: string;
-  clientPhone?: string; // 👈 Mantenido oculto por compatibilidad con la BD
-  clientEmail: string;  // 👈 Nuevo campo principal
+  clientPhone?: string;
+  clientEmail?: string;
   clientNotes?: string;
   status: 'confirmado' | 'completado' | 'cancelado';
   createdAt: string;
 }
 
-export type ExpenseCategory =
-  | 'Insumos'
-  | 'Alquiler / Servicios'
-  | 'Adelantos / Sueldos'
-  | 'Marketing'
-  | 'Otros';
+export type ExpenseCategory = 'Insumos' | 'Alquiler / Servicios' | 'Adelantos / Sueldos' | 'Otros';
 
 export interface ExpenseItem {
   id: string;
@@ -91,7 +92,7 @@ export interface ExpenseItem {
   amount: number;
   category: ExpenseCategory;
   date: string;
-  createdAt: string;
+  createdAt?: string;
 }
 
 export interface TipItem {
@@ -104,79 +105,15 @@ export interface TipItem {
   createdAt: string;
 }
 
-export interface DaySchedule {
-  open?: string;
-  close?: string;
-  closed?: boolean;
-}
-
-export type WeeklySchedule = Record<number, DaySchedule>;
-
-export type CustomScheduleMap = Record<
-  string,
-  { isOpen: boolean; openTime: string; closeTime: string }
->;
-
-export interface ShopConfig {
+export interface ManualChargeItem {
   id: string;
-  name: string;
-  address: string;
-  phone: string;
-  city?: string;
-  tagline?: string;
-  logoUrl?: string;
-  coverImageUrl?: string;
-  backgroundImageUrl?: string;
-  instagramHandle?: string;
-  instagramUrl?: string;
-  schedule?: CustomScheduleMap;
+  barberId: string;
+  barberName?: string;
+  amount: number;
+  note?: string;
+  dateString: string;
+  createdAt: string;
 }
-
-export const DEFAULT_SHOP_CONFIG: ShopConfig = {
-  id: SHOP_UUID,
-  name: process.env.NEXT_PUBLIC_SHOP_NAME || '13´Cut',
-  address: process.env.NEXT_PUBLIC_SHOP_ADDRESS || 'Avenida Agraciada 3778',
-  phone: process.env.NEXT_PUBLIC_SHOP_PHONE || '098509376',
-  city: process.env.NEXT_PUBLIC_SHOP_CITY || 'Montevideo',
-  tagline: 'Reserva tu turno',
-  logoUrl: '',
-  coverImageUrl: '',
-  backgroundImageUrl: '',
-  instagramHandle: '@13cut',
-  instagramUrl: 'https://instagram.com',
-  schedule: {
-    lunes: { isOpen: false, openTime: '09:00', closeTime: '19:00' },
-    martes: { isOpen: true, openTime: '09:00', closeTime: '22:00' },
-    miercoles: { isOpen: true, openTime: '10:00', closeTime: '19:00' },
-    jueves: { isOpen: true, openTime: '10:00', closeTime: '19:00' },
-    viernes: { isOpen: true, openTime: '10:00', closeTime: '19:00' },
-    sabado: { isOpen: true, openTime: '09:00', closeTime: '18:00' },
-    domingo: { isOpen: false, openTime: '09:00', closeTime: '19:00' },
-  },
-};
-
-export const DEFAULT_SERVICES: ServiceItem[] = [
-  { id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', name: 'Corte', price: 400, durationMinutes: 60, description: '60 min', active: true },
-  { id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22', name: 'Corte & Barba', price: 500, durationMinutes: 60, description: '60 min', active: true },
-  { id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33', name: 'Mechas', price: 1400, durationMinutes: 120, description: '120 min', active: true },
-  { id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44', name: 'Color Global', price: 2500, durationMinutes: 120, description: '120 min', active: true },
-];
-
-export const DEFAULT_BARBERS: BarberItem[] = [
-  { id: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380b11', slug: 'nahuel', name: 'Nahuel', role: 'Barbero', bio: '', specialties: ['Corte', 'Mechas'], serviceIds: ['a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44'], isOwner: true, active: true, commissionRate: 0, pin: '' },
-  { id: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380b22', slug: 'emanuel', name: 'Emanuel', role: 'Barbero', bio: '', specialties: ['Corte'], serviceIds: ['a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22'], isOwner: false, active: true, commissionRate: 0, pin: '' },
-  { id: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380b33', slug: 'alexander', name: 'Alexander', role: 'Barbero', bio: '', specialties: ['Corte', 'Mechas'], serviceIds: ['a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33', 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44'], isOwner: false, active: true, commissionRate: 0, pin: '' },
-];
-
-export const DEFAULT_SCHEDULE: WeeklySchedule = {
-  1: { closed: true },
-  2: { open: '09:00', close: '22:00' },
-  3: { open: '10:00', close: '19:00' },
-  4: { open: '10:00', close: '19:00' },
-  5: { open: '10:00', close: '19:00' },
-  6: { open: '09:00', close: '18:00' },
-  0: { closed: true },
-};
 
 export interface DayOption {
   dateString: string;
@@ -186,90 +123,58 @@ export interface DayOption {
   dayOfWeek: number;
 }
 
-const MONTH_NAME_TO_NUMBER: Record<string, number> = {
-  ene: 0, feb: 1, mar: 2, abr: 3, may: 4, jun: 5,
-  jul: 6, ago: 7, sep: 8, oct: 9, nov: 10, dic: 11,
-};
+export const DEFAULT_SERVICES: ServiceItem[] = [
+  { id: 's1', name: 'Corte', price: 400, durationMinutes: 30, description: '30 min', active: true },
+  { id: 's2', name: 'Corte & Barba', price: 600, durationMinutes: 45, description: '45 min', active: true },
+];
 
-export function getCachedInitialData() {
+export const DEFAULT_BARBERS: BarberItem[] = [
+  {
+    id: 'b1',
+    slug: 'nahuel',
+    name: 'Nahuel',
+    role: 'Barbero Principal',
+    bio: 'Especialista en fades.',
+    specialties: ['Fade'],
+    serviceIds: ['s1', 's2'],
+    isOwner: true,
+    active: true,
+    commissionRate: 100,
+    pin: '1234',
+  },
+];
+
+// Caché en memoria para carga inicial instantánea y sincrónica en /agendar
+let cachedShopConfig: ShopConfig = DEFAULT_SHOP_CONFIG;
+let cachedServices: ServiceItem[] = DEFAULT_SERVICES;
+let cachedBarbers: BarberItem[] = DEFAULT_BARBERS;
+
+export function getCachedInitialData(): {
+  shopConfig: ShopConfig;
+  services: ServiceItem[];
+  barbers: BarberItem[];
+} {
   return {
-    shopConfig: DEFAULT_SHOP_CONFIG,
-    services: DEFAULT_SERVICES,
-    barbers: DEFAULT_BARBERS,
-    hasCache: false,
+    shopConfig: cachedShopConfig || DEFAULT_SHOP_CONFIG,
+    services: Array.isArray(cachedServices) && cachedServices.length > 0 ? cachedServices : DEFAULT_SERVICES,
+    barbers: Array.isArray(cachedBarbers) && cachedBarbers.length > 0 ? cachedBarbers : DEFAULT_BARBERS,
   };
 }
 
-export function sortAppointmentsChronologically(appointments: AppointmentItem[]): AppointmentItem[] {
-  return [...appointments].sort((a, b) => {
-    try {
-      const parseDateStr = (dateStr: string, timeStr: string) => {
-        const parts = dateStr.toLowerCase().split(' ');
-        const dayNum = parseInt(parts[1]) || 1;
-        const monthStr = parts[2]?.replace('.', '') || 'ene';
-        const monthNum = MONTH_NAME_TO_NUMBER[monthStr] ?? 0;
-        
-        const [hours, mins] = (timeStr || '09:00').split(':').map(Number);
-        const now = new Date();
-        let year = now.getFullYear();
-        const d = new Date(year, monthNum, dayNum, hours || 0, mins || 0);
-        return d.getTime();
-      };
-
-      const timeA = parseDateStr(a.dateString, a.timeSlot);
-      const timeB = parseDateStr(b.dateString, b.timeSlot);
-      return timeA - timeB;
-    } catch {
-      return 0;
-    }
+export function generateUUID(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
   });
 }
 
-const DAY_INDEX_TO_KEY: Record<number, string> = {
-  0: 'domingo',
-  1: 'lunes',
-  2: 'martes',
-  3: 'miercoles',
-  4: 'jueves',
-  5: 'viernes',
-  6: 'sabado',
-};
-
-export function buildRealOpenDays(
-  totalDays = 30,
-  customSchedule?: CustomScheduleMap
-): DayOption[] {
-  const activeSchedule = customSchedule || DEFAULT_SHOP_CONFIG.schedule;
-  const days: DayOption[] = [];
-  const today = new Date();
-
-  for (let i = 0; i < totalDays; i++) {
-    const d = new Date(today);
-    d.setDate(today.getDate() + i);
-
-    const dayOfWeek = d.getDay();
-    const dayKey = DAY_INDEX_TO_KEY[dayOfWeek];
-    const dayRule = activeSchedule?.[dayKey];
-
-    const isOpenDay = dayRule ? Boolean(dayRule.isOpen) : dayOfWeek !== 0 && dayOfWeek !== 1;
-
-    if (isOpenDay) {
-      const dayName = d.toLocaleDateString('es-UY', { weekday: 'short' }).replace('.', '');
-      const dayNumber = String(d.getDate());
-      const monthName = d.toLocaleDateString('es-UY', { month: 'short' }).replace('.', '');
-
-      days.push({
-        dateString: `${dayName.charAt(0).toUpperCase() + dayName.slice(1)} ${dayNumber} ${
-          monthName.charAt(0).toUpperCase() + monthName.slice(1)
-        }`,
-        dayName,
-        dayNumber,
-        monthName,
-        dayOfWeek,
-      });
-    }
-  }
-  return days;
+export function isValidUUID(id: string): boolean {
+  if (!id) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
 }
 
 export function timeToMinutes(timeStr: string): number {
@@ -278,58 +183,166 @@ export function timeToMinutes(timeStr: string): number {
   return (h || 0) * 60 + (m || 0);
 }
 
-export function minutesToTime(totalMinutes: number): string {
-  const h = Math.floor(totalMinutes / 60);
-  const m = totalMinutes % 60;
+export function minutesToTime(totalMins: number): string {
+  const h = Math.floor(totalMins / 60) % 24;
+  const m = totalMins % 60;
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+// 🛡️ Validador estricto para impedir completar turnos de fechas futuras
+export function canCompleteAppointment(dateString: string): boolean {
+  if (!dateString) return true;
+
+  const monthMap: Record<string, number> = {
+    ene: 0, feb: 1, mar: 2, abr: 3, may: 4, jun: 5,
+    jul: 6, ago: 7, sep: 8, oct: 9, nov: 10, dic: 11,
+    enero: 0, febrero: 1, marzo: 2, abril: 3, mayo: 4, junio: 5,
+    julio: 6, agosto: 7, septiembre: 8, octubre: 9, noviembre: 10, diciembre: 11,
+  };
+
+  const clean = dateString
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean);
+
+  const now = new Date();
+  let day: number | null = null;
+  let month: number = now.getMonth();
+  let year: number = now.getFullYear();
+
+  for (const t of clean) {
+    if (!isNaN(Number(t))) {
+      const num = Number(t);
+      if (num > 31) {
+        year = num;
+      } else if (day === null) {
+        day = num;
+      }
+    } else if (monthMap[t] !== undefined) {
+      month = monthMap[t];
+    }
+  }
+
+  if (day === null) return true;
+
+  if (now.getMonth() === 11 && month === 0 && year === now.getFullYear()) {
+    year += 1;
+  }
+
+  const aptDate = new Date(year, month, day, 0, 0, 0, 0);
+  const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+  return aptDate.getTime() <= todayEnd.getTime();
+}
+
+export function sortAppointmentsChronologically(apts: AppointmentItem[]): AppointmentItem[] {
+  const monthMap: Record<string, number> = {
+    ene: 0, feb: 1, mar: 2, abr: 3, may: 4, jun: 5,
+    jul: 6, ago: 7, sep: 8, oct: 9, nov: 10, dic: 11,
+    enero: 0, febrero: 1, marzo: 2, abril: 3, mayo: 4, junio: 5,
+    julio: 6, agosto: 7, septiembre: 8, octubre: 9, noviembre: 10, diciembre: 11,
+  };
+
+  return [...apts].sort((a, b) => {
+    const parseDate = (dStr: string) => {
+      if (!dStr) return 0;
+      const clean = dStr
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]/g, ' ')
+        .split(/\s+/)
+        .filter(Boolean);
+      let day: number | null = null;
+      let month = 0;
+      let year = new Date().getFullYear();
+      for (const t of clean) {
+        if (!isNaN(Number(t))) {
+          const num = Number(t);
+          if (num > 31) year = num;
+          else if (day === null) day = num;
+        } else if (monthMap[t] !== undefined) {
+          month = monthMap[t];
+        }
+      }
+      return new Date(year, month, day ?? 1).getTime();
+    };
+
+    const timeA = timeToMinutes(a.timeSlot);
+    const timeB = timeToMinutes(b.timeSlot);
+    const dateA = parseDate(a.dateString);
+    const dateB = parseDate(b.dateString);
+    if (dateA !== dateB) return dateA - dateB;
+    return timeA - timeB;
+  });
+}
+
+export function buildRealOpenDays(count = 30, scheduleRule?: ShopConfig['schedule']): DayOption[] {
+  const days: DayOption[] = [];
+  const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+  const dayNames = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+  const dayKeyMap = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
+  const now = new Date();
+  const schedule = scheduleRule || DEFAULT_SHOP_CONFIG.schedule;
+
+  for (let i = 0; i < count; i++) {
+    const d = new Date(now.getTime());
+    d.setDate(now.getDate() + i);
+    const dayOfWeek = d.getDay();
+    const key = dayKeyMap[dayOfWeek];
+    const rule = schedule[key] || { isOpen: true };
+    if (rule.isOpen !== false) {
+      days.push({
+        dateString: `${dayNames[dayOfWeek]} ${d.getDate()} ${monthNames[d.getMonth()]}`,
+        dayName: dayNames[dayOfWeek],
+        dayNumber: String(d.getDate()),
+        monthName: monthNames[d.getMonth()],
+        dayOfWeek,
+      });
+    }
+  }
+  return days.length > 0
+    ? days
+    : [{ dateString: 'Hoy', dayName: 'Hoy', dayNumber: '1', monthName: 'Ene', dayOfWeek: 2 }];
 }
 
 export function getSlotsForDayOfWeek(
   dayOfWeek: number,
-  stepMinutes: number = 30,
-  customSchedule?: CustomScheduleMap
+  intervalMinutes = 30,
+  schedule?: ShopConfig['schedule']
 ): { morning: string[]; afternoon: string[] } {
-  const activeSchedule = customSchedule || DEFAULT_SHOP_CONFIG.schedule;
-  const dayKey = DAY_INDEX_TO_KEY[dayOfWeek];
-  const dynamicRule = activeSchedule?.[dayKey];
+  const dayKeyMap = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
+  const key = dayKeyMap[dayOfWeek] || 'martes';
+  const activeSchedule = schedule || cachedShopConfig.schedule || DEFAULT_SHOP_CONFIG.schedule;
+  const rule = activeSchedule[key] || { isOpen: true, openTime: '09:00', closeTime: '19:00' };
 
-  let openStr: string | undefined;
-  let closeStr: string | undefined;
-  let isClosed = false;
-
-  if (dynamicRule) {
-    isClosed = !dynamicRule.isOpen;
-    openStr = dynamicRule.openTime;
-    closeStr = dynamicRule.closeTime;
-  } else {
-    const fallbackRule = DEFAULT_SCHEDULE[dayOfWeek];
-    isClosed = Boolean(!fallbackRule || fallbackRule.closed);
-    openStr = fallbackRule?.open;
-    closeStr = fallbackRule?.close;
-  }
-
-  if (isClosed || !openStr || !closeStr) {
+  if (rule.isOpen === false) {
     return { morning: [], afternoon: [] };
   }
 
-  const startMins = timeToMinutes(openStr);
-  const endMins = timeToMinutes(closeStr);
+  const openMins = timeToMinutes(rule.openTime || '09:00');
+  const closeMins = timeToMinutes(rule.closeTime || '19:00');
+  const step = Math.max(15, Number(intervalMinutes) || 30);
 
   const morning: string[] = [];
   const afternoon: string[] = [];
-  const interval = Math.max(15, Number(stepMinutes) || 30);
 
-  for (let current = startMins; current + interval <= endMins; current += interval) {
-    const slot = minutesToTime(current);
-    if (current < 13 * 60) {
-      morning.push(slot);
+  for (let m = openMins; m < closeMins; m += step) {
+    const formatted = minutesToTime(m);
+    if (m < 13 * 60) {
+      morning.push(formatted);
     } else {
-      afternoon.push(slot);
+      afternoon.push(formatted);
     }
   }
+
   return { morning, afternoon };
 }
 
+// 💈 Lógica de disponibilidad adaptada a cómo trabajan los barberos
 export function isSlotAvailable(params: {
   candidateTime: string;
   serviceDurationMinutes: number;
@@ -345,480 +358,486 @@ export function isSlotAvailable(params: {
     barberId,
     dateString,
     existingAppointments,
-    allServices = [],
+    allServices,
   } = params;
 
+  if (!candidateTime || !barberId || !dateString) return true;
+
   const candidateStart = timeToMinutes(candidateTime);
-  const durNew = Number(serviceDurationMinutes) || 60;
-  const candidateEnd = candidateStart + durNew;
+  const duration = Math.max(15, Number(serviceDurationMinutes) || 60);
+  const candidateEnd = candidateStart + duration;
 
-  const barberDayApts = existingAppointments.filter(
-    (apt) =>
-      apt.barberId === barberId &&
-      apt.dateString === dateString &&
-      apt.status !== 'cancelado'
-  );
+  const list = Array.isArray(existingAppointments) ? existingAppointments : [];
 
-  for (const apt of barberDayApts) {
+  for (const apt of list) {
+    if (apt.status === 'cancelado') continue;
+    if (apt.barberId !== barberId) continue;
+    if (apt.dateString !== dateString) continue;
+
     const aptStart = timeToMinutes(apt.timeSlot);
-    let aptDuration = Number(apt.durationMinutes) || 0;
-    if (!aptDuration && allServices.length > 0) {
-      const matchedSrv = allServices.find((s) => s.id === apt.serviceId);
-      if (matchedSrv) aptDuration = Number(matchedSrv.durationMinutes);
-    }
-    if (!aptDuration) aptDuration = 60;
-
+    const matchedServiceDur = allServices?.find((s) => s.id === apt.serviceId)?.durationMinutes;
+    const aptDuration = Number(apt.durationMinutes || matchedServiceDur) || 60;
     const aptEnd = aptStart + aptDuration;
 
+    // 1. Si el horario candidato cae DENTRO de un turno ya reservado
+    // (Ej: hay turno a las 09:30 de 1h -> bloquea las 09:30 y las 10:00)
     if (candidateStart >= aptStart && candidateStart < aptEnd) {
       return false;
     }
 
+    // 2. Si el horario candidato es ANTES de un turno ya reservado pero su duración lo pisa
+    // (Ej: quiere agendar a las 09:00 y hay un turno a las 09:30)
     if (candidateStart < aptStart && candidateEnd > aptStart) {
-      const overlapMinutes = candidateEnd - aptStart;
-      const MAX_ALLOWED_OVERLAP_MINUTES = 30;
+      // Si el servicio nuevo dura más de 1 hora 30 min (> 90 min, como Color Global / Mechas de 2h),
+      // NO permitimos agendar porque no da el tiempo antes del turno de las 09:30.
+      if (duration > 90) {
+        return false;
+      }
 
-      if (overlapMinutes > MAX_ALLOWED_OVERLAP_MINUTES) {
+      // Si el servicio dura 1 hora (o hasta 90 min), permitimos que se agende en el hueco
+      // inmediatamente anterior (con hasta 30 min de solapamiento sobre el turno siguiente)
+      // para no perder el turno de las 09:00.
+      const overlapMinutes = candidateEnd - aptStart;
+      if (overlapMinutes > 30 && aptStart - candidateStart < 30) {
         return false;
       }
     }
   }
+
   return true;
 }
 
-export function isValidUruguayanPhone(phone: string): boolean {
-  const digits = phone.replace(/\D/g, '');
-  if (digits.startsWith('09') && digits.length === 9) return true;
-  if (digits.startsWith('9') && digits.length === 8) return true;
-  if (digits.startsWith('5989') && digits.length === 11) return true;
-  return false;
-}
-
-export function sanitizeInput(input: string): string {
-  if (!input) return '';
-  return input.replace(/[<>]/g, '').trim();
-}
-
-async function callAdminOperation(payload: Record<string, any>): Promise<any> {
-  const res = await fetch('/api/admin', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(data.error || 'No se pudo completar la operación administrativa.');
-  }
-  return data;
-}
-
 export async function getShopConfig(forceRefresh = false): Promise<ShopConfig> {
+  if (!supabase) return cachedShopConfig;
   try {
-    if (!forceRefresh && typeof window !== 'undefined') {
-      const cached = sessionStorage.getItem('shop_config_cache');
-      if (cached) return JSON.parse(cached);
-    }
-
-    if (!supabase) return DEFAULT_SHOP_CONFIG;
-    const { data, error } = await supabase
-      .from('shops')
-      .select('*')
-      .eq('id', SHOP_UUID)
-      .maybeSingle();
-
-    if (error || !data) return DEFAULT_SHOP_CONFIG;
-
-    const cfg: ShopConfig = {
-      ...DEFAULT_SHOP_CONFIG,
-      id: data.id ?? DEFAULT_SHOP_CONFIG.id,
-      name: data.name ?? DEFAULT_SHOP_CONFIG.name,
-      address: data.address ?? DEFAULT_SHOP_CONFIG.address,
-      phone: data.phone ?? DEFAULT_SHOP_CONFIG.phone,
-      city: data.city ?? DEFAULT_SHOP_CONFIG.city,
-      backgroundImageUrl:
-        data.background_image_url ||
-        data.backgroundImageUrl ||
-        DEFAULT_SHOP_CONFIG.backgroundImageUrl,
-      logoUrl: data.logo_url || data.logoUrl || DEFAULT_SHOP_CONFIG.logoUrl,
-      coverImageUrl:
-        data.cover_image_url || data.coverImageUrl || DEFAULT_SHOP_CONFIG.coverImageUrl,
-      schedule: (data as any).schedule || DEFAULT_SHOP_CONFIG.schedule,
+    const { data } = await supabase.from('shops').select('*').eq('id', SHOP_UUID).maybeSingle();
+    if (!data) return cachedShopConfig;
+    const config: ShopConfig = {
+      id: data.id,
+      name: data.name || DEFAULT_SHOP_CONFIG.name,
+      phone: data.phone || DEFAULT_SHOP_CONFIG.phone,
+      address: data.address || DEFAULT_SHOP_CONFIG.address,
+      city: data.city || DEFAULT_SHOP_CONFIG.city,
+      logoUrl: data.logo_url || '',
+      backgroundImageUrl: data.background_image_url || '',
+      coverImageUrl: data.cover_image_url || '',
+      schedule: data.schedule || DEFAULT_SHOP_CONFIG.schedule,
     };
-
-    if (typeof window !== 'undefined') {
-      sessionStorage.setItem('shop_config_cache', JSON.stringify(cfg));
-    }
-    return cfg;
+    cachedShopConfig = config;
+    return config;
   } catch {
-    return DEFAULT_SHOP_CONFIG;
+    return cachedShopConfig;
   }
 }
 
-export async function saveShopConfig(config: ShopConfig): Promise<void> {
-  if (typeof window !== 'undefined') {
-    sessionStorage.removeItem('shop_config_cache');
-  }
-  await callAdminOperation({
-    operation: 'SAVE_SHOP_CONFIG',
-    config,
+export async function saveShopConfig(cfg: ShopConfig): Promise<void> {
+  cachedShopConfig = cfg;
+  if (!supabase) return;
+  await supabase.from('shops').upsert({
+    id: SHOP_UUID,
+    name: cfg.name,
+    phone: cfg.phone,
+    address: cfg.address,
+    city: cfg.city,
+    logo_url: cfg.logoUrl,
+    background_image_url: cfg.backgroundImageUrl,
+    cover_image_url: cfg.coverImageUrl,
+    schedule: cfg.schedule,
   });
 }
 
 export async function getServices(forceRefresh = false): Promise<ServiceItem[]> {
+  if (!supabase) return cachedServices;
   try {
-    if (!forceRefresh && typeof window !== 'undefined') {
-      const cached = sessionStorage.getItem('services_cache');
-      if (cached) return JSON.parse(cached);
-    }
-
-    if (!supabase) return DEFAULT_SERVICES;
-    const { data, error } = await supabase
-      .from('services')
-      .select('id, name, price, duration_minutes, description, image_url, active')
-      .eq('shop_id', SHOP_UUID)
-      .eq('active', true)
-      .order('price', { ascending: true });
-
-    if (error || !data || data.length === 0) {
-      return DEFAULT_SERVICES;
-    }
-
-    const services = data.map((s) => ({
-      id: s.id,
-      name: s.name,
-      price: Number(s.price),
-      durationMinutes: Number(s.duration_minutes) || 60,
-      description: s.description || `${s.duration_minutes || 60} min`,
-      imageUrl: s.image_url,
-      active: s.active ?? true,
+    const { data } = await supabase.from('services').select('*').eq('shop_id', SHOP_UUID);
+    if (!data || data.length === 0) return cachedServices;
+    const mapped: ServiceItem[] = data.map((d) => ({
+      id: d.id,
+      name: d.name,
+      price: Number(d.price) || 0,
+      durationMinutes: Number(d.duration_minutes) || 60,
+      description: d.description || `${d.duration_minutes || 60} min`,
+      imageUrl: d.image_url || '',
+      active: d.active ?? true,
     }));
-
-    if (typeof window !== 'undefined') {
-      sessionStorage.setItem('services_cache', JSON.stringify(services));
-    }
-    return services;
+    cachedServices = mapped;
+    return mapped;
   } catch {
-    return DEFAULT_SERVICES;
+    return cachedServices;
   }
 }
 
 export async function saveServices(services: ServiceItem[]): Promise<void> {
-  if (typeof window !== 'undefined') {
-    sessionStorage.removeItem('services_cache');
+  cachedServices = services;
+  if (!supabase) return;
+  for (const s of services) {
+    await supabase.from('services').upsert({
+      id: s.id,
+      shop_id: SHOP_UUID,
+      name: s.name,
+      price: s.price,
+      duration_minutes: s.durationMinutes,
+      description: s.description,
+      image_url: s.imageUrl,
+      active: s.active ?? true,
+    });
   }
-  await callAdminOperation({
-    operation: 'SAVE_SERVICES',
-    services,
-  });
 }
 
 export async function deleteServiceFromDb(id: string): Promise<void> {
-  if (!isValidUUID(id)) return;
-  if (typeof window !== 'undefined') {
-    sessionStorage.removeItem('services_cache');
-  }
-  await callAdminOperation({
-    operation: 'DELETE_SERVICE',
-    id,
-  });
+  if (!supabase) return;
+  await supabase.from('services').delete().eq('id', id).eq('shop_id', SHOP_UUID);
 }
 
 export async function getBarbers(forceRefresh = false): Promise<BarberItem[]> {
+  if (!supabase) return cachedBarbers;
   try {
-    if (!forceRefresh && typeof window !== 'undefined') {
-      const cached = sessionStorage.getItem('barbers_cache');
-      if (cached) return JSON.parse(cached);
-    }
-
-    if (!supabase) return DEFAULT_BARBERS;
-    const { data, error } = await supabase
-      .from('barbers')
-      .select('id, slug, name, role, bio, specialties, service_ids, active')
-      .eq('shop_id', SHOP_UUID)
-      .eq('active', true);
-
-    if (error || !data || data.length === 0) {
-      return DEFAULT_BARBERS;
-    }
-
-    const barbers = data.map((b) => ({
-      id: b.id,
-      slug: b.slug || b.name.toLowerCase(),
-      name: b.name,
-      role: b.role || 'Barbero',
-      bio: b.bio || '',
-      specialties: b.specialties || ['Corte'],
-      serviceIds: Array.isArray(b.service_ids) ? b.service_ids : [],
-      active: b.active ?? true,
-      commissionRate: 0,
-      pin: '',
-      isOwner: false,
+    const { data } = await supabase.from('barbers').select('*').eq('shop_id', SHOP_UUID);
+    if (!data || data.length === 0) return cachedBarbers;
+    const mapped: BarberItem[] = data.map((d) => ({
+      id: d.id,
+      slug: d.slug || '',
+      name: d.name,
+      role: d.role || 'Barbero',
+      bio: d.bio || '',
+      specialties: d.specialties || [],
+      serviceIds: d.service_ids || [],
+      isOwner: d.is_owner ?? false,
+      active: d.active ?? true,
+      commissionRate: Number(d.commission_rate) || 50,
+      pin: d.pin || '1234',
     }));
-
-    if (typeof window !== 'undefined') {
-      sessionStorage.setItem('barbers_cache', JSON.stringify(barbers));
-    }
-    return barbers;
+    cachedBarbers = mapped;
+    return mapped;
   } catch {
-    return DEFAULT_BARBERS;
+    return cachedBarbers;
   }
 }
 
-export async function getAdminBarbers(): Promise<BarberItem[]> {
-  const res = await fetch('/api/admin?resource=barbers', { cache: 'no-store' });
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(json.error || 'No autorizado para leer barberos.');
-  }
-  const data = Array.isArray(json.data) ? json.data : [];
-  return data.map((b: any) => ({
-    id: b.id,
-    slug: b.slug || b.name.toLowerCase(),
-    name: b.name,
-    role: b.role || 'Barbero',
-    bio: b.bio || '',
-    specialties: b.specialties || ['Corte'],
-    serviceIds: Array.isArray(b.service_ids) ? b.service_ids : [],
-    active: b.active ?? true,
-    commissionRate: Number(b.commission_rate ?? 50),
-    pin: b.pin || '1234',
-    isOwner: Number(b.commission_rate) === 100,
-  }));
+export async function getAdminBarbers(forceRefresh = false): Promise<BarberItem[]> {
+  return getBarbers(forceRefresh);
 }
 
 export async function saveBarbers(barbers: BarberItem[]): Promise<void> {
-  if (typeof window !== 'undefined') {
-    sessionStorage.removeItem('barbers_cache');
+  cachedBarbers = barbers;
+  if (!supabase) return;
+  for (const b of barbers) {
+    await supabase.from('barbers').upsert({
+      id: b.id,
+      shop_id: SHOP_UUID,
+      slug: b.slug,
+      name: b.name,
+      role: b.role,
+      bio: b.bio,
+      specialties: b.specialties,
+      service_ids: b.serviceIds,
+      is_owner: b.isOwner,
+      active: b.active ?? true,
+      commission_rate: b.commissionRate,
+      pin: b.pin,
+    });
   }
-  await callAdminOperation({
-    operation: 'SAVE_BARBERS',
-    barbers,
-  });
 }
 
 export async function deleteBarberFromDb(id: string): Promise<void> {
-  if (!isValidUUID(id)) return;
-  if (typeof window !== 'undefined') {
-    sessionStorage.removeItem('barbers_cache');
-  }
-  await callAdminOperation({
-    operation: 'DELETE_BARBER',
-    id,
-  });
+  if (!supabase) return;
+  await supabase.from('barbers').delete().eq('id', id).eq('shop_id', SHOP_UUID);
 }
 
-export async function getPublicBookedSlots(forceRefresh = false): Promise<AppointmentItem[]> {
+export async function getAppointments(forceRefresh = false): Promise<AppointmentItem[]> {
+  if (!supabase) return [];
   try {
-    const res = await fetch('/api/public/booking', { cache: 'no-store' });
-    if (!res.ok) return [];
-    const json = await res.json().catch(() => ({}));
-    const apts = Array.isArray(json.appointments) ? json.appointments : [];
-    return sortAppointmentsChronologically(apts);
+    const { data } = await supabase
+      .from('appointments')
+      .select(`
+        id, code, service_id, barber_id, date_string, time_slot,
+        duration_minutes, client_name, client_phone, client_email, client_notes,
+        status, price_snapshot, created_at,
+        services:service_id (name, price),
+        barbers:barber_id (name)
+      `)
+      .eq('shop_id', SHOP_UUID)
+      .order('created_at', { ascending: false });
+
+    if (!data) return [];
+    return data.map((d: any) => {
+      const srv = Array.isArray(d.services) ? d.services[0] : d.services;
+      const brb = Array.isArray(d.barbers) ? d.barbers[0] : d.barbers;
+      return {
+        id: d.id,
+        code: d.code || '',
+        serviceId: d.service_id,
+        serviceName: srv?.name || 'Servicio',
+        servicePrice: Number(srv?.price ?? d.price_snapshot) || 0,
+        priceSnapshot: Number(d.price_snapshot ?? srv?.price) || 0,
+        durationMinutes: Number(d.duration_minutes) || 60,
+        barberId: d.barber_id,
+        barberName: brb?.name || 'Barbero',
+        dateString: d.date_string,
+        timeSlot: d.time_slot,
+        clientName: d.client_name,
+        clientPhone: d.client_phone,
+        clientEmail: d.client_email || '',
+        clientNotes: d.client_notes || '',
+        status: d.status || 'confirmado',
+        createdAt: d.created_at,
+      };
+    });
   } catch {
     return [];
   }
 }
 
-export async function getAppointments(): Promise<AppointmentItem[]> {
-  const res = await fetch('/api/admin?resource=appointments', { cache: 'no-store' });
-  if (!res.ok) {
-    return getPublicBookedSlots(true);
-  }
-  const json = await res.json().catch(() => ({}));
-  const data = Array.isArray(json.data) ? json.data : [];
-
-  let shopPrefix = SHOP_PREFIX;
-  try {
-    const cfg = await getShopConfig(false);
-    if (cfg && cfg.name) {
-      shopPrefix = getShopPrefix(cfg.name);
-    }
-  } catch {}
-
-  const apts = data.map((apt: any) => ({
-    id: apt.id,
-    code: apt.code || `${shopPrefix}-${Math.floor(1000 + Math.random() * 9000)}`,
-    serviceId: apt.service_id,
-    serviceName: apt.services?.name || 'Servicio',
-    servicePrice: Number(apt.price_snapshot ?? apt.services?.price ?? 0),
-    priceSnapshot: Number(apt.price_snapshot ?? 0),
-    durationMinutes: Number(apt.duration_minutes ?? apt.services?.duration_minutes ?? 60),
-    barberId: apt.barber_id,
-    barberName: apt.barbers?.name || 'Barbero',
-    dateString: apt.date_string,
-    timeSlot: apt.time_slot,
-    clientName: apt.client_name,
-    clientPhone: apt.client_phone || '098509376', // Oculto por defecto para compatibilidad
-    clientEmail: apt.client_email || '',         // 👈 Mapeado desde la BD
-    clientNotes: apt.client_notes,
-    status: apt.status || 'confirmado',
-    createdAt: apt.created_at,
-  }));
-
-  return sortAppointmentsChronologically(apts);
+export async function getPublicBookedSlots(forceRefresh = false): Promise<AppointmentItem[]> {
+  const apts = await getAppointments(forceRefresh);
+  return apts.filter((a) => a.status !== 'cancelado');
 }
 
-export async function createAppointment(
-  data: Omit<AppointmentItem, 'id' | 'code' | 'status' | 'createdAt' | 'durationMinutes'> & {
-    durationMinutes?: number;
-  }
-): Promise<AppointmentItem> {
-  const res = await fetch('/api/public/booking', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      serviceId: data.serviceId,
-      barberId: data.barberId,
-      dateString: data.dateString,
-      timeSlot: data.timeSlot,
-      clientName: data.clientName,
-      clientPhone: data.clientPhone || '098509376', // Oculto por defecto para que la BD no falle
-      clientEmail: data.clientEmail,               // 👈 Enviado al backend
-      clientNotes: data.clientNotes || '',
-    }),
-  });
+export async function createAppointment(item: {
+  serviceId: string;
+  serviceName?: string;
+  servicePrice?: number;
+  priceSnapshot?: number;
+  durationMinutes?: number;
+  barberId: string;
+  barberName?: string;
+  dateString: string;
+  timeSlot: string;
+  clientName: string;
+  clientPhone: string;
+  clientEmail?: string;
+  clientNotes?: string;
+}): Promise<AppointmentItem> {
+  if (!supabase) throw new Error('Sin conexión con Supabase');
+  const code = Math.random().toString(36).substring(2, 6).toUpperCase();
+  const finalPrice = Number(item.priceSnapshot ?? item.servicePrice) || 0;
+  const finalDuration = Number(item.durationMinutes) || 60;
 
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok || !json.appointment) {
-    throw new Error(json.error || 'No se pudo guardar el turno.');
-  }
+  const { data, error } = await supabase
+    .from('appointments')
+    .insert([
+      {
+        shop_id: SHOP_UUID,
+        code,
+        service_id: item.serviceId,
+        barber_id: item.barberId,
+        date_string: item.dateString,
+        time_slot: item.timeSlot,
+        client_name: item.clientName,
+        client_phone: item.clientPhone,
+        client_email: item.clientEmail || '',
+        client_notes: item.clientNotes || '',
+        price_snapshot: finalPrice,
+        duration_minutes: finalDuration,
+        status: 'confirmado',
+      },
+    ])
+    .select()
+    .single();
 
-  return json.appointment as AppointmentItem;
+  if (error) throw new Error(error.message);
+
+  return {
+    id: data.id,
+    code: data.code || code,
+    serviceId: data.service_id,
+    serviceName: item.serviceName || 'Servicio',
+    servicePrice: finalPrice,
+    priceSnapshot: finalPrice,
+    durationMinutes: finalDuration,
+    barberId: data.barber_id,
+    barberName: item.barberName || 'Barbero',
+    dateString: data.date_string,
+    timeSlot: data.time_slot,
+    clientName: data.client_name,
+    clientPhone: data.client_phone,
+    clientEmail: data.client_email || item.clientEmail || '',
+    clientNotes: data.client_notes || '',
+    status: data.status || 'confirmado',
+    createdAt: data.created_at,
+  };
 }
 
 export async function updateAppointmentStatus(
   id: string,
   status: AppointmentItem['status']
 ): Promise<AppointmentItem[]> {
-  const res = await fetch('/api/barber', {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id, status }),
-  });
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(json.error || 'No autorizado para actualizar el estado del turno.');
-  }
-  return await getAppointments();
-}
+  if (!supabase) return [];
 
-export async function unlockBarberPanelWithPin(
-  barberId: string,
-  pin: string
-): Promise<{ commissionRate: number; appointments: AppointmentItem[] }> {
-  const res = await fetch('/api/barber', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ barberId, pin }),
-  });
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok || !json.ok) {
-    throw new Error(json.error || 'PIN incorrecto.');
+  if (status === 'completado') {
+    const { data: existing } = await supabase
+      .from('appointments')
+      .select('date_string')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (existing?.date_string && !canCompleteAppointment(existing.date_string)) {
+      throw new Error('No podés completar un turno que corresponde a una fecha futura.');
+    }
   }
-  return {
-    commissionRate: Number(json.commissionRate ?? 50),
-    appointments: sortAppointmentsChronologically(Array.isArray(json.appointments) ? json.appointments : []),
-  };
+
+  await supabase.from('appointments').update({ status }).eq('id', id);
+  return getAppointments(true);
 }
 
 export async function getExpenses(): Promise<ExpenseItem[]> {
-  const res = await fetch('/api/admin?resource=expenses', { cache: 'no-store' });
-  if (!res.ok) return [];
-  const json = await res.json().catch(() => ({}));
-  const data = Array.isArray(json.data) ? json.data : [];
-
-  return data.map((e: any) => ({
-    id: e.id,
-    description: e.description,
-    amount: Number(e.amount),
-    category: (e.category as ExpenseCategory) || 'Insumos',
-    date: e.expense_date,
-    createdAt: e.created_at,
-  }));
-}
-
-export async function createExpense(
-  data: Omit<ExpenseItem, 'id' | 'createdAt'>
-): Promise<ExpenseItem[]> {
-  await callAdminOperation({
-    operation: 'CREATE_EXPENSE',
-    expense: data,
-  });
-  return await getExpenses();
-}
-
-export async function deleteExpense(id: string): Promise<ExpenseItem[]> {
-  await callAdminOperation({
-    operation: 'DELETE_EXPENSE',
-    id,
-  });
-  return await getExpenses();
-}
-
-export async function getTips(barberId?: string): Promise<TipItem[]> {
+  if (!supabase) return [];
   try {
-    if (!supabase) return [];
-    let query = supabase
-      .from('tips')
-      .select('id, barber_id, amount, note, date_string, created_at, barbers(name)')
+    const { data } = await supabase
+      .from('expenses')
+      .select('*')
       .eq('shop_id', SHOP_UUID)
       .order('created_at', { ascending: false });
-
-    if (barberId) {
-      query = query.eq('barber_id', barberId);
-    }
-
-    const { data, error } = await query;
-    if (error || !data) return [];
-
-    return data.map((t: any) => ({
-      id: t.id,
-      barberId: t.barber_id,
-      barberName: t.barbers?.name || 'Barbero',
-      amount: Number(t.amount),
-      note: t.note || '',
-      dateString: t.date_string,
-      createdAt: t.created_at,
+    if (!data) return [];
+    return data.map((d) => ({
+      id: d.id,
+      description: d.description,
+      amount: Number(d.amount) || 0,
+      category: d.category || 'Otros',
+      date: d.date || new Date().toISOString().split('T')[0],
+      createdAt: d.created_at,
     }));
   } catch {
     return [];
   }
 }
 
-export async function createTip(params: {
+export async function createExpense(item: {
+  description: string;
+  amount: number;
+  category: ExpenseCategory;
+  date: string;
+}): Promise<ExpenseItem[]> {
+  if (!supabase) return [];
+  await supabase.from('expenses').insert([
+    {
+      shop_id: SHOP_UUID,
+      description: item.description,
+      amount: item.amount,
+      category: item.category,
+      date: item.date,
+    },
+  ]);
+  return getExpenses();
+}
+
+export async function deleteExpense(id: string): Promise<ExpenseItem[]> {
+  if (!supabase) return [];
+  await supabase.from('expenses').delete().eq('id', id).eq('shop_id', SHOP_UUID);
+  return getExpenses();
+}
+
+export async function getTips(barberId?: string): Promise<TipItem[]> {
+  if (!supabase) return [];
+  try {
+    let query = supabase
+      .from('tips')
+      .select('*, barbers (name)')
+      .eq('shop_id', SHOP_UUID)
+      .order('created_at', { ascending: false });
+    if (barberId) query = query.eq('barber_id', barberId);
+    const { data } = await query;
+    if (!data) return [];
+    return data.map((d: any) => ({
+      id: d.id,
+      barberId: d.barber_id,
+      barberName: d.barbers?.name || 'Barbero',
+      amount: Number(d.amount) || 0,
+      note: d.note || '',
+      dateString: d.date_string || new Date().toLocaleDateString(),
+      createdAt: d.created_at,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+export async function createTip(item: {
   barberId: string;
   amount: number;
   note?: string;
 }): Promise<TipItem[]> {
-  if (!supabase) throw new Error('Base de datos no disponible');
-  const cleanAmount = Number(params.amount);
-  if (!cleanAmount || cleanAmount <= 0) {
-    throw new Error('El monto de la propina debe ser mayor a 0.');
-  }
-
-  const todayStr = new Date().toLocaleDateString('es-UY', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
-
-  const { error } = await supabase.from('tips').insert({
-    shop_id: SHOP_UUID,
-    barber_id: params.barberId,
-    amount: cleanAmount,
-    note: sanitizeInput(params.note || ''),
-    date_string: todayStr,
-  });
-
-  if (error) {
-    throw new Error('No se pudo guardar la propina: ' + error.message);
-  }
-
-  return await getTips();
+  if (!supabase) return [];
+  await supabase.from('tips').insert([
+    {
+      shop_id: SHOP_UUID,
+      barber_id: item.barberId,
+      amount: item.amount,
+      note: item.note || '',
+      date_string: new Date().toLocaleDateString('es-UY', { day: 'numeric', month: 'short' }),
+    },
+  ]);
+  return getTips();
 }
 
 export async function deleteTip(id: string): Promise<TipItem[]> {
-  if (!supabase || !isValidUUID(id)) return await getTips();
+  if (!supabase) return [];
   await supabase.from('tips').delete().eq('id', id).eq('shop_id', SHOP_UUID);
-  return await getTips();
+  return getTips();
+}
+
+export async function getManualCharges(barberId?: string): Promise<ManualChargeItem[]> {
+  if (!supabase) return [];
+  try {
+    let query = supabase
+      .from('manual_charges')
+      .select('*, barbers (name)')
+      .eq('shop_id', SHOP_UUID)
+      .order('created_at', { ascending: false });
+    if (barberId) query = query.eq('barber_id', barberId);
+    const { data } = await query;
+    if (!data) return [];
+    return data.map((d: any) => ({
+      id: d.id,
+      barberId: d.barber_id,
+      barberName: d.barbers?.name || 'Barbero',
+      amount: Number(d.amount) || 0,
+      note: d.note || '',
+      dateString: d.date_string || new Date().toLocaleDateString(),
+      createdAt: d.created_at,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+export async function createManualCharge(item: {
+  barberId: string;
+  amount: number;
+  note?: string;
+}): Promise<ManualChargeItem[]> {
+  if (!supabase) return [];
+  await supabase.from('manual_charges').insert([
+    {
+      shop_id: SHOP_UUID,
+      barber_id: item.barberId,
+      amount: item.amount,
+      note: item.note || '',
+      date_string: new Date().toLocaleDateString('es-UY', { day: 'numeric', month: 'short' }),
+    },
+  ]);
+  return getManualCharges();
+}
+
+export async function deleteManualCharge(id: string): Promise<ManualChargeItem[]> {
+  if (!supabase) return [];
+  await supabase.from('manual_charges').delete().eq('id', id).eq('shop_id', SHOP_UUID);
+  return getManualCharges();
+}
+
+export async function unlockBarberPanelWithPin(barberId: string, pin: string) {
+  if (!supabase) throw new Error('Sin conexión con la base de datos.');
+  const { data: barber, error } = await supabase
+    .from('barbers')
+    .select('id, name, commission_rate, pin')
+    .eq('id', barberId)
+    .eq('shop_id', SHOP_UUID)
+    .maybeSingle();
+  if (error || !barber) throw new Error('Barbero no encontrado.');
+  if (String(barber.pin).trim() !== String(pin).trim()) throw new Error('PIN incorrecto.');
+  const apts = await getAppointments();
+  return {
+    commissionRate: Number(barber.commission_rate) || 50,
+    appointments: apts.filter((a) => a.barberId === barberId),
+  };
 }

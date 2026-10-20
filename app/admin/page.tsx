@@ -1,3 +1,4 @@
+// app/admin/page.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -32,6 +33,7 @@ import {
   ShieldCheck,
   Lock,
   Coins,
+  BarChart3,
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import {
@@ -41,11 +43,11 @@ import {
   ExpenseItem,
   ExpenseCategory,
   TipItem,
+  ManualChargeItem,
   ShopConfig,
   DEFAULT_SHOP_CONFIG,
+  SHOP_UUID,
   generateUUID,
-  isValidUUID,
-  sanitizeInput,
   getServices,
   saveServices,
   deleteServiceFromDb,
@@ -60,10 +62,14 @@ import {
   getTips,
   createTip,
   deleteTip,
+  getManualCharges,
+  createManualCharge,
+  deleteManualCharge,
   getShopConfig,
   saveShopConfig,
   buildRealOpenDays,
   sortAppointmentsChronologically,
+  canCompleteAppointment,
   DayOption,
 } from '@/lib/booking-store';
 
@@ -133,7 +139,7 @@ function isWithinPeriod(
 export default function AdminDashboard() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<
-    'caja' | 'agenda' | 'turnos' | 'barberos' | 'servicios' | 'marca'
+    'caja' | 'facturacion' | 'agenda' | 'turnos' | 'barberos' | 'servicios' | 'marca'
   >('caja');
 
   const [appointments, setAppointments] = useState<AppointmentItem[]>([]);
@@ -141,18 +147,23 @@ export default function AdminDashboard() {
   const [barbers, setBarbers] = useState<BarberItem[]>([]);
   const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
   const [tips, setTips] = useState<TipItem[]>([]);
+  const [manualCharges, setManualCharges] = useState<ManualChargeItem[]>([]);
   const [shopConfig, setShopConfig] = useState<ShopConfig>(DEFAULT_SHOP_CONFIG);
   const [days, setDays] = useState<DayOption[]>([]);
   const [savedBanner, setSavedBanner] = useState(false);
   const [savingBarberId, setSavingBarberId] = useState<string | null>(null);
   const [adminError, setAdminError] = useState<string>('');
 
+  const [cashStatus, setCashStatus] = useState<'abierta' | 'cerrada'>('abierta');
+  const [lastClosedDate, setLastClosedDate] = useState<string>('');
   const [blockedBarbers, setBlockedBarbers] = useState<Record<string, boolean>>({});
 
   const availableMonths = getRecentMonths(12);
   const [period, setPeriod] = useState<PeriodFilter>('mes');
   const [selectedMonth, setSelectedMonth] = useState<string>(availableMonths[0].value);
-  const [onlyCompleted, setOnlyCompleted] = useState<boolean>(false);
+
+  const [auditDate, setAuditDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [auditBarberId, setAuditBarberId] = useState<string>('todos');
 
   const [adminAgendaDate, setAdminAgendaDate] = useState<string>('');
   const [adminAgendaBarberId, setAdminAgendaBarberId] = useState<string>('todos');
@@ -173,6 +184,10 @@ export default function AdminDashboard() {
   const [tipAmount, setTipAmount] = useState<string>('');
   const [tipNote, setTipNote] = useState<string>('');
 
+  const [chargeBarberId, setChargeBarberId] = useState<string>('');
+  const [chargeAmount, setChargeAmount] = useState<string>('');
+  const [chargeNote, setChargeNote] = useState<string>('');
+
   const checkBarberLocks = (brbs: BarberItem[]) => {
     const locks: Record<string, boolean> = {};
     brbs.forEach((b) => {
@@ -186,12 +201,13 @@ export default function AdminDashboard() {
     async function loadAdminData() {
       try {
         setAdminError('');
-        const [apts, srvs, brbs, exps, tps, cfg] = await Promise.all([
+        const [apts, srvs, brbs, exps, tps, charges, cfg] = await Promise.all([
           getAppointments(),
           getServices(true),
           getAdminBarbers(),
           getExpenses(),
           getTips(),
+          getManualCharges(),
           getShopConfig(true),
         ]);
 
@@ -205,6 +221,24 @@ export default function AdminDashboard() {
         const freshBarbers = Array.isArray(brbs) ? brbs : [];
         if (freshBarbers.length > 0) {
           setTipBarberId(freshBarbers[0].id);
+          setChargeBarberId(freshBarbers[0].id);
+        }
+
+        if (supabase) {
+          const { data: cashData } = await supabase
+            .from('cash_registers')
+            .select('status, closed_at')
+            .eq('shop_id', SHOP_UUID)
+            .order('opened_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          
+          if (cashData) {
+            setCashStatus(cashData.status || 'abierta');
+            if (cashData.closed_at) {
+              setLastClosedDate(cashData.closed_at.split('T')[0]);
+            }
+          }
         }
 
         setAppointments(sortAppointmentsChronologically(Array.isArray(apts) ? apts : []));
@@ -212,6 +246,7 @@ export default function AdminDashboard() {
         setBarbers(freshBarbers);
         setExpenses(Array.isArray(exps) ? exps : []);
         setTips(Array.isArray(tps) ? tps : []);
+        setManualCharges(Array.isArray(charges) ? charges : []);
         setShopConfig(freshConfig);
 
         checkBarberLocks(freshBarbers);
@@ -361,6 +396,7 @@ export default function AdminDashboard() {
       setBarbers(finalBarbers);
       if (!tipBarberId && finalBarbers.length > 0) {
         setTipBarberId(finalBarbers[0].id);
+        setChargeBarberId(finalBarbers[0].id);
       }
       checkBarberLocks(finalBarbers);
       setNewBarberName('');
@@ -491,6 +527,34 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleAddChargeAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chargeBarberId || !chargeAmount || Number(chargeAmount) <= 0) return;
+    try {
+      setAdminError('');
+      const updated = await createManualCharge({
+        barberId: chargeBarberId,
+        amount: Number(chargeAmount),
+        note: chargeNote.trim() || 'Cobro manual extra',
+      });
+      setManualCharges(Array.isArray(updated) ? updated : []);
+      setChargeAmount('');
+      setChargeNote('');
+    } catch (err: any) {
+      setAdminError(err?.message || 'Error al registrar el cobro manual.');
+    }
+  };
+
+  const handleRemoveChargeAdmin = async (id: string) => {
+    try {
+      setAdminError('');
+      const updated = await deleteManualCharge(id);
+      setManualCharges(Array.isArray(updated) ? updated : []);
+    } catch (err: any) {
+      setAdminError(err?.message || 'Error al eliminar el cobro manual.');
+    }
+  };
+
   const handleSaveBrand = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -518,11 +582,12 @@ export default function AdminDashboard() {
   );
   const safeExpenses = Array.isArray(expenses) ? expenses : [];
   const safeTips = Array.isArray(tips) ? tips : [];
+  const safeManualCharges = Array.isArray(manualCharges) ? manualCharges : [];
   const safeBarbers = Array.isArray(barbers) ? barbers : [];
 
   const filteredAppointments = safeAppointments.filter((apt) => {
-    if (apt.status === 'cancelado') return false;
-    if (onlyCompleted && apt.status !== 'completado') return false;
+    if (apt.status !== 'completado') return false;
+    if (period === 'hoy' && cashStatus === 'cerrada') return false;
     return isWithinPeriod(apt.createdAt, period, selectedMonth);
   });
 
@@ -534,6 +599,76 @@ export default function AdminDashboard() {
     isWithinPeriod(t.createdAt, period, selectedMonth)
   );
 
+  const filteredManualCharges = safeManualCharges.filter((c) => {
+    if (period === 'hoy' && cashStatus === 'cerrada') return false;
+    return isWithinPeriod(c.createdAt, period, selectedMonth);
+  });
+
+  const auditedAppointments = safeAppointments.filter((apt) => {
+    if (apt.status !== 'completado') return false;
+    if (auditDate) {
+      const aptDate = (apt.createdAt || '').split('T')[0];
+      if (aptDate !== auditDate) return false;
+    }
+    if (auditBarberId !== 'todos' && apt.barberId !== auditBarberId) return false;
+    return true;
+  });
+
+  const auditedManualCharges = safeManualCharges.filter((c) => {
+    if (auditDate) {
+      const cDate = (c.createdAt || '').split('T')[0];
+      if (cDate !== auditDate) return false;
+    }
+    if (auditBarberId !== 'todos' && c.barberId !== auditBarberId) return false;
+    return true;
+  });
+
+  const auditedTips = safeTips.filter((t) => {
+    if (auditDate) {
+      const tDate = (t.createdAt || '').split('T')[0];
+      if (tDate !== auditDate) return false;
+    }
+    if (auditBarberId !== 'todos' && t.barberId !== auditBarberId) return false;
+    return true;
+  });
+
+  const auditedExpenses = safeExpenses.filter((e) => {
+    if (auditDate) {
+      const eDate = (e.createdAt || e.date || '').split('T')[0];
+      if (eDate !== auditDate) return false;
+    }
+    return true;
+  });
+
+  const auditedGrossTotal = 
+    auditedAppointments.reduce((sum, a) => sum + Number(a.priceSnapshot ?? a.servicePrice), 0) +
+    auditedManualCharges.reduce((sum, c) => sum + Number(c.amount), 0);
+
+  const auditedTipsTotal = auditedTips.reduce((sum, t) => sum + Number(t.amount), 0);
+  const auditedExpensesTotal = auditedExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
+
+  const auditedBarbersBreakdown = safeBarbers
+    .filter((b) => auditBarberId === 'todos' || b.id === auditBarberId)
+    .map((barber) => {
+      const brbApts = auditedAppointments.filter((a) => a.barberId === barber.id);
+      const brbCharges = auditedManualCharges.filter((c) => c.barberId === barber.id);
+      const brbTips = auditedTips.filter((t) => t.barberId === barber.id);
+
+      const cutsGen = brbApts.reduce((sum, a) => sum + Number(a.priceSnapshot ?? a.servicePrice), 0);
+      const manualGen = brbCharges.reduce((sum, c) => sum + Number(c.amount), 0);
+      const totalGen = cutsGen + manualGen;
+      const commissionEarned = Math.round((totalGen * barber.commissionRate) / 100);
+      const tipsEarned = brbTips.reduce((sum, t) => sum + Number(t.amount), 0);
+
+      return {
+        barber,
+        cutsCount: brbApts.length,
+        totalGen,
+        commissionEarned,
+        tipsEarned,
+      };
+    });
+
   const adminAgendaAppointments = safeAppointments.filter((apt) => {
     if (apt.status === 'cancelado') return false;
     if (adminAgendaDate && apt.dateString !== adminAgendaDate) return false;
@@ -544,10 +679,17 @@ export default function AdminDashboard() {
   const barberFinancials = safeBarbers.map((barber) => {
     const barberApts = filteredAppointments.filter((apt) => apt.barberId === barber.id);
     const cutsCount = barberApts.length;
-    const grossGenerated = barberApts.reduce(
+    
+    const grossFromAppointments = barberApts.reduce(
       (sum, apt) => sum + Number(apt.priceSnapshot ?? apt.servicePrice),
       0
     );
+
+    const barberManualChargesTotal = filteredManualCharges
+      .filter((c) => c.barberId === barber.id)
+      .reduce((sum, c) => sum + Number(c.amount), 0);
+
+    const grossGenerated = grossFromAppointments + barberManualChargesTotal;
 
     const barberTakeHome = Math.round((grossGenerated * barber.commissionRate) / 100);
     const leftForOwner = grossGenerated - barberTakeHome;
@@ -563,10 +705,14 @@ export default function AdminDashboard() {
       barberTakeHome,
       leftForOwner,
       barberTipsTotal,
+      barberManualChargesTotal,
     };
   });
 
-  const grossRevenueTotal = barberFinancials.reduce((sum, b) => sum + b.grossGenerated, 0);
+  const totalGrossAppointments = barberFinancials.reduce((sum, b) => sum + (b.grossGenerated - b.barberManualChargesTotal), 0);
+  const totalManualChargesAll = filteredManualCharges.reduce((sum, c) => sum + Number(c.amount), 0);
+  const grossRevenueTotal = totalGrossAppointments + totalManualChargesAll;
+
   const ownerOwnCutsRevenue = barberFinancials
     .filter((b) => b.barber.isOwner || b.barber.commissionRate === 100)
     .reduce((sum, b) => sum + b.barberTakeHome, 0);
@@ -578,8 +724,7 @@ export default function AdminDashboard() {
   const totalExpensesAmount = filteredExpenses.reduce((sum, exp) => sum + Number(exp.amount), 0);
   const ownerFinalNetPocket = ownerTotalGrossIncome - totalExpensesAmount;
 
- const getClientWhatsAppLink = (apt: AppointmentItem) => {
-    // Si el turno no tiene teléfono registrado, evitamos que rompa usando una cadena vacía
+  const getClientWhatsAppLink = (apt: AppointmentItem) => {
     const rawDigits = (apt.clientPhone || '098509376').replace(/\D/g, '');
     const formattedPhone = rawDigits.startsWith('0')
       ? '598' + rawDigits.slice(1)
@@ -592,6 +737,9 @@ export default function AdminDashboard() {
 
   const bgImage = shopConfig.backgroundImageUrl || DEFAULT_SHOP_CONFIG.backgroundImageUrl;
   const logoImage = shopConfig.logoUrl || DEFAULT_SHOP_CONFIG.logoUrl;
+
+  const todayStr = new Date().toISOString().split('T')[0];
+  const isTodayClosed = cashStatus === 'cerrada' && lastClosedDate === todayStr;
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 pb-28 sm:pb-16 relative">
@@ -607,7 +755,6 @@ export default function AdminDashboard() {
       </div>
 
       <div className="relative z-10">
-        {/* HEADER */}
         <header className="sticky top-0 z-30 bg-zinc-950/90 backdrop-blur-md border-b border-zinc-800/80 px-4 pt-[max(0.75rem,calc(env(safe-area-inset-top)+0.5rem))] pb-3">
           <div className="max-w-5xl mx-auto flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center space-x-2.5">
@@ -674,7 +821,7 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          <div className="grid grid-cols-2 sm:grid-cols-6 gap-1.5 bg-zinc-900/90 p-1.5 rounded-2xl border border-zinc-800 backdrop-blur-sm">
+          <div className="grid grid-cols-2 sm:grid-cols-7 gap-1.5 bg-zinc-900/90 p-1.5 rounded-2xl border border-zinc-800 backdrop-blur-sm">
             <button
               type="button"
               onClick={() => setActiveTab('caja')}
@@ -686,6 +833,19 @@ export default function AdminDashboard() {
             >
               <Wallet className="w-3.5 h-3.5" />
               <span>Caja</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('facturacion')}
+              className={`py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 touch-manipulation ${
+                activeTab === 'facturacion'
+                  ? 'bg-zinc-100 text-zinc-950 shadow-sm'
+                  : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              <BarChart3 className="w-3.5 h-3.5" />
+              <span>Facturación</span>
             </button>
 
             <button
@@ -711,7 +871,7 @@ export default function AdminDashboard() {
               }`}
             >
               <CalendarIcon className="w-3.5 h-3.5" />
-              <span>Lista ({safeAppointments.filter((a) => a.status !== 'cancelado').length})</span>
+              <span>Lista</span>
             </button>
 
             <button
@@ -754,183 +914,250 @@ export default function AdminDashboard() {
             </button>
           </div>
 
-          {/* VISTA DE CAJA */}
           {activeTab === 'caja' && (
             <div className="space-y-6">
-              <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="flex items-center space-x-1.5 bg-zinc-950 p-1 rounded-xl border border-zinc-800">
-                    {(
-                      [
-                        { id: 'hoy', label: 'Hoy' },
-                        { id: 'semana', label: 'Semana' },
-                        { id: 'mes', label: 'Por Mes' },
-                      ] as { id: PeriodFilter; label: string }[]
-                    ).map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => setPeriod(item.id)}
-                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer touch-manipulation ${
-                          period === item.id
-                            ? 'bg-zinc-100 text-zinc-950'
-                            : 'text-zinc-400 hover:text-zinc-200'
-                        }`}
-                      >
-                        {item.label}
-                      </button>
-                    ))}
+              <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-6 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <h3 className="font-bold text-base flex items-center gap-2">
+                      <Wallet className="w-5 h-5 text-emerald-400" />
+                      Estado de Caja: <span className={cashStatus === 'abierta' ? 'text-emerald-400 uppercase' : 'text-rose-400 uppercase'}>{cashStatus}</span>
+                    </h3>
+                    <p className="text-xs text-zinc-400 mt-1">
+                      {isTodayClosed 
+                        ? 'La caja de hoy ya fue cerrada. El sistema se abrirá automáticamente para la próxima jornada.'
+                        : 'Controlá la apertura y el cierre diario de la caja de la barbería.'}
+                    </p>
                   </div>
 
-                  {period === 'mes' && (
-                    <select
-                      value={selectedMonth}
-                      onChange={(e) => setSelectedMonth(e.target.value)}
-                      className="px-3.5 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-xs font-bold text-emerald-400 outline-none cursor-pointer"
-                    >
-                      {availableMonths.map((m) => (
-                        <option key={m.value} value={m.value}>
-                          📅 {m.label}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </div>
+                  <div className="flex items-center gap-2">
+                    {!isTodayClosed && cashStatus === 'cerrada' && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!supabase) return;
+                          await supabase.from('cash_registers').insert([{
+                            shop_id: SHOP_UUID,
+                            initial_amount: grossRevenueTotal,
+                            total_sales: grossRevenueTotal,
+                            status: 'abierta'
+                          }]);
+                          setCashStatus('abierta');
+                          alert('¡Caja abierta con éxito!');
+                        }}
+                        className="px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs cursor-pointer"
+                      >
+                        🟢 Abrir Caja
+                      </button>
+                    )}
 
-                <label className="flex items-center space-x-2 text-xs text-zinc-300 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={onlyCompleted}
-                    onChange={(e) => setOnlyCompleted(e.target.checked)}
-                    className="rounded border-zinc-700 bg-zinc-950"
-                  />
-                  <span>Solo turnos completados</span>
-                </label>
+                    {cashStatus === 'abierta' && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!supabase) return;
+                          const todayIso = new Date().toISOString();
+                          await supabase.from('cash_registers').update({
+                            closed_at: todayIso,
+                            final_amount: ownerFinalNetPocket,
+                            status: 'cerrada'
+                          }).eq('shop_id', SHOP_UUID).eq('status', 'abierta');
+                          setCashStatus('cerrada');
+                          setLastClosedDate(todayIso.split('T')[0]);
+                          alert(`¡Caja cerrada correctamente! Total neto consolidado: $${ownerFinalNetPocket}`);
+                        }}
+                        className="px-4 py-2.5 rounded-xl bg-rose-500 hover:bg-rose-400 text-white font-bold text-xs cursor-pointer"
+                      >
+                        🔴 Cerrar Caja (Corte Diario)
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-                <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 space-y-1">
-                  <div className="flex items-center justify-between text-xs text-zinc-400">
-                    <span>Facturación Total</span>
-                    <TrendingUp className="w-4 h-4 text-zinc-200" />
+              <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 sm:p-6 space-y-5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800 pb-4">
+                  <div>
+                    <h3 className="font-bold text-base flex items-center gap-2">
+                      <BarChart3 className="w-5 h-5 text-emerald-400" />
+                      Auditoría Diaria por Barbero o Total
+                    </h3>
+                    <p className="text-xs text-zinc-400">Seleccioná un barbero o la vista general y elegí la fecha a consultar.</p>
                   </div>
-                  <p className="text-2xl font-extrabold text-white">${grossRevenueTotal}</p>
-                  <p className="text-[11px] text-zinc-500">{filteredAppointments.length} turnos</p>
+
+                  <input
+                    type="date"
+                    value={auditDate}
+                    onChange={(e) => setAuditDate(e.target.value)}
+                    className="px-3.5 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-xs font-bold text-emerald-400 outline-none cursor-pointer"
+                  />
                 </div>
 
-                <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 space-y-1">
-                  <div className="flex items-center justify-between text-xs text-zinc-400">
-                    <span>Pago a Barberos</span>
-                    <Users className="w-4 h-4 text-amber-400" />
-                  </div>
-                  <p className="text-2xl font-extrabold text-amber-400">-${staffCommissionsToPay}</p>
-                  <p className="text-[11px] text-zinc-500">Comisiones equipo</p>
-                </div>
-
-                <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 space-y-1">
-                  <div className="flex items-center justify-between text-xs text-zinc-300 font-semibold">
-                    <span>Total Bruto Negocio</span>
-                    <Crown className="w-4 h-4 text-emerald-400" />
-                  </div>
-                  <p className="text-2xl font-extrabold text-emerald-400">${ownerTotalGrossIncome}</p>
-                  <p className="text-[11px] text-zinc-400">Propietario + retención</p>
-                </div>
-
-                <div
-                  className={`border rounded-2xl p-4 space-y-1 ${
-                    ownerFinalNetPocket >= 0
-                      ? 'bg-emerald-950/30 border-emerald-500/40'
-                      : 'bg-rose-950/30 border-rose-500/40'
-                  }`}
-                >
-                  <div className="flex items-center justify-between text-xs font-bold text-emerald-300">
-                    <span>Neto en Bolsillo</span>
-                    <DollarSign className="w-4 h-4 text-emerald-400" />
-                  </div>
-                  <p
-                    className={`text-2xl font-extrabold ${
-                      ownerFinalNetPocket >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAuditBarberId('todos')}
+                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex items-center space-x-2.5 ${
+                      auditBarberId === 'todos'
+                        ? 'bg-zinc-100 text-zinc-950 border-white font-bold shadow-md'
+                        : 'bg-zinc-950/80 border-zinc-800 text-zinc-300 hover:border-zinc-700'
                     }`}
                   >
-                    ${ownerFinalNetPocket}
-                  </p>
-                  <p className="text-[11px] text-zinc-400">Gastos: -${totalExpensesAmount}</p>
-                </div>
-              </div>
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${auditBarberId === 'todos' ? 'bg-zinc-950 text-white' : 'bg-zinc-800 text-zinc-200'}`}>
+                      ⚡
+                    </div>
+                    <span className="text-xs truncate">Todos (Total)</span>
+                  </button>
 
-              <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-4">
-                <h3 className="font-bold text-base">Liquidación por Barbero</h3>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-                  {barberFinancials.map((item) => {
-                    const isOwner = item.barber.isOwner || item.barber.commissionRate === 100;
-                    const totalBarberPocket = item.barberTakeHome + item.barberTipsTotal;
-
+                  {safeBarbers.map((b) => {
+                    const isSelected = auditBarberId === b.id;
                     return (
-                      <div
-                        key={item.barber.id}
-                        className="bg-zinc-950/80 border border-zinc-800 rounded-2xl p-4 space-y-3"
+                      <button
+                        key={b.id}
+                        type="button"
+                        onClick={() => setAuditBarberId(b.id)}
+                        className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex items-center space-x-2.5 ${
+                          isSelected
+                            ? 'bg-zinc-100 text-zinc-950 border-white font-bold shadow-md'
+                            : 'bg-zinc-950/80 border-zinc-800 text-zinc-300 hover:border-zinc-700'
+                        }`}
                       >
-                        <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-                          <div className="flex items-center space-x-2.5">
-                            <div className="w-9 h-9 rounded-xl bg-zinc-800 text-zinc-100 flex items-center justify-center font-bold text-sm">
-                              {item.barber.name.charAt(0)}
-                            </div>
-                            <div>
-                              <h4 className="font-bold text-sm">{item.barber.name}</h4>
-                              <span className="text-[11px] text-zinc-400">
-                                Comisión: <strong>{item.barber.commissionRate}%</strong>
-                              </span>
-                            </div>
-                          </div>
-                          <span className="px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-xs font-semibold">
-                            {item.cutsCount} turnos
-                          </span>
+                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${isSelected ? 'bg-zinc-950 text-white' : 'bg-zinc-800 text-zinc-200'}`}>
+                          {b.name.charAt(0)}
                         </div>
-
-                        <div className="space-y-2 text-xs">
-                          <div className="flex justify-between">
-                            <span className="text-zinc-400">Total facturado (Cortes):</span>
-                            <span className="font-semibold">${item.grossGenerated}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-zinc-400">Comisión cortes:</span>
-                            <span className="font-medium text-zinc-300">${item.barberTakeHome}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-zinc-400">Propinas personales:</span>
-                            <span className="font-bold text-emerald-400">+${item.barberTipsTotal}</span>
-                          </div>
-
-                          <div className="flex justify-between pt-2 border-t border-zinc-800/80 text-amber-400 font-bold">
-                            <span>Total para barbero:</span>
-                            <span>${totalBarberPocket}</span>
-                          </div>
-
-                          <div className="flex justify-between pt-1 text-emerald-400 font-bold">
-                            <span>Para local:</span>
-                            <span>+${isOwner ? item.barberTakeHome : item.leftForOwner}</span>
-                          </div>
-                        </div>
-                      </div>
+                        <span className="text-xs truncate">{b.name}</span>
+                      </button>
                     );
                   })}
                 </div>
-              </div>
 
-              {/* SECCIÓN DE PROPINAS DEL EQUIPO (ADMIN) */}
-              <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div>
-                    <h3 className="font-bold text-base flex items-center gap-2">
-                      <Coins className="w-4 h-4 text-emerald-400" />
-                      Propinas del Equipo
-                    </h3>
-                    <p className="text-xs text-zinc-400">
-                      Sumale propinas manualmente a cualquier barbero en caso de que se haya olvidado de anotarla.
-                    </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                  <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 space-y-1">
+                    <span className="text-xs text-zinc-400">Facturación Generada</span>
+                    <p className="text-2xl font-extrabold text-emerald-400">${auditedGrossTotal}</p>
+                    <span className="text-[11px] text-zinc-500">{auditedAppointments.length} turnos + {auditedManualCharges.length} extras</span>
+                  </div>
+                  <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 space-y-1">
+                    <span className="text-xs text-zinc-400">Propinas Registradas</span>
+                    <p className="text-2xl font-extrabold text-amber-400">+${auditedTipsTotal}</p>
+                  </div>
+                  <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 space-y-1">
+                    <span className="text-xs text-zinc-400">Gastos del Día</span>
+                    <p className="text-2xl font-extrabold text-rose-400">-${auditedExpensesTotal}</p>
                   </div>
                 </div>
+
+                {auditBarberId === 'todos' && auditedBarbersBreakdown.length > 0 && (
+                  <div className="pt-2 space-y-2">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-400">Desglose por Barbero en esta fecha:</h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {auditedBarbersBreakdown.map((item) => (
+                        <div key={item.barber.id} className="bg-zinc-950/70 border border-zinc-800/80 rounded-xl p-3 space-y-1 text-xs">
+                          <div className="flex justify-between font-bold text-sm text-zinc-100">
+                            <span>{item.barber.name}</span>
+                            <span className="text-emerald-400">${item.totalGen}</span>
+                          </div>
+                          <p className="text-zinc-400">{item.cutsCount} cortes • Comisión ({item.barber.commissionRate}%): <strong className="text-zinc-200">${item.commissionEarned}</strong></p>
+                          {item.tipsEarned > 0 && <p className="text-amber-400 font-medium">Propinas: +${item.tipsEarned}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-4">
+                <div>
+                  <h3 className="font-bold text-base flex items-center gap-2">
+                    <Coins className="w-4 h-4 text-emerald-400" />
+                    Ingresar Cobros Manuales / Cortes Extra
+                  </h3>
+                </div>
+
+                <form onSubmit={handleAddChargeAdmin} className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+                  <select
+                    value={chargeBarberId}
+                    onChange={(e) => setChargeBarberId(e.target.value)}
+                    className="sm:col-span-3 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none text-zinc-200 font-semibold"
+                  >
+                    {safeBarbers.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </select>
+
+                  <input
+                    type="number"
+                    placeholder="Monto $"
+                    value={chargeAmount}
+                    onChange={(e) => setChargeAmount(e.target.value)}
+                    className="sm:col-span-3 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
+                  />
+
+                  <input
+                    type="text"
+                    placeholder="Nota..."
+                    value={chargeNote}
+                    onChange={(e) => setChargeNote(e.target.value)}
+                    className="sm:col-span-4 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
+                  />
+
+                  <button
+                    type="submit"
+                    className="sm:col-span-2 py-2.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs cursor-pointer flex items-center justify-center gap-1 touch-manipulation"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Registrar</span>
+                  </button>
+                </form>
+
+                <div className="space-y-2">
+                  {filteredManualCharges.length === 0 ? (
+                    <p className="text-xs text-zinc-500 italic py-2">
+                      No hay cobros manuales registrados en este período.
+                    </p>
+                  ) : (
+                    filteredManualCharges.map((chg) => {
+                      const brbName =
+                        safeBarbers.find((b) => b.id === chg.barberId)?.name || 'Barbero';
+                      return (
+                        <div
+                          key={chg.id}
+                          className="bg-zinc-950/70 border border-zinc-800/80 rounded-xl p-3 flex items-center justify-between gap-3"
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="px-2.5 py-0.5 rounded-md text-xs font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                              {brbName}
+                            </span>
+                            <span className="text-xs text-zinc-400">{chg.dateString}</span>
+                            {chg.note && (
+                              <span className="text-xs text-zinc-300 font-medium">• {chg.note}</span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center space-x-3">
+                            <span className="font-bold text-sm text-emerald-400">+${chg.amount}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveChargeAdmin(chg.id)}
+                              className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-rose-400 cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-4">
+                <h3 className="font-bold text-base flex items-center gap-2">
+                  <Coins className="w-4 h-4 text-emerald-400" />
+                  Propinas del Equipo
+                </h3>
 
                 <form onSubmit={handleAddTipAdmin} className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
                   <select
@@ -955,7 +1182,7 @@ export default function AdminDashboard() {
 
                   <input
                     type="text"
-                    placeholder="Nota opcional (ej: Cliente turno 15hs)..."
+                    placeholder="Nota opcional..."
                     value={tipNote}
                     onChange={(e) => setTipNote(e.target.value)}
                     className="sm:col-span-4 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
@@ -1083,7 +1310,167 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          {/* VISTA DE AGENDA GENERAL */}
+          {activeTab === 'facturacion' && (
+            <div className="space-y-6">
+              <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center space-x-1.5 bg-zinc-950 p-1 rounded-xl border border-zinc-800">
+                    {(
+                      [
+                        { id: 'hoy', label: 'Hoy' },
+                        { id: 'semana', label: 'Semana' },
+                        { id: 'mes', label: 'Por Mes' },
+                      ] as { id: PeriodFilter; label: string }[]
+                    ).map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setPeriod(item.id)}
+                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer touch-manipulation ${
+                          period === item.id
+                            ? 'bg-zinc-100 text-zinc-950'
+                            : 'text-zinc-400 hover:text-zinc-200'
+                        }`}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {period === 'mes' && (
+                    <select
+                      value={selectedMonth}
+                      onChange={(e) => setSelectedMonth(e.target.value)}
+                      className="px-3.5 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-xs font-bold text-emerald-400 outline-none cursor-pointer"
+                    >
+                      {availableMonths.map((m) => (
+                        <option key={m.value} value={m.value}>
+                          📅 {m.label}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+                <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 space-y-1">
+                  <div className="flex items-center justify-between text-xs text-zinc-400">
+                    <span>Facturación Total</span>
+                    <TrendingUp className="w-4 h-4 text-zinc-200" />
+                  </div>
+                  <p className="text-2xl font-extrabold text-white">${grossRevenueTotal}</p>
+                  <p className="text-[11px] text-zinc-500">{filteredAppointments.length} turnos completados</p>
+                </div>
+
+                <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 space-y-1">
+                  <div className="flex items-center justify-between text-xs text-zinc-400">
+                    <span>Pago a Barberos</span>
+                    <Users className="w-4 h-4 text-amber-400" />
+                  </div>
+                  <p className="text-2xl font-extrabold text-amber-400">-${staffCommissionsToPay}</p>
+                  <p className="text-[11px] text-zinc-500">Comisiones equipo</p>
+                </div>
+
+                <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 space-y-1">
+                  <div className="flex items-center justify-between text-xs text-zinc-300 font-semibold">
+                    <span>Total Bruto Negocio</span>
+                    <Crown className="w-4 h-4 text-emerald-400" />
+                  </div>
+                  <p className="text-2xl font-extrabold text-emerald-400">${ownerTotalGrossIncome}</p>
+                  <p className="text-[11px] text-zinc-400">Propietario + retención</p>
+                </div>
+
+                <div
+                  className={`border rounded-2xl p-4 space-y-1 ${
+                    ownerFinalNetPocket >= 0
+                      ? 'bg-emerald-950/30 border-emerald-500/40'
+                      : 'bg-rose-950/30 border-rose-500/40'
+                  }`}
+                >
+                  <div className="flex items-center justify-between text-xs font-bold text-emerald-300">
+                    <span>Neto en Bolsillo</span>
+                    <DollarSign className="w-4 h-4 text-emerald-400" />
+                  </div>
+                  <p
+                    className={`text-2xl font-extrabold ${
+                      ownerFinalNetPocket >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                    }`}
+                  >
+                    ${ownerFinalNetPocket}
+                  </p>
+                  <p className="text-[11px] text-zinc-400">Gastos: -${totalExpensesAmount}</p>
+                </div>
+              </div>
+
+              <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-4">
+                <h3 className="font-bold text-base">Liquidación por Barbero</h3>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+                  {barberFinancials.map((item) => {
+                    const isOwner = item.barber.isOwner || item.barber.commissionRate === 100;
+                    const totalBarberPocket = item.barberTakeHome + item.barberTipsTotal;
+
+                    return (
+                      <div
+                        key={item.barber.id}
+                        className="bg-zinc-950/80 border border-zinc-800 rounded-2xl p-4 space-y-3"
+                      >
+                        <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+                          <div className="flex items-center space-x-2.5">
+                            <div className="w-9 h-9 rounded-xl bg-zinc-800 text-zinc-100 flex items-center justify-center font-bold text-sm">
+                              {item.barber.name.charAt(0)}
+                            </div>
+                            <div>
+                              <h4 className="font-bold text-sm">{item.barber.name}</h4>
+                              <span className="text-[11px] text-zinc-400">
+                                Comisión: <strong>{item.barber.commissionRate}%</strong>
+                              </span>
+                            </div>
+                          </div>
+                          <span className="px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-xs font-semibold">
+                            {item.cutsCount} turnos
+                          </span>
+                        </div>
+
+                        <div className="space-y-2 text-xs">
+                          <div className="flex justify-between">
+                            <span className="text-zinc-400">Cortes completados:</span>
+                            <span className="font-semibold">${item.grossGenerated - item.barberManualChargesTotal}</span>
+                          </div>
+                          {item.barberManualChargesTotal > 0 && (
+                            <div className="flex justify-between text-emerald-400 font-medium">
+                              <span>Cobros manuales extra:</span>
+                              <span>+${item.barberManualChargesTotal}</span>
+                            </div>
+                          )}
+                          <div className="flex justify-between">
+                            <span className="text-zinc-400">Comisión total:</span>
+                            <span className="font-medium text-zinc-300">${item.barberTakeHome}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-zinc-400">Propinas personales:</span>
+                            <span className="font-bold text-emerald-400">+${item.barberTipsTotal}</span>
+                          </div>
+
+                          <div className="flex justify-between pt-2 border-t border-zinc-800/80 text-amber-400 font-bold">
+                            <span>Total para barbero:</span>
+                            <span>${totalBarberPocket}</span>
+                          </div>
+
+                          <div className="flex justify-between pt-1 text-emerald-400 font-bold">
+                            <span>Para local:</span>
+                            <span>+${isOwner ? item.barberTakeHome : item.leftForOwner}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
           {activeTab === 'agenda' && (
             <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 sm:p-6 space-y-5">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800 pb-4">
@@ -1092,7 +1479,6 @@ export default function AdminDashboard() {
                     <CalendarIcon className="w-4 h-4 text-emerald-400" />
                     Agenda General de la Barbería
                   </h3>
-                  <p className="text-xs text-zinc-400">Controlá los turnos agendados por día y por barbero (ordenados por horario)</p>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
@@ -1177,7 +1563,13 @@ export default function AdminDashboard() {
                         {apt.status !== 'completado' && (
                           <button
                             type="button"
-                            onClick={() => handleStatusChange(apt.id, 'completado')}
+                            onClick={() => {
+                              if (!canCompleteAppointment(apt.dateString)) {
+                                alert('No podés completar un turno que corresponde a una fecha futura.');
+                                return;
+                              }
+                              handleStatusChange(apt.id, 'completado');
+                            }}
                             className="px-3 py-2 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-bold flex items-center gap-1 cursor-pointer"
                           >
                             <CheckCircle2 className="w-3.5 h-3.5" />
@@ -1200,7 +1592,6 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          {/* VISTA DE TURNOS */}
           {activeTab === 'turnos' && (
             <div className="space-y-3">
               {safeAppointments.length === 0 ? (
@@ -1217,7 +1608,7 @@ export default function AdminDashboard() {
                     <div className="space-y-1">
                       <div className="flex items-center space-x-2">
                         <span className="px-2.5 py-0.5 rounded-md text-xs font-medium bg-zinc-800 text-zinc-200">
-                          {apt.dateString} • {apt.timeSlot} hs ({apt.durationMinutes || 60} min)
+                          {apt.dateString} • {apt.timeSlot} hs
                         </span>
                         <span
                           className={`px-2 py-0.5 rounded-md text-[11px] font-medium capitalize ${
@@ -1231,17 +1622,14 @@ export default function AdminDashboard() {
                           {apt.status}
                         </span>
                       </div>
-
                       <h3 className="font-semibold text-sm sm:text-base pt-1">
                         {apt.clientName}{' '}
                         <span className="text-xs font-normal text-zinc-400">
                           ({apt.clientPhone})
                         </span>
                       </h3>
-
                       <p className="text-xs text-zinc-400">
-                        {apt.serviceName} (${apt.priceSnapshot ?? apt.servicePrice}) •{' '}
-                        <strong className="text-zinc-200">{apt.barberName}</strong>
+                        {apt.serviceName} (${apt.priceSnapshot ?? apt.servicePrice}) • <strong className="text-zinc-200">{apt.barberName}</strong>
                       </p>
                     </div>
 
@@ -1259,7 +1647,13 @@ export default function AdminDashboard() {
                       {apt.status !== 'completado' && (
                         <button
                           type="button"
-                          onClick={() => handleStatusChange(apt.id, 'completado')}
+                          onClick={() => {
+                            if (!canCompleteAppointment(apt.dateString)) {
+                              alert('No podés completar un turno que corresponde a una fecha futura.');
+                              return;
+                            }
+                            handleStatusChange(apt.id, 'completado');
+                          }}
                           className="px-3 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 text-xs font-semibold flex items-center space-x-1 cursor-pointer"
                         >
                           <CheckCircle2 className="w-3.5 h-3.5" />
@@ -1284,7 +1678,6 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          {/* VISTA DE BARBEROS */}
           {activeTab === 'barberos' && (
             <div className="space-y-5">
               <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-4">
@@ -1397,7 +1790,6 @@ export default function AdminDashboard() {
                               type="button"
                               onClick={() => handleUnblockBarberPin(brb.id, brb.name)}
                               className="px-3.5 py-2 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-bold hover:bg-amber-500/30 transition-colors cursor-pointer flex items-center gap-1.5 animate-pulse"
-                              title="Desbloquear intentos fallidos de PIN"
                             >
                               <ShieldCheck className="w-4 h-4 text-amber-400" />
                               <span>Desbloquear PIN</span>
@@ -1461,7 +1853,6 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          {/* VISTA DE SERVICIOS */}
           {activeTab === 'servicios' && (
             <div className="space-y-5">
               <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-3.5">
@@ -1485,7 +1876,7 @@ export default function AdminDashboard() {
                   />
                   <input
                     type="number"
-                    placeholder="Minutos (ej: 45)"
+                    placeholder="Minutos"
                     value={newServiceDuration}
                     onChange={(e) => setNewServiceDuration(e.target.value)}
                     className="sm:col-span-2 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
@@ -1506,20 +1897,11 @@ export default function AdminDashboard() {
                     key={srv.id}
                     className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
                   >
-                    <div className="flex items-center space-x-3.5">
-                      {srv.imageUrl && (
-                        <img
-                          src={srv.imageUrl}
-                          alt={srv.name}
-                          className="w-12 h-12 rounded-xl object-cover border border-zinc-800 shrink-0"
-                        />
-                      )}
-                      <div>
-                        <h4 className="font-bold text-sm sm:text-base">{srv.name}</h4>
-                        <span className="text-[11px] text-zinc-400 flex items-center mt-0.5">
-                          <Clock className="w-3 h-3 mr-1" /> Bloquea {srv.durationMinutes} min en agenda
-                        </span>
-                      </div>
+                    <div>
+                      <h4 className="font-bold text-sm sm:text-base">{srv.name}</h4>
+                      <span className="text-[11px] text-zinc-400 flex items-center mt-0.5">
+                        <Clock className="w-3 h-3 mr-1" /> Bloquea {srv.durationMinutes} min en agenda
+                      </span>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2.5">
@@ -1562,7 +1944,6 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          {/* VISTA DE CONFIGURACIÓN DE LOCAL */}
           {activeTab === 'marca' && (
             <form
               onSubmit={handleSaveBrand}
@@ -1586,7 +1967,6 @@ export default function AdminDashboard() {
                   <input
                     type="text"
                     value={shopConfig.phone}
-                    placeholder="Ej: 098509376"
                     onChange={(e) => setShopConfig({ ...shopConfig, phone: e.target.value })}
                     className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
                   />
@@ -1597,7 +1977,6 @@ export default function AdminDashboard() {
                   <input
                     type="text"
                     value={shopConfig.city || ''}
-                    placeholder="Ej: Montevideo"
                     onChange={(e) => setShopConfig({ ...shopConfig, city: e.target.value })}
                     className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
                   />
@@ -1608,7 +1987,6 @@ export default function AdminDashboard() {
                   <input
                     type="text"
                     value={shopConfig.address}
-                    placeholder="Ej: Avenida Agraciada 3778"
                     onChange={(e) => setShopConfig({ ...shopConfig, address: e.target.value })}
                     className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
                   />
@@ -1616,102 +1994,14 @@ export default function AdminDashboard() {
 
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-medium text-zinc-400 mb-1.5 flex items-center gap-1.5">
-                    <ImageIcon className="w-3.5 h-3.5" />
-                    URL del Logo (Aparece en el Header)
+                    <ImageIcon className="w-3.5 h-3.5" /> URL del Logo
                   </label>
                   <input
                     type="url"
                     value={shopConfig.logoUrl || ''}
-                    placeholder="https://..."
                     onChange={(e) => setShopConfig({ ...shopConfig, logoUrl: e.target.value })}
                     className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
                   />
-                </div>
-
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-medium text-zinc-400 mb-1.5 flex items-center gap-1.5">
-                    <ImageIcon className="w-3.5 h-3.5" />
-                    Foto de Portada / Fondo (URL)
-                  </label>
-                  <input
-                    type="url"
-                    value={shopConfig.backgroundImageUrl || ''}
-                    onChange={(e) =>
-                      setShopConfig({
-                        ...shopConfig,
-                        backgroundImageUrl: e.target.value,
-                        coverImageUrl: e.target.value,
-                      })
-                    }
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-3 pt-4 border-t border-zinc-800">
-                <h4 className="font-bold text-sm text-zinc-200">Horarios de Atención Semanal</h4>
-                <p className="text-xs text-zinc-400">Definí qué días abre el negocio y en qué horario.</p>
-
-                <div className="space-y-2">
-                  {['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'].map((dia) => {
-                    const key = dia.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-                    const rawSchedule = shopConfig.schedule || {};
-                    const dayConfig = rawSchedule[key] || { isOpen: true, openTime: '09:00', closeTime: '19:00' };
-
-                    return (
-                      <div key={key} className="bg-zinc-950 border border-zinc-800/80 rounded-xl p-3 flex flex-wrap items-center justify-between gap-3">
-                        <div className="flex items-center space-x-3 w-32">
-                          <input
-                            type="checkbox"
-                            checked={Boolean(dayConfig.isOpen)}
-                            onChange={(e) => {
-                              const updatedSchedule = {
-                                ...rawSchedule,
-                                [key]: { ...dayConfig, isOpen: e.target.checked },
-                              };
-                              setShopConfig({ ...shopConfig, schedule: updatedSchedule });
-                            }}
-                            className="rounded border-zinc-700 bg-zinc-900 text-emerald-500 focus:ring-0 cursor-pointer"
-                          />
-                          <span className="text-xs font-bold text-zinc-200">{dia}</span>
-                        </div>
-
-                        {dayConfig.isOpen ? (
-                          <div className="flex items-center space-x-2 text-xs">
-                            <input
-                              type="time"
-                              value={dayConfig.openTime || '09:00'}
-                              onChange={(e) => {
-                                const updatedSchedule = {
-                                  ...rawSchedule,
-                                  [key]: { ...dayConfig, openTime: e.target.value },
-                                };
-                                setShopConfig({ ...shopConfig, schedule: updatedSchedule });
-                              }}
-                              className="px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-200 outline-none"
-                            />
-                            <span className="text-zinc-500">hasta</span>
-                            <input
-                              type="time"
-                              value={dayConfig.closeTime || '19:00'}
-                              onChange={(e) => {
-                                const updatedSchedule = {
-                                  ...rawSchedule,
-                                  [key]: { ...dayConfig, closeTime: e.target.value },
-                                };
-                                setShopConfig({ ...shopConfig, schedule: updatedSchedule });
-                              }}
-                              className="px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-200 outline-none"
-                            />
-                          </div>
-                        ) : (
-                          <span className="text-xs font-semibold text-rose-400 px-2 py-1 bg-rose-500/10 rounded-lg border border-rose-500/20">
-                            Cerrado
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })}
                 </div>
               </div>
 
