@@ -16,7 +16,7 @@ export async function GET() {
 
     const { data, error } = await supabase
       .from('appointments')
-      .select('id, barber_id, service_id, date_string, time_slot, duration_minutes, status, created_at')
+      .select('id, barber_id, service_id, date_string, time_slot, duration_minutes, status, created_at, client_email, client_name, client_phone')
       .eq('shop_id', SHOP_UUID)
       .neq('status', 'cancelado')
       .order('created_at', { ascending: false });
@@ -41,8 +41,9 @@ export async function GET() {
       barberName: '',
       dateString: apt.date_string,
       timeSlot: apt.time_slot,
-      clientName: '',
-      clientPhone: '',
+      clientName: apt.client_name || '',
+      clientPhone: apt.client_phone || '',
+      clientEmail: apt.client_email || '', // 👈 Incluido obligatoriamente
       clientNotes: '',
       status: apt.status || 'confirmado',
       createdAt: apt.created_at,
@@ -60,21 +61,22 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { serviceId, barberId, dateString, timeSlot, clientName, clientPhone, clientNotes } = body;
+    const { serviceId, barberId, dateString, timeSlot, clientName, clientPhone, clientEmail, clientNotes } = body;
 
     if (!isValidUUID(serviceId) || !isValidUUID(barberId)) {
       return NextResponse.json({ error: 'Servicio o barbero inválido.' }, { status: 400 });
     }
 
     const cleanName = sanitizeInput(String(clientName || '')).slice(0, 80);
-    const cleanPhone = sanitizeInput(String(clientPhone || '')).slice(0, 25);
+    const cleanPhone = sanitizeInput(String(clientPhone || '098509376')).slice(0, 25);
+    const cleanEmail = sanitizeInput(String(clientEmail || '')).slice(0, 100).toLowerCase();
     const cleanNotes = sanitizeInput(String(clientNotes || '')).slice(0, 300);
     const cleanDate = sanitizeInput(String(dateString || '')).slice(0, 30);
     const cleanTime = sanitizeInput(String(timeSlot || '')).slice(0, 10);
 
-    if (cleanName.length < 3 || !isValidUruguayanPhone(cleanPhone)) {
+    if (cleanName.length < 3 || !cleanEmail.includes('@')) {
       return NextResponse.json(
-        { error: 'Ingresá tu nombre y un celular uruguayo válido (ej: 098 509 376).' },
+        { error: 'Ingresá tu nombre y un correo electrónico válido.' },
         { status: 400 }
       );
     }
@@ -153,6 +155,7 @@ export async function POST(request: Request) {
       timeSlot: r.time_slot,
       clientName: '',
       clientPhone: '',
+      clientEmail: '',
       status: r.status || 'confirmado',
       createdAt: r.created_at,
     }));
@@ -197,6 +200,7 @@ export async function POST(request: Request) {
       duration_minutes: realDuration,
       client_name: cleanName,
       client_phone: cleanPhone,
+      client_email: cleanEmail,
       client_notes: cleanNotes,
       price_snapshot: realPrice,
       status: 'confirmado',
@@ -229,6 +233,7 @@ export async function POST(request: Request) {
       timeSlot: cleanTime,
       clientName: cleanName,
       clientPhone: cleanPhone,
+      clientEmail: cleanEmail, // 👈 Incluido obligatoriamente
       clientNotes: cleanNotes,
       status: 'confirmado',
       createdAt: inserted.created_at || new Date().toISOString(),

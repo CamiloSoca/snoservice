@@ -1,3 +1,4 @@
+// app/barbero/barbero.tsx
 'use client';
 
 import { useState, useEffect, Suspense } from 'react';
@@ -13,6 +14,7 @@ import {
   Lock,
   User,
   Phone,
+  Mail, // 👈 Ícono de correo
   Check,
   DollarSign,
   AlertCircle,
@@ -42,7 +44,6 @@ import {
   isSlotAvailable,
   timeToMinutes,
   minutesToTime,
-  isValidUruguayanPhone,
 } from '@/lib/booking-store';
 
 function BarberPageContent() {
@@ -60,22 +61,19 @@ function BarberPageContent() {
   const [selectedBarber, setSelectedBarber] = useState<BarberItem | null>(null);
   const [activeMode, setActiveMode] = useState<'reservar' | 'privado'>('reservar');
 
-  // Estado para PIN del barbero (Protege la agenda y las finanzas)
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState('');
   const [unlockedBarberId, setUnlockedBarberId] = useState<string | null>(null);
 
-  // Estado para reserva directa (Público)
   const [selectedService, setSelectedService] = useState<ServiceItem | null>(null);
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [clientName, setClientName] = useState('');
-  const [clientPhone, setClientPhone] = useState('');
+  const [clientEmail, setClientEmail] = useState(''); // 👈 Campo de correo obligatorio
   const [bookingError, setBookingError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [confirmedApt, setConfirmedApt] = useState<AppointmentItem | null>(null);
 
-  // Filtro de fecha para el calendario privado del barbero
   const [calendarDateFilter, setCalendarDateFilter] = useState<string>('');
 
   const getInitialSlugFromUrl = () => {
@@ -135,7 +133,6 @@ function BarberPageContent() {
     return () => {
       isMounted = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleSelectBarber = (b: BarberItem) => {
@@ -144,7 +141,7 @@ function BarberPageContent() {
     setSelectedTime(null);
     setConfirmedApt(null);
     setPinError('');
-    setUnlockedBarberId(null); // Bloquea al cambiar de barbero por seguridad
+    setUnlockedBarberId(null);
 
     const slug = b.slug || b.name.toLowerCase();
     router.replace(`/barbero?perfil=${slug}`, { scroll: false });
@@ -195,8 +192,8 @@ function BarberPageContent() {
       setBookingError('Seleccioná un servicio, fecha y horario.');
       return;
     }
-    if (clientName.trim().length < 3 || !isValidUruguayanPhone(clientPhone)) {
-      setBookingError('Ingresá tu nombre y un celular uruguayo válido (ej: 098 509 376).');
+    if (clientName.trim().length < 3 || !clientEmail.includes('@')) {
+      setBookingError('Ingresá tu nombre y un correo electrónico válido.');
       return;
     }
 
@@ -223,9 +220,27 @@ function BarberPageContent() {
         dateString: selectedDate,
         timeSlot: selectedTime,
         clientName: clientName.trim(),
-        clientPhone: clientPhone.trim(),
+        clientPhone: '098509376',
+        clientEmail: clientEmail.trim().toLowerCase(), // 👈 Enviado estrictamente
         clientNotes: '',
       });
+
+      // Disparar correo de confirmación por Zoho
+      fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientEmail: clientEmail.trim().toLowerCase(),
+          clientName: clientName.trim(),
+          serviceName: selectedService.name,
+          barberName: currentBarber.name,
+          dateString: selectedDate,
+          timeSlot: selectedTime,
+          code: created.code,
+          shopName: shopConfig.name,
+          shopAddress: shopConfig.address,
+        }),
+      }).catch(console.error);
 
       const updatedApts = await getAppointments();
       setAppointments(updatedApts);
@@ -298,7 +313,6 @@ function BarberPageContent() {
       </header>
 
       <main className="max-w-4xl mx-auto p-4 space-y-6 pt-5">
-        {/* SELECTOR DE BARBERO */}
         <div className="flex flex-wrap gap-2">
           {barbers.map((b) => {
             const isSelected = currentBarber?.id === b.id;
@@ -322,7 +336,6 @@ function BarberPageContent() {
           })}
         </div>
 
-        {/* TARJETA DEL BARBERO ACTUAL (SELECTOR PÚBLICO / PRIVADO) */}
         {currentBarber && (
           <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center space-x-3.5">
@@ -367,7 +380,6 @@ function BarberPageContent() {
           </div>
         )}
 
-        {/* MODO 1: RESERVAR DIRECTO (PÚBLICO) */}
         {activeMode === 'reservar' && currentBarber && (
           <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 sm:p-6 space-y-6">
             {confirmedApt ? (
@@ -382,9 +394,7 @@ function BarberPageContent() {
                   ¡Turno confirmado con {confirmedApt.barberName}!
                 </h3>
                 <p className="text-xs text-zinc-400">
-                  {confirmedApt.serviceName} ({confirmedApt.durationMinutes} min) •{' '}
-                  {confirmedApt.dateString} de {confirmedApt.timeSlot} a{' '}
-                  {getEndTimeString(confirmedApt.timeSlot, confirmedApt.durationMinutes)} hs
+                  Te enviamos el comprobante a <strong className="text-white">{confirmedApt.clientEmail}</strong>
                 </p>
                 <button
                   type="button"
@@ -516,12 +526,12 @@ function BarberPageContent() {
                         />
                       </div>
                       <div className="relative">
-                        <Phone className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                        <Mail className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
                         <input
-                          type="tel"
-                          placeholder="Celular (09X XXX XXX)"
-                          value={clientPhone}
-                          onChange={(e) => setClientPhone(e.target.value)}
+                          type="email"
+                          placeholder="tu@correo.com"
+                          value={clientEmail}
+                          onChange={(e) => setClientEmail(e.target.value)}
                           className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-sm outline-none"
                         />
                       </div>
@@ -548,7 +558,6 @@ function BarberPageContent() {
           </div>
         )}
 
-        {/* MODO 2: MODO PRIVADO (BLOQUEADO POR PIN) */}
         {activeMode === 'privado' && currentBarber && (
           <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 sm:p-6">
             {!isPanelUnlocked ? (
@@ -600,7 +609,6 @@ function BarberPageContent() {
                   </button>
                 </div>
 
-                {/* RESUMEN FINANCIERO */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4">
                     <span className="text-xs text-zinc-400">Turnos Totales</span>
@@ -623,7 +631,6 @@ function BarberPageContent() {
                   </div>
                 </div>
 
-                {/* CALENDARIO ESTILO GOOGLE (GRILLA POR DÍA) */}
                 <div className="space-y-4 pt-2 border-t border-zinc-800">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <h4 className="font-bold text-sm flex items-center gap-2">
@@ -678,7 +685,7 @@ function BarberPageContent() {
                               <h5 className="font-bold text-sm sm:text-base pt-0.5">
                                 {apt.clientName}{' '}
                                 <span className="font-normal text-xs text-zinc-400">
-                                  ({apt.clientPhone})
+                                  ({apt.clientEmail || apt.clientPhone})
                                 </span>
                               </h5>
                               <p className="text-xs text-zinc-400">
