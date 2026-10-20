@@ -308,6 +308,7 @@ export function isSlotAvailable(params: {
 
   const candidateStart = timeToMinutes(candidateTime);
 
+  // Excluye estrictamente los turnos cancelados para que se liberen de inmediato
   const barberDayApts = existingAppointments.filter(
     (apt) =>
       apt.barberId === barberId &&
@@ -523,7 +524,6 @@ export async function getAppointments(): Promise<AppointmentItem[]> {
   const json = await res.json().catch(() => ({}));
   const data = Array.isArray(json.data) ? json.data : [];
 
-  // Obtenemos la config de la tienda para generar el prefijo del código dinámicamente
   let shopPrefix = SHOP_PREFIX;
   try {
     const cfg = await getShopConfig(false);
