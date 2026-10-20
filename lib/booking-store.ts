@@ -17,6 +17,8 @@ export interface ShopConfig {
   logoUrl?: string;
   backgroundImageUrl?: string;
   coverImageUrl?: string;
+  instagramHandle?: string;
+  instagramUrl?: string;
   schedule: Record<string, { isOpen: boolean; openTime: string; closeTime: string }>;
 }
 
@@ -84,7 +86,7 @@ export interface AppointmentItem {
   createdAt: string;
 }
 
-export type ExpenseCategory = 'Insumos' | 'Alquiler / Servicios' | 'Adelantos / Sueldos' | 'Otros';
+export type ExpenseCategory = 'Insumos' | 'Alquiler / Servicios' | 'Adelantos / Sueldos' | 'Marketing' | 'Otros';
 
 export interface ExpenseItem {
   id: string;
