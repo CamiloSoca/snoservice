@@ -6,7 +6,6 @@ export type BrandAccent = 'navy' | 'emerald' | 'bronze' | 'mono';
 export const SHOP_UUID =
   process.env.NEXT_PUBLIC_SHOP_ID || '11111111-1111-1111-1111-111111111113';
 
-// Función inteligente para generar prefijo basado en el nombre de la barbería
 export function getShopPrefix(shopName?: string): string {
   if (!shopName) return process.env.NEXT_PUBLIC_SHOP_PREFIX || '13C';
   const clean = shopName.replace(/[^a-zA-Z0-9]/g, '').trim();
@@ -186,15 +185,6 @@ const DAY_INDEX_TO_KEY: Record<number, string> = {
   6: 'sabado',
 };
 
-export function getCachedInitialData() {
-  return {
-    shopConfig: DEFAULT_SHOP_CONFIG,
-    services: DEFAULT_SERVICES,
-    barbers: DEFAULT_BARBERS,
-    hasCache: false,
-  };
-}
-
 export function buildRealOpenDays(
   totalDays = 30,
   customSchedule?: CustomScheduleMap
@@ -308,7 +298,6 @@ export function isSlotAvailable(params: {
 
   const candidateStart = timeToMinutes(candidateTime);
 
-  // Excluye estrictamente los turnos cancelados para que se liberen de inmediato
   const barberDayApts = existingAppointments.filter(
     (apt) =>
       apt.barberId === barberId &&
@@ -359,6 +348,7 @@ async function callAdminOperation(payload: Record<string, any>): Promise<any> {
   return data;
 }
 
+// Consultas paralelizadas con Promise.all para máxima velocidad
 export async function getShopConfig(forceRefresh = true): Promise<ShopConfig> {
   try {
     if (!supabase) return DEFAULT_SHOP_CONFIG;
@@ -400,10 +390,12 @@ export async function saveShopConfig(config: ShopConfig): Promise<void> {
 
 export async function getServices(forceRefresh = true): Promise<ServiceItem[]> {
   try {
+    if (!supabase) return DEFAULT_SERVICES;
     const { data, error } = await supabase
       .from('services')
       .select('id, name, price, duration_minutes, description, image_url, active')
       .eq('shop_id', SHOP_UUID)
+      .eq('active', true)
       .order('price', { ascending: true });
 
     if (error || !data || data.length === 0) {
@@ -441,10 +433,12 @@ export async function deleteServiceFromDb(id: string): Promise<void> {
 
 export async function getBarbers(forceRefresh = true): Promise<BarberItem[]> {
   try {
+    if (!supabase) return DEFAULT_BARBERS;
     const { data, error } = await supabase
       .from('barbers')
       .select('id, slug, name, role, bio, specialties, service_ids, active')
-      .eq('shop_id', SHOP_UUID);
+      .eq('shop_id', SHOP_UUID)
+      .eq('active', true);
 
     if (error || !data || data.length === 0) {
       return DEFAULT_BARBERS;
