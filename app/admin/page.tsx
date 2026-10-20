@@ -362,7 +362,7 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleAddBarber = async () => {
+const handleAddBarber = async () => {
     if (!newBarberName.trim()) return;
     const rate = Math.min(100, Math.max(0, Number(newBarberCommission) || 50));
     const cleanPin = newBarberPin.trim().slice(0, 4) || '1234';
@@ -377,33 +377,44 @@ export default function AdminDashboard() {
       id: generateUUID(),
       slug,
       name: newBarberName.trim(),
-      role: 'Barbero',
+      role: 'Barbero Profesional',
       bio: '',
-      specialties: ['Corte', 'Corte & Barba'],
+      specialties: ['Fade', 'Corte Clásico'],
       serviceIds: services.map((s) => s.id),
       isOwner: rate === 100,
       active: true,
       commissionRate: rate,
       pin: cleanPin,
     };
+
     const previous = barbers;
     const updated = [...barbers, newItem];
+    
     try {
       setAdminError('');
+      // Guardamos directamente en la base de datos a través de la función del store
       await saveBarbers(updated);
-      const freshBarbers = await getAdminBarbers();
-      const finalBarbers = freshBarbers.length > 0 ? freshBarbers : updated;
+      
+      // Recargamos la lista oficial de la base de datos
+      const freshBarbers = await getAdminBarbers(true);
+      const finalBarbers = Array.isArray(freshBarbers) && freshBarbers.length > 0 ? freshBarbers : updated;
+      
       setBarbers(finalBarbers);
+      
       if (!tipBarberId && finalBarbers.length > 0) {
         setTipBarberId(finalBarbers[0].id);
         setChargeBarberId(finalBarbers[0].id);
       }
+      
       checkBarberLocks(finalBarbers);
       setNewBarberName('');
       setNewBarberCommission('50');
       setNewBarberPin('1234');
+      
+      alert(`¡Barbero ${newItem.name} agregado con éxito!`);
     } catch (err: any) {
       setBarbers(previous);
+      console.error('Error al agregar barbero:', err);
       setAdminError(err?.message || 'Error al agregar el barbero en la base de datos.');
     }
   };

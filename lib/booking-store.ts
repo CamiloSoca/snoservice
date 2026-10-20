@@ -510,21 +510,28 @@ export async function getAdminBarbers(forceRefresh = false): Promise<BarberItem[
 export async function saveBarbers(barbers: BarberItem[]): Promise<void> {
   cachedBarbers = barbers;
   if (!supabase) return;
+  
   for (const b of barbers) {
-    await supabase.from('barbers').upsert({
+    // Enviamos estrictamente los campos básicos que sabemos que existen en la tabla
+    const payload: Record<string, any> = {
       id: b.id,
       shop_id: SHOP_UUID,
-      slug: b.slug,
       name: b.name,
-      role: b.role,
-      bio: b.bio,
-      specialties: b.specialties,
-      service_ids: b.serviceIds,
-      is_owner: b.isOwner,
-      active: b.active ?? true,
-      commission_rate: b.commissionRate,
-      pin: b.pin,
-    });
+      commission_rate: Number(b.commissionRate) || 50,
+      pin: String(b.pin || '1234'),
+    };
+
+    // Agregamos de forma segura solo si existen en tu base de datos
+    if (b.role) payload.role = b.role;
+    if (b.specialties) payload.specialties = b.specialties;
+    if (b.serviceIds) payload.service_ids = b.serviceIds;
+    if (b.active !== undefined) payload.active = b.active;
+
+    const { error } = await supabase.from('barbers').upsert(payload);
+    if (error) {
+      console.error(`Error de Supabase al guardar barbero ${b.name}:`, error.message);
+      throw new Error(`Error al guardar barbero: ${error.message}`);
+    }
   }
 }
 
