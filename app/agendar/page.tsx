@@ -49,7 +49,6 @@ const BOOKING_STORAGE_KEY = '13cut_last_booking_ts';
 function isSlotPastForSelectedDay(dayObj: DayOption | undefined, timeSlot: string): boolean {
   if (!dayObj) return false;
   
-  // Obtenemos la fecha y hora actual exacta en Montevideo
   const now = new Date();
   const formatter = new Intl.DateTimeFormat('es-UY', {
     timeZone: 'America/Montevideo',
@@ -72,12 +71,9 @@ function isSlotPastForSelectedDay(dayObj: DayOption | undefined, timeSlot: strin
   }
 
   const currentTotalMins = currentHour * 60 + currentMinute;
-
-  // Verificamos si el día seleccionado coincide con el día de hoy
   const isToday = dayObj.dateString.includes(String(currentDay));
-  if (!isToday) return false; // Si no es hoy, ningún horario está pasado
+  if (!isToday) return false;
 
-  // Si es hoy, comparamos la hora del slot con la hora actual
   const slotMinutes = timeToMinutes(timeSlot);
   return slotMinutes <= currentTotalMins;
 }
@@ -232,6 +228,7 @@ function AgendarContent() {
   };
 
   const displayedServices = (() => {
+    let list = services;
     if (preselectedFromUrl && selectedBarber) {
       const filtered = services.filter(
         (s) =>
@@ -239,9 +236,10 @@ function AgendarContent() {
           selectedBarber.serviceIds.length === 0 ||
           selectedBarber.serviceIds.includes(s.id)
       );
-      return filtered.length > 0 ? filtered : services;
+      list = filtered.length > 0 ? filtered : services;
     }
-    return services;
+    // Ordenamos de menor a mayor precio para que queden en orden perfecto
+    return [...list].sort((a, b) => a.price - b.price);
   })();
 
   const availableBarbersForService = (() => {
@@ -415,7 +413,6 @@ function AgendarContent() {
       setIsCancelling(true);
       if (!supabase) throw new Error('Sin conexión con la base de datos.');
 
-      // 1. Buscamos el turno por código y correo electrónico
       const { data: foundApt, error: searchError } = await supabase
         .from('appointments')
         .select('id, client_email, status')
@@ -426,7 +423,6 @@ function AgendarContent() {
         throw new Error('No se encontró ningún turno con ese código.');
       }
 
-      // Validamos que el correo coincida (ignorando mayúsculas/minúsculas)
       if (!foundApt.client_email || foundApt.client_email.trim().toLowerCase() !== cancelEmail.trim().toLowerCase()) {
         throw new Error('El correo electrónico no coincide con el de la reserva.');
       }
@@ -435,7 +431,6 @@ function AgendarContent() {
         throw new Error('Este turno ya se encuentra cancelado.');
       }
 
-      // 2. Actualizamos el estado del turno a 'cancelado'
       const { error: updateError } = await supabase
         .from('appointments')
         .update({ status: 'cancelado' })
@@ -527,7 +522,6 @@ function AgendarContent() {
                 : 'text-zinc-400 hover:text-zinc-200'
             }`}
           >
-            <Scissors className="w-3.5 h-3.5" />
             <span>Reservar Turno</span>
           </button>
 
@@ -704,7 +698,7 @@ function AgendarContent() {
                     <div className="flex justify-between pt-2.5 border-t border-zinc-800">
                       <span className="opacity-60">Fecha y hora</span>
                       <span className="font-bold text-emerald-400">
-                        {confirmedAppointment.dateString} • {confirmedAppointment.timeSlot} hs
+                        {confirmedAppointment.dateString} {confirmedAppointment.timeSlot} hs
                       </span>
                     </div>
                   </div>
@@ -758,14 +752,14 @@ function AgendarContent() {
                               }`}
                             >
                               <div className="flex items-center space-x-3.5 min-w-0">
-                                <div
-                                  className={`p-3 rounded-xl shrink-0 ${
-                                    isSelected
-                                      ? 'bg-emerald-500/20 text-emerald-300'
-                                      : 'bg-zinc-800 text-zinc-100'
-                                  }`}
-                                >
-                                  <Scissors className="w-4 h-4" />
+                                <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 bg-zinc-800 border border-zinc-700 flex items-center justify-center">
+                                  {service.imageUrl ? (
+                                    <img src={service.imageUrl} alt={service.name} className="w-full h-full object-cover" />
+                                  ) : (
+                                    <div className={isSelected ? 'text-emerald-300' : 'text-zinc-100'}>
+                                      <Scissors className="w-4 h-4" />
+                                    </div>
+                                  )}
                                 </div>
                                 <div className="truncate">
                                   <h3 className="font-bold text-sm sm:text-base truncate">
@@ -1071,7 +1065,7 @@ function AgendarContent() {
                   <div className="flex justify-between">
                     <span className="text-zinc-400">Fecha y hora</span>
                     <span className="font-semibold">
-                      {selectedTime ? `${selectedDate} • ${selectedTime} hs` : selectedDate || '—'}
+                      {selectedTime ? `${selectedDate} ${selectedTime} hs` : selectedDate || '—'}
                     </span>
                   </div>
                   <div className="pt-3 border-t border-zinc-800 flex justify-between items-center">

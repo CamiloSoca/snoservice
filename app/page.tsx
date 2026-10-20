@@ -1,3 +1,4 @@
+// app/page.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -139,6 +140,7 @@ export default function HomePage() {
           getBarbers(true),
           getServices(true),
         ]);
+        console.log('Configuración cargada en Home:', config); // 👈 Para debuguear el logo
         setShopConfig(config);
         setBarbers(brbs.filter((b) => b.active !== false));
       } catch (err) {
@@ -164,7 +166,12 @@ export default function HomePage() {
     'https://www.bookly.uy/uploads/medium/c380e86bd0228e2fce4f447ba1742899_medium-1401x1123.png';
   
   const bannerUrl = shopConfig.coverImageUrl || shopConfig.backgroundImageUrl || DEFAULT_BANNER_URL;
-  const logoImage = shopConfig.logoUrl || DEFAULT_SHOP_CONFIG.logoUrl;
+  
+  // Forzamos a que si hay logo en Supabase lo use, sino cae al default
+  const logoImage = shopConfig.logoUrl && shopConfig.logoUrl.trim() !== '' 
+    ? shopConfig.logoUrl 
+    : DEFAULT_SHOP_CONFIG.logoUrl;
+
   const shopCity = shopConfig.city || 'Montevideo';
   const shopAddress = shopConfig.address || DEFAULT_SHOP_CONFIG.address;
   const shopPhone = shopConfig.phone || DEFAULT_SHOP_CONFIG.phone;
@@ -389,12 +396,11 @@ export default function HomePage() {
                 <p>Reservá tu lugar online sin esperas.</p>
                 
                 <p className={`text-xs sm:text-sm ${isDark ? 'text-zinc-300' : 'text-zinc-600'}`}>
-                  {shopAddress}, {shopCity}. </p>
-                  
+                  {shopAddress}, {shopCity}.
+                </p>
               </div>
 
               <div className="flex flex-wrap gap-2">
-                {/* BOTÓN CÓMO LLEGAR DIRECTO A LA DIRECCIÓN */}
                 <a
                   href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
                     `${shopAddress},${shopCity}`
@@ -606,7 +612,7 @@ export default function HomePage() {
       >
         <div className="max-w-5xl mx-auto px-4 flex items-center justify-between gap-2">
           <div>
-            <span className="font-semibold">{shopConfig.name}</span> • {shopAddress}
+            <span className="font-semibold">{shopConfig.name}</span> - {shopAddress}
           </div>
           <div className="flex items-center space-x-4">
             <Link href="/agendar" className="hover:underline">
