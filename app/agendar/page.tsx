@@ -1,3 +1,4 @@
+// app/agendar/page.tsx
 'use client';
 
 import { useState, useRef, useEffect, Suspense } from 'react';
@@ -10,7 +11,7 @@ import {
   ArrowLeft,
   CheckCircle2,
   RotateCcw,
-  Phone,
+  Mail,
   MessageSquare,
   AlertCircle,
   XCircle,
@@ -42,55 +43,47 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null;
 
-const MONTH_MAP: Record<string, number> = {
-  ene: 0, feb: 1, mar: 2, abr: 3, may: 4, jun: 5,
-  jul: 6, ago: 7, sep: 8, oct: 9, nov: 10, dic: 11,
-};
-
-const BOOKING_COOLDOWN_MS = 5 * 60 * 1000;
+const BOOKING_COOLDOWN_MS = 60 * 1000;
 const BOOKING_STORAGE_KEY = '13cut_last_booking_ts';
 
-function getUruguayNow() {
-  const formatter = new Intl.DateTimeFormat('en-US', {
+function isSlotPastForSelectedDay(dayObj: DayOption | undefined, timeSlot: string): boolean {
+  if (!dayObj) return false;
+  
+  // Obtenemos la fecha y hora actual exacta en Montevideo
+  const now = new Date();
+  const formatter = new Intl.DateTimeFormat('es-UY', {
     timeZone: 'America/Montevideo',
-    year: 'numeric',
-    month: 'numeric',
     day: 'numeric',
+    month: 'short',
     hour: 'numeric',
     minute: 'numeric',
     hour12: false,
   });
 
-  const parts = formatter.formatToParts(new Date());
-  let year = 2026, month = 9, day = 18, hour = 0, minute = 0;
+  const parts = formatter.formatToParts(now);
+  let currentDay = 1;
+  let currentHour = 0;
+  let currentMinute = 0;
 
   for (const p of parts) {
-    if (p.type === 'year') year = parseInt(p.value, 10) || 2026;
-    if (p.type === 'month') month = parseInt(p.value, 10) - 1;
-    if (p.type === 'day') day = parseInt(p.value, 10);
-    if (p.type === 'hour') hour = parseInt(p.value, 10) || 0;
-    if (p.type === 'minute') minute = parseInt(p.value, 10) || 0;
+    if (p.type === 'day') currentDay = parseInt(p.value, 10) || 1;
+    if (p.type === 'hour') currentHour = parseInt(p.value, 10) || 0;
+    if (p.type === 'minute') currentMinute = parseInt(p.value, 10) || 0;
   }
 
-  if (hour === 24) hour = 0;
+  const currentTotalMins = currentHour * 60 + currentMinute;
 
-  return { year, month, day, currentMinutes: hour * 60 + minute };
+  // Verificamos si el día seleccionado coincide con el día de hoy
+  const isToday = dayObj.dateString.includes(String(currentDay));
+  if (!isToday) return false; // Si no es hoy, ningún horario está pasado
+
+  // Si es hoy, comparamos la hora del slot con la hora actual
+  const slotMinutes = timeToMinutes(timeSlot);
+  return slotMinutes <= currentTotalMins;
 }
 
-function formatUruguayanPhoneInput(raw: string): string {
-  const digits = raw.replace(/\D/g, '').slice(0, 9);
-  if (digits.length <= 3) return digits;
-  if (digits.length <= 6) return `${digits.slice(0, 3)} ${digits.slice(3)}`;
-  return `${digits.slice(0, 3)} ${digits.slice(3, 6)} ${digits.slice(6, 9)}`;
-}
-
-function isStrictUruguayanMobile(phone: string): boolean {
-  const digits = phone.replace(/\D/g, '');
-  if (!/^09[1-9]\d{6}$/.test(digits)) return false;
-  const subscriber = digits.slice(3);
-  if (/^(\d)\1{5}$/.test(subscriber)) return false;
-  if (['123456', '654321', '012345'].includes(subscriber)) return false;
-  return true;
+function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
 function AgendarContent() {
@@ -126,12 +119,12 @@ function AgendarContent() {
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
 
   const [clientName, setClientName] = useState<string>('');
-  const [clientPhone, setClientPhone] = useState<string>('');
+  const [clientEmail, setClientEmail] = useState<string>('');
   const [formError, setFormError] = useState<string>('');
   const [confirmedAppointment, setConfirmedAppointment] = useState<AppointmentItem | null>(null);
 
   const [cancelCode, setCancelCode] = useState<string>('');
-  const [cancelPhone, setCancelPhone] = useState<string>('');
+  const [cancelEmail, setCancelEmail] = useState<string>('');
   const [cancelError, setCancelError] = useState<string>('');
   const [cancelSuccess, setCancelSuccess] = useState<boolean>(false);
   const [isCancelling, setIsCancelling] = useState<boolean>(false);
@@ -219,25 +212,6 @@ function AgendarContent() {
     }
   };
 
-  const isSlotPastForSelectedDay = (dayObj: DayOption | undefined, timeSlot: string): boolean => {
-    if (!dayObj) return false;
-    const uyNow = getUruguayNow();
-    const parts = dayObj.dateString.split(' ');
-    const dayNumStr = parts.find((p) => !isNaN(Number(p))) || parts[1];
-    const monthStr =
-      parts.find((p) => MONTH_MAP[(p || '').toLowerCase().replace('.', '')] !== undefined) ||
-      parts[2];
-
-    const targetDay = parseInt(dayNumStr, 10);
-    const targetMonth = MONTH_MAP[(monthStr || '').toLowerCase().replace('.', '')];
-
-    if (isNaN(targetDay) || targetMonth === undefined) return false;
-    if (targetDay !== uyNow.day || targetMonth !== uyNow.month) return false;
-
-    const slotMinutes = timeToMinutes(timeSlot);
-    return slotMinutes <= uyNow.currentMinutes + 10;
-  };
-
   const checkSlotBooked = (barberId: string, dateStr: string, timeSlot: string): boolean => {
     const duration = selectedService?.durationMinutes || 60;
     return !isSlotAvailable({
@@ -287,7 +261,7 @@ function AgendarContent() {
       return !isSlotPastForSelectedDay(activeDayObj, selectedTime);
     }
     if (step === 4) {
-      return !isSubmitting && clientName.trim().length >= 3 && isStrictUruguayanMobile(clientPhone);
+      return !isSubmitting && clientName.trim().length >= 3 && isValidEmail(clientEmail);
     }
     return false;
   };
@@ -303,7 +277,7 @@ function AgendarContent() {
         setStep(2);
       }
       scrollToTop();
-    }, 90);
+    }, 50);
   };
 
   const handleSelectBarber = (barber: BarberItem) => {
@@ -313,7 +287,7 @@ function AgendarContent() {
     setTimeout(() => {
       setStep(3);
       scrollToTop();
-    }, 90);
+    }, 50);
   };
 
   const handleNext = async () => {
@@ -321,7 +295,7 @@ function AgendarContent() {
       if (step === 3 && !currentDayRule.isOpen) {
         setFormError('El local se encuentra cerrado este día.');
       } else if (step === 4 && !isSubmitting) {
-        setFormError('Ingresá tu nombre y un celular uruguayo válido de 9 dígitos (09X XXX XXX).');
+        setFormError('Ingresá tu nombre y un correo electrónico válido (ej: tu@correo.com).');
       }
       return;
     }
@@ -355,32 +329,7 @@ function AgendarContent() {
           return;
         }
 
-        const freshSlots = await getPublicBookedSlots(true);
-        setAppointments(freshSlots);
-
-        const cleanInputPhone = clientPhone.replace(/\D/g, '');
-        const alreadyHasTurnToday = freshSlots.some(
-          (apt: any) =>
-            apt.dateString === selectedDate &&
-            apt.status !== 'cancelled' &&
-            apt.status !== 'cancelado' &&
-            typeof apt.clientPhone === 'string' &&
-            apt.clientPhone.replace(/\D/g, '') === cleanInputPhone
-        );
-
-        if (alreadyHasTurnToday) {
-          setFormError(`Ya tenés un turno registrado para el ${selectedDate} con este número.`);
-          setIsSubmitting(false);
-          return;
-        }
-
-        if (checkSlotBooked(selectedBarber.id, selectedDate, selectedTime)) {
-          setFormError('Este horario acaba de ser ocupado. Elegí otro.');
-          setIsSubmitting(false);
-          return;
-        }
-
-        const formattedPhone = formatUruguayanPhoneInput(cleanInputPhone);
+        const cleanEmail = clientEmail.trim().toLowerCase();
 
         const created = await createAppointment({
           serviceId: selectedService.id,
@@ -393,13 +342,28 @@ function AgendarContent() {
           dateString: selectedDate,
           timeSlot: selectedTime,
           clientName: clientName.trim(),
-          clientPhone: formattedPhone,
+          clientPhone: '098509376',
+          clientEmail: cleanEmail,
           clientNotes: '',
         });
 
+        fetch('/api/send-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            clientEmail: cleanEmail,
+            clientName: clientName.trim(),
+            serviceName: selectedService.name,
+            barberName: selectedBarber.name,
+            dateString: selectedDate,
+            timeSlot: selectedTime,
+            code: created.code,
+            shopName: shopConfig.name,
+            shopAddress: shopConfig.address,
+          }),
+        }).catch((err) => console.error('Error enviando correo:', err));
+
         localStorage.setItem(BOOKING_STORAGE_KEY, String(Date.now()));
-        const updatedSlots = await getPublicBookedSlots(true);
-        setAppointments(updatedSlots);
         setConfirmedAppointment(created);
         scrollToTop();
       } catch (err: any) {
@@ -431,7 +395,7 @@ function AgendarContent() {
     if (days.length > 0) setSelectedDate(days[0].dateString);
     setSelectedTime(null);
     setClientName('');
-    setClientPhone('');
+    setClientEmail('');
     setFormError('');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -442,8 +406,8 @@ function AgendarContent() {
     setCancelSuccess(false);
 
     const cleanCode = cancelCode.replace(/#/g, '').trim().toUpperCase();
-    if (cleanCode.length < 3 || !isStrictUruguayanMobile(cancelPhone)) {
-      setCancelError('Ingresá el código de tu turno y tu celular de 9 dígitos.');
+    if (cleanCode.length < 3 || !isValidEmail(cancelEmail)) {
+      setCancelError('Ingresá el código de tu turno y un correo válido.');
       return;
     }
 
@@ -451,20 +415,41 @@ function AgendarContent() {
       setIsCancelling(true);
       if (!supabase) throw new Error('Sin conexión con la base de datos.');
 
-      const { error } = await supabase.rpc('cancel_appointment_by_client', {
-        p_code: cleanCode,
-        p_phone: cancelPhone,
-      });
+      // 1. Buscamos el turno por código y correo electrónico
+      const { data: foundApt, error: searchError } = await supabase
+        .from('appointments')
+        .select('id, client_email, status')
+        .eq('code', cleanCode)
+        .maybeSingle();
 
-      if (error) throw new Error(error.message);
+      if (searchError || !foundApt) {
+        throw new Error('No se encontró ningún turno con ese código.');
+      }
+
+      // Validamos que el correo coincida (ignorando mayúsculas/minúsculas)
+      if (!foundApt.client_email || foundApt.client_email.trim().toLowerCase() !== cancelEmail.trim().toLowerCase()) {
+        throw new Error('El correo electrónico no coincide con el de la reserva.');
+      }
+
+      if (foundApt.status === 'cancelado') {
+        throw new Error('Este turno ya se encuentra cancelado.');
+      }
+
+      // 2. Actualizamos el estado del turno a 'cancelado'
+      const { error: updateError } = await supabase
+        .from('appointments')
+        .update({ status: 'cancelado' })
+        .eq('id', foundApt.id);
+
+      if (updateError) throw new Error(updateError.message);
 
       const updatedSlots = await getPublicBookedSlots(true);
       setAppointments(updatedSlots);
       setCancelSuccess(true);
       setCancelCode('');
-      setCancelPhone('');
+      setCancelEmail('');
     } catch (err: any) {
-      setCancelError(err?.message || 'No se encontró un turno activo con esos datos.');
+      setCancelError(err?.message || 'No se pudo cancelar el turno.');
     } finally {
       setIsCancelling(false);
     }
@@ -490,7 +475,7 @@ function AgendarContent() {
       `• Servicio: ${confirmedAppointment.serviceName} (${confirmedAppointment.durationMinutes} min - $${confirmedAppointment.servicePrice})%0A` +
       `• Barbero: ${confirmedAppointment.barberName}%0A` +
       `• Fecha y hora: ${confirmedAppointment.dateString} de ${confirmedAppointment.timeSlot} a ${endTime} hs%0A` +
-      `• Cliente: ${confirmedAppointment.clientName} (${confirmedAppointment.clientPhone})`;
+      `• Cliente: ${confirmedAppointment.clientName} (${confirmedAppointment.clientEmail})`;
     return `https://wa.me/${formattedShopPhone}?text=${text}`;
   };
 
@@ -498,7 +483,6 @@ function AgendarContent() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 pb-28 lg:pb-12">
-      {/* HEADER CON SAFE-AREA PARA MÓVILES / PWA */}
       <header className="sticky top-0 z-30 bg-zinc-950/90 backdrop-blur-md border-b border-zinc-800 px-4 pt-[max(0.75rem,calc(env(safe-area-inset-top)+0.5rem))] pb-3">
         <div className="max-w-5xl mx-auto flex items-center justify-between gap-2">
           <div className="flex items-center space-x-2.5">
@@ -566,7 +550,7 @@ function AgendarContent() {
             <div className="space-y-1">
               <h2 className="text-xl font-extrabold tracking-tight">Cancelar un turno</h2>
               <p className="text-xs text-zinc-400">
-                Ingresá el código de tu turno y tu celular para liberar el horario al instante.
+                Ingresá el código de tu turno y tu correo electrónico para liberar el horario al instante.
               </p>
             </div>
 
@@ -608,18 +592,16 @@ function AgendarContent() {
 
                 <div>
                   <label className="block text-xs font-semibold mb-1.5 text-zinc-300">
-                    Celular (09X XXX XXX) *
+                    Correo electrónico *
                   </label>
                   <div className="relative">
-                    <Phone className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                    <Mail className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
                     <input
-                      type="tel"
-                      inputMode="numeric"
-                      maxLength={11}
-                      placeholder="098 509 376"
-                      value={cancelPhone}
-                      onChange={(e) => setCancelPhone(formatUruguayanPhoneInput(e.target.value))}
-                      className="w-full pl-10 pr-4 py-3.5 rounded-xl border text-base outline-none font-mono bg-zinc-950 border-zinc-800 text-zinc-100 focus:border-zinc-500"
+                      type="email"
+                      placeholder="tu@correo.com"
+                      value={cancelEmail}
+                      onChange={(e) => setCancelEmail(e.target.value)}
+                      className="w-full pl-10 pr-4 py-3.5 rounded-xl border text-base outline-none bg-zinc-950 border-zinc-800 text-zinc-100 focus:border-zinc-500"
                     />
                   </div>
                 </div>
@@ -699,6 +681,9 @@ function AgendarContent() {
                       Código #{confirmedAppointment.code}
                     </span>
                     <h2 className="text-xl sm:text-2xl font-bold tracking-tight">¡Turno Confirmado!</h2>
+                    <p className="text-xs text-zinc-400">
+                      Te enviamos el comprobante a <strong className="text-white">{confirmedAppointment.clientEmail}</strong>.
+                    </p>
                   </div>
 
                   <div className="border rounded-2xl p-4 space-y-2.5 text-xs sm:text-sm bg-zinc-950/70 border-zinc-800">
@@ -714,7 +699,7 @@ function AgendarContent() {
                     </div>
                     <div className="flex justify-between">
                       <span className="opacity-60">Barbero</span>
-                      <span className="font-semibold">{confirmedAppointment.barberName}</span>
+                      <span className="font-semibold text-emerald-400">{confirmedAppointment.barberName}</span>
                     </div>
                     <div className="flex justify-between pt-2.5 border-t border-zinc-800">
                       <span className="opacity-60">Fecha y hora</span>
@@ -856,7 +841,7 @@ function AgendarContent() {
                           Fecha y hora
                         </h2>
                         <p className="text-xs mt-0.5 text-zinc-400">
-                          Barbero: <strong className="text-white">{selectedBarber?.name}</strong> •{' '}
+                          Barbero: <strong className="text-emerald-400">{selectedBarber?.name}</strong> •{' '}
                           {selectedService?.name}
                         </p>
                       </div>
@@ -986,7 +971,7 @@ function AgendarContent() {
                       <div>
                         <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight">Tus datos</h2>
                         <p className="text-xs mt-0.5 text-zinc-400">
-                          Completá tu nombre y celular para confirmar el turno
+                          Completá tu nombre y correo electrónico para confirmar el turno
                         </p>
                       </div>
                       <div className="space-y-3.5">
@@ -1007,20 +992,19 @@ function AgendarContent() {
 
                         <div>
                           <label className="block text-xs font-semibold mb-1.5 opacity-80">
-                            Celular uruguayo (09X XXX XXX) *
+                            Correo electrónico (para tu confirmación) *
                           </label>
-                          <input
-                            type="tel"
-                            inputMode="numeric"
-                            autoComplete="tel"
-                            maxLength={11}
-                            placeholder="098 509 376"
-                            value={clientPhone}
-                            onChange={(e) =>
-                              setClientPhone(formatUruguayanPhoneInput(e.target.value))
-                            }
-                            className="w-full px-4 py-3.5 rounded-xl border text-base outline-none font-mono bg-zinc-950 border-zinc-800 text-zinc-100 focus:border-zinc-500"
-                          />
+                          <div className="relative">
+                            <Mail className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                            <input
+                              type="email"
+                              autoComplete="email"
+                              placeholder="tu@correo.com"
+                              value={clientEmail}
+                              onChange={(e) => setClientEmail(e.target.value)}
+                              className="w-full pl-10 pr-4 py-3.5 rounded-xl border text-base outline-none bg-zinc-950 border-zinc-800 text-zinc-100 focus:border-zinc-500"
+                            />
+                          </div>
                         </div>
 
                         {formError && (
@@ -1082,7 +1066,7 @@ function AgendarContent() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-zinc-400">Barbero</span>
-                    <span className="font-semibold">{selectedBarber?.name || '—'}</span>
+                    <span className="font-semibold text-emerald-400">{selectedBarber?.name || '—'}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-zinc-400">Fecha y hora</span>
@@ -1103,7 +1087,6 @@ function AgendarContent() {
         )}
       </main>
 
-      {/* BARRA INFERIOR FIJA PARA MÓVILES CON SOPORTE SAFE-AREA DE SAFARI iOS */}
       {activeTab === 'reservar' && !confirmedAppointment && (
         <div className="lg:hidden fixed bottom-0 inset-x-0 z-50 bg-zinc-950/95 backdrop-blur-xl border-t border-zinc-800 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] shadow-2xl">
           <div className="max-w-md mx-auto flex items-center justify-between gap-3">

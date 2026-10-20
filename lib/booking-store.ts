@@ -71,7 +71,8 @@ export interface AppointmentItem {
   dateString: string;
   timeSlot: string;
   clientName: string;
-  clientPhone: string;
+  clientPhone?: string; // 👈 Mantenido oculto por compatibilidad con la BD
+  clientEmail: string;  // 👈 Nuevo campo principal
   clientNotes?: string;
   status: 'confirmado' | 'completado' | 'cancelado';
   createdAt: string;
@@ -90,6 +91,16 @@ export interface ExpenseItem {
   amount: number;
   category: ExpenseCategory;
   date: string;
+  createdAt: string;
+}
+
+export interface TipItem {
+  id: string;
+  barberId: string;
+  barberName?: string;
+  amount: number;
+  note?: string;
+  dateString: string;
   createdAt: string;
 }
 
@@ -175,14 +186,9 @@ export interface DayOption {
   dayOfWeek: number;
 }
 
-const DAY_INDEX_TO_KEY: Record<number, string> = {
-  0: 'domingo',
-  1: 'lunes',
-  2: 'martes',
-  3: 'miercoles',
-  4: 'jueves',
-  5: 'viernes',
-  6: 'sabado',
+const MONTH_NAME_TO_NUMBER: Record<string, number> = {
+  ene: 0, feb: 1, mar: 2, abr: 3, may: 4, jun: 5,
+  jul: 6, ago: 7, sep: 8, oct: 9, nov: 10, dic: 11,
 };
 
 export function getCachedInitialData() {
@@ -193,6 +199,41 @@ export function getCachedInitialData() {
     hasCache: false,
   };
 }
+
+export function sortAppointmentsChronologically(appointments: AppointmentItem[]): AppointmentItem[] {
+  return [...appointments].sort((a, b) => {
+    try {
+      const parseDateStr = (dateStr: string, timeStr: string) => {
+        const parts = dateStr.toLowerCase().split(' ');
+        const dayNum = parseInt(parts[1]) || 1;
+        const monthStr = parts[2]?.replace('.', '') || 'ene';
+        const monthNum = MONTH_NAME_TO_NUMBER[monthStr] ?? 0;
+        
+        const [hours, mins] = (timeStr || '09:00').split(':').map(Number);
+        const now = new Date();
+        let year = now.getFullYear();
+        const d = new Date(year, monthNum, dayNum, hours || 0, mins || 0);
+        return d.getTime();
+      };
+
+      const timeA = parseDateStr(a.dateString, a.timeSlot);
+      const timeB = parseDateStr(b.dateString, b.timeSlot);
+      return timeA - timeB;
+    } catch {
+      return 0;
+    }
+  });
+}
+
+const DAY_INDEX_TO_KEY: Record<number, string> = {
+  0: 'domingo',
+  1: 'lunes',
+  2: 'martes',
+  3: 'miercoles',
+  4: 'jueves',
+  5: 'viernes',
+  6: 'sabado',
+};
 
 export function buildRealOpenDays(
   totalDays = 30,
@@ -243,12 +284,6 @@ export function minutesToTime(totalMinutes: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
-// =========================================================================
-// GENERACIÓN DINÁMICA DE HORARIOS SEGÚN LA DURACIÓN DEL SERVICIO SELECCIONADO:
-// Si el servicio dura 30 min, genera turnos cada 30 min (más disponibilidad).
-// Si dura 45 min, genera turnos cada 45 min.
-// Si dura 60 min, genera turnos cada 60 min (menos turnos, más espaciados).
-// =========================================================================
 export function getSlotsForDayOfWeek(
   dayOfWeek: number,
   stepMinutes: number = 30,
@@ -282,8 +317,6 @@ export function getSlotsForDayOfWeek(
 
   const morning: string[] = [];
   const afternoon: string[] = [];
-
-  // Usamos el stepMinutes dinámico (por ejemplo, si el servicio dura 30 o 45 min, el salto respeta eso)
   const interval = Math.max(15, Number(stepMinutes) || 30);
 
   for (let current = startMins; current + interval <= endMins; current += interval) {
@@ -379,8 +412,13 @@ async function callAdminOperation(payload: Record<string, any>): Promise<any> {
   return data;
 }
 
-export async function getShopConfig(forceRefresh = true): Promise<ShopConfig> {
+export async function getShopConfig(forceRefresh = false): Promise<ShopConfig> {
   try {
+    if (!forceRefresh && typeof window !== 'undefined') {
+      const cached = sessionStorage.getItem('shop_config_cache');
+      if (cached) return JSON.parse(cached);
+    }
+
     if (!supabase) return DEFAULT_SHOP_CONFIG;
     const { data, error } = await supabase
       .from('shops')
@@ -390,7 +428,7 @@ export async function getShopConfig(forceRefresh = true): Promise<ShopConfig> {
 
     if (error || !data) return DEFAULT_SHOP_CONFIG;
 
-    return {
+    const cfg: ShopConfig = {
       ...DEFAULT_SHOP_CONFIG,
       id: data.id ?? DEFAULT_SHOP_CONFIG.id,
       name: data.name ?? DEFAULT_SHOP_CONFIG.name,
@@ -406,20 +444,33 @@ export async function getShopConfig(forceRefresh = true): Promise<ShopConfig> {
         data.cover_image_url || data.coverImageUrl || DEFAULT_SHOP_CONFIG.coverImageUrl,
       schedule: (data as any).schedule || DEFAULT_SHOP_CONFIG.schedule,
     };
+
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('shop_config_cache', JSON.stringify(cfg));
+    }
+    return cfg;
   } catch {
     return DEFAULT_SHOP_CONFIG;
   }
 }
 
 export async function saveShopConfig(config: ShopConfig): Promise<void> {
+  if (typeof window !== 'undefined') {
+    sessionStorage.removeItem('shop_config_cache');
+  }
   await callAdminOperation({
     operation: 'SAVE_SHOP_CONFIG',
     config,
   });
 }
 
-export async function getServices(forceRefresh = true): Promise<ServiceItem[]> {
+export async function getServices(forceRefresh = false): Promise<ServiceItem[]> {
   try {
+    if (!forceRefresh && typeof window !== 'undefined') {
+      const cached = sessionStorage.getItem('services_cache');
+      if (cached) return JSON.parse(cached);
+    }
+
     if (!supabase) return DEFAULT_SERVICES;
     const { data, error } = await supabase
       .from('services')
@@ -432,7 +483,7 @@ export async function getServices(forceRefresh = true): Promise<ServiceItem[]> {
       return DEFAULT_SERVICES;
     }
 
-    return data.map((s) => ({
+    const services = data.map((s) => ({
       id: s.id,
       name: s.name,
       price: Number(s.price),
@@ -441,12 +492,20 @@ export async function getServices(forceRefresh = true): Promise<ServiceItem[]> {
       imageUrl: s.image_url,
       active: s.active ?? true,
     }));
+
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('services_cache', JSON.stringify(services));
+    }
+    return services;
   } catch {
     return DEFAULT_SERVICES;
   }
 }
 
 export async function saveServices(services: ServiceItem[]): Promise<void> {
+  if (typeof window !== 'undefined') {
+    sessionStorage.removeItem('services_cache');
+  }
   await callAdminOperation({
     operation: 'SAVE_SERVICES',
     services,
@@ -455,14 +514,22 @@ export async function saveServices(services: ServiceItem[]): Promise<void> {
 
 export async function deleteServiceFromDb(id: string): Promise<void> {
   if (!isValidUUID(id)) return;
+  if (typeof window !== 'undefined') {
+    sessionStorage.removeItem('services_cache');
+  }
   await callAdminOperation({
     operation: 'DELETE_SERVICE',
     id,
   });
 }
 
-export async function getBarbers(forceRefresh = true): Promise<BarberItem[]> {
+export async function getBarbers(forceRefresh = false): Promise<BarberItem[]> {
   try {
+    if (!forceRefresh && typeof window !== 'undefined') {
+      const cached = sessionStorage.getItem('barbers_cache');
+      if (cached) return JSON.parse(cached);
+    }
+
     if (!supabase) return DEFAULT_BARBERS;
     const { data, error } = await supabase
       .from('barbers')
@@ -474,7 +541,7 @@ export async function getBarbers(forceRefresh = true): Promise<BarberItem[]> {
       return DEFAULT_BARBERS;
     }
 
-    return data.map((b) => ({
+    const barbers = data.map((b) => ({
       id: b.id,
       slug: b.slug || b.name.toLowerCase(),
       name: b.name,
@@ -487,6 +554,11 @@ export async function getBarbers(forceRefresh = true): Promise<BarberItem[]> {
       pin: '',
       isOwner: false,
     }));
+
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('barbers_cache', JSON.stringify(barbers));
+    }
+    return barbers;
   } catch {
     return DEFAULT_BARBERS;
   }
@@ -515,6 +587,9 @@ export async function getAdminBarbers(): Promise<BarberItem[]> {
 }
 
 export async function saveBarbers(barbers: BarberItem[]): Promise<void> {
+  if (typeof window !== 'undefined') {
+    sessionStorage.removeItem('barbers_cache');
+  }
   await callAdminOperation({
     operation: 'SAVE_BARBERS',
     barbers,
@@ -523,18 +598,22 @@ export async function saveBarbers(barbers: BarberItem[]): Promise<void> {
 
 export async function deleteBarberFromDb(id: string): Promise<void> {
   if (!isValidUUID(id)) return;
+  if (typeof window !== 'undefined') {
+    sessionStorage.removeItem('barbers_cache');
+  }
   await callAdminOperation({
     operation: 'DELETE_BARBER',
     id,
   });
 }
 
-export async function getPublicBookedSlots(forceRefresh = true): Promise<AppointmentItem[]> {
+export async function getPublicBookedSlots(forceRefresh = false): Promise<AppointmentItem[]> {
   try {
     const res = await fetch('/api/public/booking', { cache: 'no-store' });
     if (!res.ok) return [];
     const json = await res.json().catch(() => ({}));
-    return Array.isArray(json.appointments) ? json.appointments : [];
+    const apts = Array.isArray(json.appointments) ? json.appointments : [];
+    return sortAppointmentsChronologically(apts);
   } catch {
     return [];
   }
@@ -556,7 +635,7 @@ export async function getAppointments(): Promise<AppointmentItem[]> {
     }
   } catch {}
 
-  return data.map((apt: any) => ({
+  const apts = data.map((apt: any) => ({
     id: apt.id,
     code: apt.code || `${shopPrefix}-${Math.floor(1000 + Math.random() * 9000)}`,
     serviceId: apt.service_id,
@@ -569,11 +648,14 @@ export async function getAppointments(): Promise<AppointmentItem[]> {
     dateString: apt.date_string,
     timeSlot: apt.time_slot,
     clientName: apt.client_name,
-    clientPhone: apt.client_phone,
+    clientPhone: apt.client_phone || '098509376', // Oculto por defecto para compatibilidad
+    clientEmail: apt.client_email || '',         // 👈 Mapeado desde la BD
     clientNotes: apt.client_notes,
     status: apt.status || 'confirmado',
     createdAt: apt.created_at,
   }));
+
+  return sortAppointmentsChronologically(apts);
 }
 
 export async function createAppointment(
@@ -590,7 +672,8 @@ export async function createAppointment(
       dateString: data.dateString,
       timeSlot: data.timeSlot,
       clientName: data.clientName,
-      clientPhone: data.clientPhone,
+      clientPhone: data.clientPhone || '098509376', // Oculto por defecto para que la BD no falle
+      clientEmail: data.clientEmail,               // 👈 Enviado al backend
       clientNotes: data.clientNotes || '',
     }),
   });
@@ -634,7 +717,7 @@ export async function unlockBarberPanelWithPin(
   }
   return {
     commissionRate: Number(json.commissionRate ?? 50),
-    appointments: Array.isArray(json.appointments) ? json.appointments : [],
+    appointments: sortAppointmentsChronologically(Array.isArray(json.appointments) ? json.appointments : []),
   };
 }
 
@@ -670,4 +753,72 @@ export async function deleteExpense(id: string): Promise<ExpenseItem[]> {
     id,
   });
   return await getExpenses();
+}
+
+export async function getTips(barberId?: string): Promise<TipItem[]> {
+  try {
+    if (!supabase) return [];
+    let query = supabase
+      .from('tips')
+      .select('id, barber_id, amount, note, date_string, created_at, barbers(name)')
+      .eq('shop_id', SHOP_UUID)
+      .order('created_at', { ascending: false });
+
+    if (barberId) {
+      query = query.eq('barber_id', barberId);
+    }
+
+    const { data, error } = await query;
+    if (error || !data) return [];
+
+    return data.map((t: any) => ({
+      id: t.id,
+      barberId: t.barber_id,
+      barberName: t.barbers?.name || 'Barbero',
+      amount: Number(t.amount),
+      note: t.note || '',
+      dateString: t.date_string,
+      createdAt: t.created_at,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+export async function createTip(params: {
+  barberId: string;
+  amount: number;
+  note?: string;
+}): Promise<TipItem[]> {
+  if (!supabase) throw new Error('Base de datos no disponible');
+  const cleanAmount = Number(params.amount);
+  if (!cleanAmount || cleanAmount <= 0) {
+    throw new Error('El monto de la propina debe ser mayor a 0.');
+  }
+
+  const todayStr = new Date().toLocaleDateString('es-UY', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+
+  const { error } = await supabase.from('tips').insert({
+    shop_id: SHOP_UUID,
+    barber_id: params.barberId,
+    amount: cleanAmount,
+    note: sanitizeInput(params.note || ''),
+    date_string: todayStr,
+  });
+
+  if (error) {
+    throw new Error('No se pudo guardar la propina: ' + error.message);
+  }
+
+  return await getTips();
+}
+
+export async function deleteTip(id: string): Promise<TipItem[]> {
+  if (!supabase || !isValidUUID(id)) return await getTips();
+  await supabase.from('tips').delete().eq('id', id).eq('shop_id', SHOP_UUID);
+  return await getTips();
 }

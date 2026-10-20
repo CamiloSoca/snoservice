@@ -31,6 +31,7 @@ import {
   AlertCircle,
   ShieldCheck,
   Lock,
+  Coins,
 } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import {
@@ -39,6 +40,7 @@ import {
   AppointmentItem,
   ExpenseItem,
   ExpenseCategory,
+  TipItem,
   ShopConfig,
   DEFAULT_SHOP_CONFIG,
   generateUUID,
@@ -55,9 +57,13 @@ import {
   getExpenses,
   createExpense,
   deleteExpense,
+  getTips,
+  createTip,
+  deleteTip,
   getShopConfig,
   saveShopConfig,
   buildRealOpenDays,
+  sortAppointmentsChronologically,
   DayOption,
 } from '@/lib/booking-store';
 
@@ -67,7 +73,31 @@ const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supa
 
 type PeriodFilter = 'hoy' | 'semana' | 'mes';
 
-function isWithinPeriod(isoOrDateStr: string, period: PeriodFilter): boolean {
+const MONTH_NAMES = [
+  'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+  'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre',
+];
+
+function getRecentMonths(count = 12): { value: string; label: string }[] {
+  const result: { value: string; label: string }[] = [];
+  const now = new Date();
+  for (let i = 0; i < count; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    result.push({
+      value: `${yyyy}-${mm}`,
+      label: `${MONTH_NAMES[d.getMonth()]} ${yyyy}`,
+    });
+  }
+  return result;
+}
+
+function isWithinPeriod(
+  isoOrDateStr: string,
+  period: PeriodFilter,
+  selectedMonthYear: string
+): boolean {
   if (!isoOrDateStr) return true;
   const target = new Date(isoOrDateStr);
   if (isNaN(target.getTime())) return true;
@@ -85,9 +115,16 @@ function isWithinPeriod(isoOrDateStr: string, period: PeriodFilter): boolean {
     return diffDays <= 7 && diffDays >= -7;
   }
   if (period === 'mes') {
+    const [selYear, selMonth] = selectedMonthYear.split('-').map(Number);
+    if (!selYear || !selMonth) {
+      return (
+        target.getFullYear() === now.getFullYear() &&
+        target.getMonth() === now.getMonth()
+      );
+    }
     return (
-      target.getFullYear() === now.getFullYear() &&
-      target.getMonth() === now.getMonth()
+      target.getFullYear() === selYear &&
+      target.getMonth() + 1 === selMonth
     );
   }
   return true;
@@ -103,6 +140,7 @@ export default function AdminDashboard() {
   const [services, setServices] = useState<ServiceItem[]>([]);
   const [barbers, setBarbers] = useState<BarberItem[]>([]);
   const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
+  const [tips, setTips] = useState<TipItem[]>([]);
   const [shopConfig, setShopConfig] = useState<ShopConfig>(DEFAULT_SHOP_CONFIG);
   const [days, setDays] = useState<DayOption[]>([]);
   const [savedBanner, setSavedBanner] = useState(false);
@@ -111,7 +149,9 @@ export default function AdminDashboard() {
 
   const [blockedBarbers, setBlockedBarbers] = useState<Record<string, boolean>>({});
 
+  const availableMonths = getRecentMonths(12);
   const [period, setPeriod] = useState<PeriodFilter>('mes');
+  const [selectedMonth, setSelectedMonth] = useState<string>(availableMonths[0].value);
   const [onlyCompleted, setOnlyCompleted] = useState<boolean>(false);
 
   const [adminAgendaDate, setAdminAgendaDate] = useState<string>('');
@@ -129,6 +169,10 @@ export default function AdminDashboard() {
   const [expenseAmount, setExpenseAmount] = useState('');
   const [expenseCategory, setExpenseCategory] = useState<ExpenseCategory>('Insumos');
 
+  const [tipBarberId, setTipBarberId] = useState<string>('');
+  const [tipAmount, setTipAmount] = useState<string>('');
+  const [tipNote, setTipNote] = useState<string>('');
+
   const checkBarberLocks = (brbs: BarberItem[]) => {
     const locks: Record<string, boolean> = {};
     brbs.forEach((b) => {
@@ -142,11 +186,12 @@ export default function AdminDashboard() {
     async function loadAdminData() {
       try {
         setAdminError('');
-        const [apts, srvs, brbs, exps, cfg] = await Promise.all([
+        const [apts, srvs, brbs, exps, tps, cfg] = await Promise.all([
           getAppointments(),
           getServices(true),
           getAdminBarbers(),
           getExpenses(),
+          getTips(),
           getShopConfig(true),
         ]);
 
@@ -158,10 +203,15 @@ export default function AdminDashboard() {
         }
 
         const freshBarbers = Array.isArray(brbs) ? brbs : [];
-        setAppointments(Array.isArray(apts) ? apts : []);
+        if (freshBarbers.length > 0) {
+          setTipBarberId(freshBarbers[0].id);
+        }
+
+        setAppointments(sortAppointmentsChronologically(Array.isArray(apts) ? apts : []));
         setServices(Array.isArray(srvs) ? srvs : []);
         setBarbers(freshBarbers);
         setExpenses(Array.isArray(exps) ? exps : []);
+        setTips(Array.isArray(tps) ? tps : []);
         setShopConfig(freshConfig);
 
         checkBarberLocks(freshBarbers);
@@ -184,7 +234,7 @@ export default function AdminDashboard() {
     try {
       setAdminError('');
       const updated = await updateAppointmentStatus(id, status);
-      setAppointments(Array.isArray(updated) ? updated : []);
+      setAppointments(sortAppointmentsChronologically(Array.isArray(updated) ? updated : []));
     } catch (err: any) {
       setAdminError(err?.message || 'No se pudo actualizar el estado del turno.');
     }
@@ -309,6 +359,9 @@ export default function AdminDashboard() {
       const freshBarbers = await getAdminBarbers();
       const finalBarbers = freshBarbers.length > 0 ? freshBarbers : updated;
       setBarbers(finalBarbers);
+      if (!tipBarberId && finalBarbers.length > 0) {
+        setTipBarberId(finalBarbers[0].id);
+      }
       checkBarberLocks(finalBarbers);
       setNewBarberName('');
       setNewBarberCommission('50');
@@ -410,6 +463,34 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleAddTipAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!tipBarberId || !tipAmount || Number(tipAmount) <= 0) return;
+    try {
+      setAdminError('');
+      const updated = await createTip({
+        barberId: tipBarberId,
+        amount: Number(tipAmount),
+        note: tipNote.trim() || 'Agregada por Admin',
+      });
+      setTips(Array.isArray(updated) ? updated : []);
+      setTipAmount('');
+      setTipNote('');
+    } catch (err: any) {
+      setAdminError(err?.message || 'Error al registrar la propina.');
+    }
+  };
+
+  const handleRemoveTipAdmin = async (id: string) => {
+    try {
+      setAdminError('');
+      const updated = await deleteTip(id);
+      setTips(Array.isArray(updated) ? updated : []);
+    } catch (err: any) {
+      setAdminError(err?.message || 'Error al eliminar la propina.');
+    }
+  };
+
   const handleSaveBrand = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -432,18 +513,25 @@ export default function AdminDashboard() {
     }
   };
 
-  const safeAppointments = Array.isArray(appointments) ? appointments : [];
+  const safeAppointments = sortAppointmentsChronologically(
+    Array.isArray(appointments) ? appointments : []
+  );
   const safeExpenses = Array.isArray(expenses) ? expenses : [];
+  const safeTips = Array.isArray(tips) ? tips : [];
   const safeBarbers = Array.isArray(barbers) ? barbers : [];
 
   const filteredAppointments = safeAppointments.filter((apt) => {
     if (apt.status === 'cancelado') return false;
     if (onlyCompleted && apt.status !== 'completado') return false;
-    return isWithinPeriod(apt.createdAt, period);
+    return isWithinPeriod(apt.createdAt, period, selectedMonth);
   });
 
   const filteredExpenses = safeExpenses.filter((exp) =>
-    isWithinPeriod(exp.createdAt || exp.date, period)
+    isWithinPeriod(exp.createdAt || exp.date, period, selectedMonth)
+  );
+
+  const filteredTips = safeTips.filter((t) =>
+    isWithinPeriod(t.createdAt, period, selectedMonth)
   );
 
   const adminAgendaAppointments = safeAppointments.filter((apt) => {
@@ -464,12 +552,17 @@ export default function AdminDashboard() {
     const barberTakeHome = Math.round((grossGenerated * barber.commissionRate) / 100);
     const leftForOwner = grossGenerated - barberTakeHome;
 
+    const barberTipsTotal = filteredTips
+      .filter((t) => t.barberId === barber.id)
+      .reduce((sum, t) => sum + Number(t.amount), 0);
+
     return {
       barber,
       cutsCount,
       grossGenerated,
       barberTakeHome,
       leftForOwner,
+      barberTipsTotal,
     };
   });
 
@@ -485,8 +578,9 @@ export default function AdminDashboard() {
   const totalExpensesAmount = filteredExpenses.reduce((sum, exp) => sum + Number(exp.amount), 0);
   const ownerFinalNetPocket = ownerTotalGrossIncome - totalExpensesAmount;
 
-  const getClientWhatsAppLink = (apt: AppointmentItem) => {
-    const rawDigits = apt.clientPhone.replace(/\D/g, '');
+ const getClientWhatsAppLink = (apt: AppointmentItem) => {
+    // Si el turno no tiene teléfono registrado, evitamos que rompa usando una cadena vacía
+    const rawDigits = (apt.clientPhone || '098509376').replace(/\D/g, '');
     const formattedPhone = rawDigits.startsWith('0')
       ? '598' + rawDigits.slice(1)
       : rawDigits.startsWith('598')
@@ -664,27 +758,43 @@ export default function AdminDashboard() {
           {activeTab === 'caja' && (
             <div className="space-y-6">
               <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="flex items-center space-x-1.5 bg-zinc-950 p-1 rounded-xl border border-zinc-800">
-                  {(
-                    [
-                      { id: 'hoy', label: 'Hoy' },
-                      { id: 'semana', label: 'Semana' },
-                      { id: 'mes', label: 'Este Mes' },
-                    ] as { id: PeriodFilter; label: string }[]
-                  ).map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => setPeriod(item.id)}
-                      className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer touch-manipulation ${
-                        period === item.id
-                          ? 'bg-zinc-100 text-zinc-950'
-                          : 'text-zinc-400 hover:text-zinc-200'
-                      }`}
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center space-x-1.5 bg-zinc-950 p-1 rounded-xl border border-zinc-800">
+                    {(
+                      [
+                        { id: 'hoy', label: 'Hoy' },
+                        { id: 'semana', label: 'Semana' },
+                        { id: 'mes', label: 'Por Mes' },
+                      ] as { id: PeriodFilter; label: string }[]
+                    ).map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setPeriod(item.id)}
+                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer touch-manipulation ${
+                          period === item.id
+                            ? 'bg-zinc-100 text-zinc-950'
+                            : 'text-zinc-400 hover:text-zinc-200'
+                        }`}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {period === 'mes' && (
+                    <select
+                      value={selectedMonth}
+                      onChange={(e) => setSelectedMonth(e.target.value)}
+                      className="px-3.5 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-xs font-bold text-emerald-400 outline-none cursor-pointer"
                     >
-                      {item.label}
-                    </button>
-                  ))}
+                      {availableMonths.map((m) => (
+                        <option key={m.value} value={m.value}>
+                          📅 {m.label}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
 
                 <label className="flex items-center space-x-2 text-xs text-zinc-300 cursor-pointer select-none">
@@ -754,6 +864,8 @@ export default function AdminDashboard() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
                   {barberFinancials.map((item) => {
                     const isOwner = item.barber.isOwner || item.barber.commissionRate === 100;
+                    const totalBarberPocket = item.barberTakeHome + item.barberTipsTotal;
+
                     return (
                       <div
                         key={item.barber.id}
@@ -778,23 +890,126 @@ export default function AdminDashboard() {
 
                         <div className="space-y-2 text-xs">
                           <div className="flex justify-between">
-                            <span className="text-zinc-400">Total facturado:</span>
+                            <span className="text-zinc-400">Total facturado (Cortes):</span>
                             <span className="font-semibold">${item.grossGenerated}</span>
                           </div>
                           <div className="flex justify-between">
-                            <span className="text-zinc-400">Cobra barbero:</span>
-                            <span className="font-bold text-amber-400">${item.barberTakeHome}</span>
+                            <span className="text-zinc-400">Comisión cortes:</span>
+                            <span className="font-medium text-zinc-300">${item.barberTakeHome}</span>
                           </div>
-                          <div className="flex justify-between pt-2 border-t border-zinc-800/80">
-                            <span className="text-zinc-300 font-medium">Para local:</span>
-                            <span className="font-bold text-emerald-400">
-                              +{isOwner ? item.barberTakeHome : item.leftForOwner}
-                            </span>
+                          <div className="flex justify-between">
+                            <span className="text-zinc-400">Propinas personales:</span>
+                            <span className="font-bold text-emerald-400">+${item.barberTipsTotal}</span>
+                          </div>
+
+                          <div className="flex justify-between pt-2 border-t border-zinc-800/80 text-amber-400 font-bold">
+                            <span>Total para barbero:</span>
+                            <span>${totalBarberPocket}</span>
+                          </div>
+
+                          <div className="flex justify-between pt-1 text-emerald-400 font-bold">
+                            <span>Para local:</span>
+                            <span>+${isOwner ? item.barberTakeHome : item.leftForOwner}</span>
                           </div>
                         </div>
                       </div>
                     );
                   })}
+                </div>
+              </div>
+
+              {/* SECCIÓN DE PROPINAS DEL EQUIPO (ADMIN) */}
+              <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h3 className="font-bold text-base flex items-center gap-2">
+                      <Coins className="w-4 h-4 text-emerald-400" />
+                      Propinas del Equipo
+                    </h3>
+                    <p className="text-xs text-zinc-400">
+                      Sumale propinas manualmente a cualquier barbero en caso de que se haya olvidado de anotarla.
+                    </p>
+                  </div>
+                </div>
+
+                <form onSubmit={handleAddTipAdmin} className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+                  <select
+                    value={tipBarberId}
+                    onChange={(e) => setTipBarberId(e.target.value)}
+                    className="sm:col-span-3 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none text-zinc-200 font-semibold"
+                  >
+                    {safeBarbers.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
+                    ))}
+                  </select>
+
+                  <input
+                    type="number"
+                    placeholder="Monto propina $"
+                    value={tipAmount}
+                    onChange={(e) => setTipAmount(e.target.value)}
+                    className="sm:col-span-3 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
+                  />
+
+                  <input
+                    type="text"
+                    placeholder="Nota opcional (ej: Cliente turno 15hs)..."
+                    value={tipNote}
+                    onChange={(e) => setTipNote(e.target.value)}
+                    className="sm:col-span-4 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
+                  />
+
+                  <button
+                    type="submit"
+                    className="sm:col-span-2 py-2.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs cursor-pointer flex items-center justify-center gap-1 touch-manipulation"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Sumar</span>
+                  </button>
+                </form>
+
+                <div className="space-y-2">
+                  {filteredTips.length === 0 ? (
+                    <p className="text-xs text-zinc-500 italic py-2">
+                      No hay propinas registradas en este período.
+                    </p>
+                  ) : (
+                    filteredTips.map((tp) => {
+                      const brbName =
+                        tp.barberName ||
+                        safeBarbers.find((b) => b.id === tp.barberId)?.name ||
+                        'Barbero';
+                      return (
+                        <div
+                          key={tp.id}
+                          className="bg-zinc-950/70 border border-zinc-800/80 rounded-xl p-3 flex items-center justify-between gap-3"
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="px-2.5 py-0.5 rounded-md text-xs font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                              {brbName}
+                            </span>
+                            <span className="text-xs text-zinc-400">{tp.dateString}</span>
+                            {tp.note && (
+                              <span className="text-xs text-zinc-300 font-medium">• {tp.note}</span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center space-x-3">
+                            <span className="font-bold text-sm text-emerald-400">+${tp.amount}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveTipAdmin(tp.id)}
+                              className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-rose-400 cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
               </div>
 
@@ -877,7 +1092,7 @@ export default function AdminDashboard() {
                     <CalendarIcon className="w-4 h-4 text-emerald-400" />
                     Agenda General de la Barbería
                   </h3>
-                  <p className="text-xs text-zinc-400">Controlá los turnos agendados por día y por barbero</p>
+                  <p className="text-xs text-zinc-400">Controlá los turnos agendados por día y por barbero (ordenados por horario)</p>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
