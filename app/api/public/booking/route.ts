@@ -247,14 +247,3 @@ export async function POST(request: Request) {
     );
   }
 }
-
-export function isValidUruguayanPhone(phone: string): boolean {
-  if (!phone) return false;
-  const cleaned = phone.replace(/\D/g, '');
-  return cleaned.length >= 8 && cleaned.length <= 12;
-}
-
-export function sanitizeInput(input: string): string {
-  if (!input) return '';
-  return input.replace(/[<>]/g, '').trim();
-}
