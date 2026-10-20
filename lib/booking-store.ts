@@ -144,7 +144,6 @@ export const DEFAULT_BARBERS: BarberItem[] = [
   },
 ];
 
-// Caché en memoria para carga inicial instantánea y sincrónica en /agendar
 let cachedShopConfig: ShopConfig = DEFAULT_SHOP_CONFIG;
 let cachedServices: ServiceItem[] = DEFAULT_SERVICES;
 let cachedBarbers: BarberItem[] = DEFAULT_BARBERS;
@@ -177,6 +176,17 @@ export function isValidUUID(id: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
 }
 
+export function isValidUruguayanPhone(phone: string): boolean {
+  if (!phone) return false;
+  const cleaned = phone.replace(/\D/g, '');
+  return cleaned.length >= 8 && cleaned.length <= 12;
+}
+
+export function sanitizeInput(input: string): string {
+  if (!input) return '';
+  return input.replace(/[<>]/g, '').trim();
+}
+
 export function timeToMinutes(timeStr: string): number {
   if (!timeStr || !timeStr.includes(':')) return 0;
   const [h, m] = timeStr.split(':').map(Number);
@@ -189,7 +199,6 @@ export function minutesToTime(totalMins: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
-// 🛡️ Validador estricto para impedir completar turnos de fechas futuras
 export function canCompleteAppointment(dateString: string): boolean {
   if (!dateString) return true;
 
@@ -342,7 +351,6 @@ export function getSlotsForDayOfWeek(
   return { morning, afternoon };
 }
 
-// 💈 Lógica de disponibilidad adaptada a cómo trabajan los barberos
 export function isSlotAvailable(params: {
   candidateTime: string;
   serviceDurationMinutes: number;
@@ -379,24 +387,14 @@ export function isSlotAvailable(params: {
     const aptDuration = Number(apt.durationMinutes || matchedServiceDur) || 60;
     const aptEnd = aptStart + aptDuration;
 
-    // 1. Si el horario candidato cae DENTRO de un turno ya reservado
-    // (Ej: hay turno a las 09:30 de 1h -> bloquea las 09:30 y las 10:00)
     if (candidateStart >= aptStart && candidateStart < aptEnd) {
       return false;
     }
 
-    // 2. Si el horario candidato es ANTES de un turno ya reservado pero su duración lo pisa
-    // (Ej: quiere agendar a las 09:00 y hay un turno a las 09:30)
     if (candidateStart < aptStart && candidateEnd > aptStart) {
-      // Si el servicio nuevo dura más de 1 hora 30 min (> 90 min, como Color Global / Mechas de 2h),
-      // NO permitimos agendar porque no da el tiempo antes del turno de las 09:30.
       if (duration > 90) {
         return false;
       }
-
-      // Si el servicio dura 1 hora (o hasta 90 min), permitimos que se agende en el hueco
-      // inmediatamente anterior (con hasta 30 min de solapamiento sobre el turno siguiente)
-      // para no perder el turno de las 09:00.
       const overlapMinutes = candidateEnd - aptStart;
       if (overlapMinutes > 30 && aptStart - candidateStart < 30) {
         return false;
@@ -840,15 +838,4 @@ export async function unlockBarberPanelWithPin(barberId: string, pin: string) {
     commissionRate: Number(barber.commission_rate) || 50,
     appointments: apts.filter((a) => a.barberId === barberId),
   };
-}
-
-export function isValidUruguayanPhone(phone: string): boolean {
-  if (!phone) return false;
-  const cleaned = phone.replace(/\D/g, '');
-  return cleaned.length >= 8 && cleaned.length <= 12;
-}
-
-export function sanitizeInput(input: string): string {
-  if (!input) return '';
-  return input.replace(/[<>]/g, '').trim();
 }
