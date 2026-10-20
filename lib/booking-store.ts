@@ -176,17 +176,6 @@ export function isValidUUID(id: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
 }
 
-export function isValidUruguayanPhone(phone: string): boolean {
-  if (!phone) return false;
-  const cleaned = phone.replace(/\D/g, '');
-  return cleaned.length >= 8 && cleaned.length <= 12;
-}
-
-export function sanitizeInput(input: string): string {
-  if (!input) return '';
-  return input.replace(/[<>]/g, '').trim();
-}
-
 export function timeToMinutes(timeStr: string): number {
   if (!timeStr || !timeStr.includes(':')) return 0;
   const [h, m] = timeStr.split(':').map(Number);
@@ -838,4 +827,15 @@ export async function unlockBarberPanelWithPin(barberId: string, pin: string) {
     commissionRate: Number(barber.commission_rate) || 50,
     appointments: apts.filter((a) => a.barberId === barberId),
   };
+}
+
+export function isValidUruguayanPhone(phone: string): boolean {
+  if (!phone) return false;
+  const cleaned = phone.replace(/\D/g, '');
+  return cleaned.length >= 8 && cleaned.length <= 12;
+}
+
+export function sanitizeInput(input: string): string {
+  if (!input) return '';
+  return input.replace(/[<>]/g, '').trim();
 }
