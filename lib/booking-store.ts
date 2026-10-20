@@ -243,6 +243,12 @@ export function minutesToTime(totalMinutes: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
+// =========================================================================
+// GENERACIÓN DINÁMICA DE HORARIOS SEGÚN LA DURACIÓN DEL SERVICIO SELECCIONADO:
+// Si el servicio dura 30 min, genera turnos cada 30 min (más disponibilidad).
+// Si dura 45 min, genera turnos cada 45 min.
+// Si dura 60 min, genera turnos cada 60 min (menos turnos, más espaciados).
+// =========================================================================
 export function getSlotsForDayOfWeek(
   dayOfWeek: number,
   stepMinutes: number = 30,
@@ -277,7 +283,10 @@ export function getSlotsForDayOfWeek(
   const morning: string[] = [];
   const afternoon: string[] = [];
 
-  for (let current = startMins; current + stepMinutes <= endMins; current += stepMinutes) {
+  // Usamos el stepMinutes dinámico (por ejemplo, si el servicio dura 30 o 45 min, el salto respeta eso)
+  const interval = Math.max(15, Number(stepMinutes) || 30);
+
+  for (let current = startMins; current + interval <= endMins; current += interval) {
     const slot = minutesToTime(current);
     if (current < 13 * 60) {
       morning.push(slot);
@@ -299,6 +308,7 @@ export function isSlotAvailable(params: {
 }): boolean {
   const {
     candidateTime,
+    serviceDurationMinutes,
     barberId,
     dateString,
     existingAppointments,
@@ -306,6 +316,8 @@ export function isSlotAvailable(params: {
   } = params;
 
   const candidateStart = timeToMinutes(candidateTime);
+  const durNew = Number(serviceDurationMinutes) || 60;
+  const candidateEnd = candidateStart + durNew;
 
   const barberDayApts = existingAppointments.filter(
     (apt) =>
@@ -324,8 +336,18 @@ export function isSlotAvailable(params: {
     if (!aptDuration) aptDuration = 60;
 
     const aptEnd = aptStart + aptDuration;
+
     if (candidateStart >= aptStart && candidateStart < aptEnd) {
       return false;
+    }
+
+    if (candidateStart < aptStart && candidateEnd > aptStart) {
+      const overlapMinutes = candidateEnd - aptStart;
+      const MAX_ALLOWED_OVERLAP_MINUTES = 30;
+
+      if (overlapMinutes > MAX_ALLOWED_OVERLAP_MINUTES) {
+        return false;
+      }
     }
   }
   return true;
@@ -356,10 +378,6 @@ async function callAdminOperation(payload: Record<string, any>): Promise<any> {
   }
   return data;
 }
-
-// ==========================================
-// CONSULTAS OPTIMIZADAS Y PARALELIZADAS
-// ==========================================
 
 export async function getShopConfig(forceRefresh = true): Promise<ShopConfig> {
   try {
