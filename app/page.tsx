@@ -21,11 +21,11 @@ import {
   BarberItem,
   ShopConfig,
   DEFAULT_SHOP_CONFIG,
-  DEFAULT_BARBERS,
   getBarbers,
   getShopConfig,
   getServices,
 } from '@/lib/booking-store';
+import { InitialShopSkeleton, InitialShopError } from '@/components/InitialShopState';
 
 const INSTAGRAM_POSTS = [
   {
@@ -124,7 +124,8 @@ export default function HomePage() {
   const [mounted, setMounted] = useState(false);
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [shopConfig, setShopConfig] = useState<ShopConfig>(DEFAULT_SHOP_CONFIG);
-  const [barbers, setBarbers] = useState<BarberItem[]>(DEFAULT_BARBERS);
+  const [barbers, setBarbers] = useState<BarberItem[]>([]);
+  const [initialLoad, setInitialLoad] = useState<'loading' | 'ready' | 'error'>('loading');
 
   useEffect(() => {
     setMounted(true);
@@ -140,11 +141,12 @@ export default function HomePage() {
           getBarbers(true),
           getServices(true),
         ]);
-        console.log('Configuración cargada en Home:', config); // 👈 Para debuguear el logo
         setShopConfig(config);
         setBarbers(brbs.filter((b) => b.active !== false));
+        setInitialLoad('ready');
       } catch (err) {
         console.error('Error cargando inicio:', err);
+        setInitialLoad('error');
       }
     }
     loadData();
@@ -176,10 +178,13 @@ export default function HomePage() {
   const shopAddress = shopConfig.address || DEFAULT_SHOP_CONFIG.address;
   const shopPhone = shopConfig.phone || DEFAULT_SHOP_CONFIG.phone;
   const activeSchedule = shopConfig.schedule || DEFAULT_SHOP_CONFIG.schedule;
-  const activeBarbers = barbers.length > 0 ? barbers : DEFAULT_BARBERS;
+  const activeBarbers = barbers;
 
-  if (!mounted) {
-    return <div className="min-h-screen bg-zinc-950 text-zinc-100" />;
+  if (!mounted || initialLoad === 'loading') {
+    return <InitialShopSkeleton label="Cargando la barbería..." />;
+  }
+  if (initialLoad === 'error') {
+    return <InitialShopError />;
   }
 
   return (
@@ -446,6 +451,9 @@ export default function HomePage() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+              {activeBarbers.length === 0 && (
+                <p className="col-span-full text-sm text-zinc-400">No hay barberos disponibles por el momento.</p>
+              )}
               {activeBarbers.map((b) => {
                 const slug = b.slug || b.name.toLowerCase();
                 return (
