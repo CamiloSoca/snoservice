@@ -668,16 +668,11 @@ export async function createAppointment(item: {
 export async function updateAppointmentStatus(
   id: string,
   status: AppointmentItem['status']
-): Promise<AppointmentItem[]> {
-  await apiRequest('/api/barber', jsonRequest('PATCH', { id, status }));
-  const admin = await fetch('/api/admin?resource=appointments', {credentials: 'same-origin', cache: 'no-store'});
-  if (admin.ok) {
-    const payload = await admin.json();
-    return (payload.data || []).map(mapAppointment);
-  }
-  if (admin.status !== 401) throw new Error('No se pudo recargar la agenda.');
-  const { appointments } = await apiRequest('/api/barber', {cache: 'no-store'});
-  return appointments || [];
+): Promise<{id: string; status: AppointmentItem['status']}> {
+  // El PATCH valida autorizacion, caja y guarda el cambio. No descargar
+  // toda la agenda otra vez para actualizar una sola fila local.
+  await apiRequest('/api/barber', jsonRequest('PATCH', {id, status}));
+  return {id, status};
 }
 
 export async function getExpenses(): Promise<ExpenseItem[]> {
