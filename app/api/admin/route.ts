@@ -211,7 +211,8 @@ export async function POST(request: Request) {
             role: sanitizeInput(String(b.role || 'Barbero')).slice(0, 40),
             bio: sanitizeInput(String(b.bio || '')).slice(0, 300),
             specialties, service_ids: serviceIds,
-            commission_rate: commissionRate, pin, active: b.active ?? true,
+            commission_rate: commissionRate, is_owner: b.isOwner === true,
+            pin, active: b.active ?? true,
           });
         }
         if (payloads.length) {
