@@ -345,22 +345,6 @@ function AgendarContent() {
           clientNotes: '',
         });
 
-        fetch('/api/send-email', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            clientEmail: cleanEmail,
-            clientName: clientName.trim(),
-            serviceName: selectedService.name,
-            barberName: selectedBarber.name,
-            dateString: selectedDate,
-            timeSlot: selectedTime,
-            code: created.code,
-            shopName: shopConfig.name,
-            shopAddress: shopConfig.address,
-          }),
-        }).catch((err) => console.error('Error enviando correo:', err));
-
         localStorage.setItem(BOOKING_STORAGE_KEY, String(Date.now()));
         setConfirmedAppointment(created);
         scrollToTop();
@@ -411,32 +395,13 @@ function AgendarContent() {
 
     try {
       setIsCancelling(true);
-      if (!supabase) throw new Error('Sin conexión con la base de datos.');
-
-      const { data: foundApt, error: searchError } = await supabase
-        .from('appointments')
-        .select('id, client_email, status')
-        .eq('code', cleanCode)
-        .maybeSingle();
-
-      if (searchError || !foundApt) {
-        throw new Error('No se encontró ningún turno con ese código.');
-      }
-
-      if (!foundApt.client_email || foundApt.client_email.trim().toLowerCase() !== cancelEmail.trim().toLowerCase()) {
-        throw new Error('El correo electrónico no coincide con el de la reserva.');
-      }
-
-      if (foundApt.status === 'cancelado') {
-        throw new Error('Este turno ya se encuentra cancelado.');
-      }
-
-      const { error: updateError } = await supabase
-        .from('appointments')
-        .update({ status: 'cancelado' })
-        .eq('id', foundApt.id);
-
-      if (updateError) throw new Error(updateError.message);
+      const response = await fetch('/api/public/cancel', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({code: cleanCode, email: cancelEmail.trim()}),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'No se pudo cancelar el turno.');
 
       const updatedSlots = await getPublicBookedSlots(true);
       setAppointments(updatedSlots);
