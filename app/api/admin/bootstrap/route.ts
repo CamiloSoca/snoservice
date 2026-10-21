@@ -16,6 +16,35 @@ export async function GET() {
   try {
     const supabase = getSupabaseServer();
     const startedAt = performance.now();
+
+    // Un único viaje HTTP a Supabase devuelve una foto consistente del
+    // administrador. La función SQL usa SECURITY INVOKER y solo service_role
+    // puede ejecutarla. Esta ruta verifica la sesión antes del RPC.
+    const rpcStart = performance.now();
+    const {data: fastData, error: fastError} = await supabase.rpc(
+      'admin_bootstrap_snapshot', {p_shop_id: SHOP_UUID}
+    );
+    const rpcDuration = performance.now() - rpcStart;
+    if (!fastError && fastData &&
+      Array.isArray(fastData.appointments) &&
+      Array.isArray(fastData.services) &&
+      Array.isArray(fastData.barbers) &&
+      Array.isArray(fastData.expenses) &&
+      Array.isArray(fastData.tips) &&
+      Array.isArray(fastData.manualCharges) &&
+      Array.isArray(fastData.cashRegisters) &&
+      fastData.shop) {
+      return NextResponse.json(fastData, {
+        headers: {
+          'Cache-Control': 'private, no-store',
+          'Server-Timing': `database;dur=${(performance.now() - startedAt).toFixed(1)},rpc;dur=${rpcDuration.toFixed(1)}`,
+        },
+      });
+    }
+
+    // Mantener el fallback anterior durante el despliegue y ante una falla
+    // del RPC: evita que el panel quede inaccesible por un desajuste de schema.
+    console.warn('RPC admin no disponible; usando consultas paralelas:', fastError?.code || 'invalid_response');
     // Medir cada consulta por separado sin exponer datos privados.
     // Server-Timing permite detectar la tabla lenta en DevTools.
     const durations: Record<string, number> = {};
