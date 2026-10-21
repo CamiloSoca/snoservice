@@ -176,6 +176,8 @@ export default function AdminDashboard() {
   const [expenseDesc, setExpenseDesc] = useState('');
   const [expenseAmount, setExpenseAmount] = useState('');
   const [expenseCategory, setExpenseCategory] = useState<ExpenseCategory>('Insumos');
+  const [expenseFeedback, setExpenseFeedback] = useState<{kind: 'error' | 'success'; message: string} | null>(null);
+  const [savingExpense, setSavingExpense] = useState(false);
 
   const [tipBarberId, setTipBarberId] = useState<string>('');
   const [tipAmount, setTipAmount] = useState<string>('');
@@ -507,20 +509,34 @@ const handleAddBarber = async () => {
 
   const handleAddExpense = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!expenseDesc.trim() || !expenseAmount || Number(expenseAmount) <= 0) return;
+    if (savingExpense) return;
+
+    setExpenseFeedback(null);
+    const description = expenseDesc.trim();
+    const amount = Number(expenseAmount);
+
+    if (!description || !expenseAmount.trim() || !Number.isFinite(amount) || amount <= 0) {
+      setExpenseFeedback({kind: 'error', message: 'Ingresá una descripción y un monto mayor a $0.'});
+      return;
+    }
+
+    setSavingExpense(true);
     try {
       setAdminError('');
       const updated = await createExpense({
-        description: expenseDesc.trim(),
-        amount: Number(expenseAmount),
+        description,
+        amount,
         category: expenseCategory,
         date: new Date().toISOString().split('T')[0],
       });
       setExpenses(Array.isArray(updated) ? updated : []);
       setExpenseDesc('');
       setExpenseAmount('');
+      setExpenseFeedback({kind: 'success', message: 'Gasto registrado correctamente.'});
     } catch (err: any) {
-      setAdminError(err?.message || 'Error al registrar el gasto.');
+      setExpenseFeedback({kind: 'error', message: err?.message || 'No se pudo registrar el gasto.'});
+    } finally {
+      setSavingExpense(false);
     }
   };
 
@@ -1278,7 +1294,7 @@ const handleAddBarber = async () => {
                   Gastos del Local
                 </h3>
 
-                <form onSubmit={handleAddExpense} className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+                <form onSubmit={handleAddExpense} noValidate className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
                   <input
                     type="text"
                     placeholder="Descripción del gasto..."
@@ -1299,18 +1315,31 @@ const handleAddBarber = async () => {
                   <input
                     type="number"
                     placeholder="Monto $"
+                    min="0.01"
+                    step="0.01"
                     value={expenseAmount}
                     onChange={(e) => setExpenseAmount(e.target.value)}
                     className="sm:col-span-2 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
                   />
                   <button
                     type="submit"
-                    className="sm:col-span-2 py-2.5 px-4 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-bold text-xs cursor-pointer flex items-center justify-center gap-1 touch-manipulation"
+                    disabled={savingExpense}
+                    className="sm:col-span-2 py-2.5 px-4 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-bold text-xs cursor-pointer flex items-center justify-center gap-1 touch-manipulation disabled:opacity-50 disabled:cursor-wait"
                   >
                     <Plus className="w-4 h-4" />
-                    <span>Agregar</span>
+                    <span>{savingExpense ? 'Guardando...' : 'Agregar'}</span>
                   </button>
                 </form>
+                {expenseFeedback && (
+                  <p
+                    role={expenseFeedback.kind === 'error' ? 'alert' : 'status'}
+                    className={expenseFeedback.kind === 'error'
+                      ? 'text-xs text-rose-400'
+                      : 'text-xs text-emerald-400'}
+                  >
+                    {expenseFeedback.message}
+                  </p>
+                )}
 
                 <div className="space-y-2">
                   {filteredExpenses.map((exp) => (
