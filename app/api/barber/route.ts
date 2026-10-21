@@ -17,7 +17,7 @@ export async function POST(request: Request) {
 
   try {
     const { barberId, pin } = await request.json();
-    if (!isValidUUID(barberId) || typeof pin !== 'string' || pin.trim().length === 0) {
+    if (!isValidUUID(barberId) || typeof pin !== 'string' || !/^\d{4,6}$/.test(pin.trim())) {
       return NextResponse.json({ error: 'Datos de acceso inválidos.' }, { status: 400 });
     }
 
