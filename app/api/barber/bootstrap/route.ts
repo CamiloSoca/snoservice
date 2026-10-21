@@ -24,34 +24,55 @@ export async function GET() {
       }
     }
 
-    const [barber, appointments, tips, charges, cash] = await Promise.all([
-      timed('barber', db.from('barbers')
-        .select('id,name,active,commission_rate')
-        .eq('shop_id', SHOP_UUID)
-        .eq('id', session.sub)
-        .maybeSingle()),
-      timed('appointments', db.from('appointments')
-        .select('id,code,service_id,barber_id,date_string,time_slot,duration_minutes,client_name,client_phone,client_email,client_notes,price_snapshot,status,created_at,services(name,price,duration_minutes),barbers(name)')
-        .eq('shop_id', SHOP_UUID)
-        .eq('barber_id', session.sub)
-        .order('created_at', {ascending: false})),
-      timed('tips', db.from('tips')
-        .select('id,barber_id,amount,note,date_string,created_at')
-        .eq('shop_id', SHOP_UUID)
-        .eq('barber_id', session.sub)
-        .order('created_at', {ascending: false})),
-      timed('charges', db.from('manual_charges')
-        .select('id,barber_id,amount,note,date_string,created_at')
-        .eq('shop_id', SHOP_UUID)
-        .eq('barber_id', session.sub)
-        .order('created_at', {ascending: false})),
-      timed('cash', db.from('cash_registers')
-        .select('id')
-        .eq('shop_id', SHOP_UUID)
-        .eq('status', 'abierta')
-        .limit(2)),
-    ]);
+    // La cookie firmada se verificó arriba. El RPC recibe SIEMPRE el ID
+    // de barbero de la sesión, no del cliente.
+    const rpcStart = performance.now();
+    const {data: fastData, error: fastError} = await db.rpc(
+      'barber_bootstrap_snapshot',
+      {p_shop_id: SHOP_UUID, p_barber_id: session.sub}
+    );
+    durations.rpc = performance.now() - rpcStart;
 
+    type RowResult = {data: any; error: {code?: string} | null};
+    let results: RowResult[];
+    if (!fastError && fastData &&
+      Array.isArray(fastData.appointments) &&
+      Array.isArray(fastData.tips) &&
+      Array.isArray(fastData.charges) &&
+      Array.isArray(fastData.cash)) {
+      results = [
+        {data: fastData.barber, error: null},
+        {data: fastData.appointments, error: null},
+        {data: fastData.tips, error: null},
+        {data: fastData.charges, error: null},
+        {data: fastData.cash, error: null},
+      ];
+    } else {
+      // Fall back to previous implementation if schema cache or RPC fails.
+      console.warn('RPC de barbero no disponible:', fastError?.code || 'invalid_response');
+      results = await Promise.all([
+        timed('barber', db.from('barbers')
+          .select('id,name,active,commission_rate')
+          .eq('shop_id', SHOP_UUID).eq('id', session.sub).maybeSingle()),
+        timed('appointments', db.from('appointments')
+          .select('id,code,service_id,barber_id,date_string,time_slot,duration_minutes,client_name,client_phone,client_email,client_notes,price_snapshot,status,created_at,services(name,price,duration_minutes),barbers(name)')
+          .eq('shop_id', SHOP_UUID).eq('barber_id', session.sub)
+          .order('created_at', {ascending: false})),
+        timed('tips', db.from('tips')
+          .select('id,barber_id,amount,note,date_string,created_at')
+          .eq('shop_id', SHOP_UUID).eq('barber_id', session.sub)
+          .order('created_at', {ascending: false})),
+        timed('charges', db.from('manual_charges')
+          .select('id,barber_id,amount,note,date_string,created_at')
+          .eq('shop_id', SHOP_UUID).eq('barber_id', session.sub)
+          .order('created_at', {ascending: false})),
+        timed('cash', db.from('cash_registers')
+          .select('id').eq('shop_id', SHOP_UUID).eq('status', 'abierta')
+          .limit(2)),
+      ]);
+    }
+
+    const [barber, appointments, tips, charges, cash] = results;
     const totalDuration = performance.now() - startedAt;
     if (totalDuration > 1500) {
       console.warn('Barber bootstrap lento (ms):',
