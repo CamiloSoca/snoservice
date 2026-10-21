@@ -12,7 +12,7 @@ export default async function AdminLayout({
   const session = await requireAdminSession();
 
   if (!session) {
-    redirect('/admin/login');
+    redirect('/login');
   }
 
   return (
