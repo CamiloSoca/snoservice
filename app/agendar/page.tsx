@@ -366,6 +366,24 @@ function AgendarContent() {
           return;
         }
 
+        // Revalidar la disponibilidad antes de confirmar: otra persona pudo
+        // haber reservado mientras el cliente completaba sus datos.
+        const currentSlots = await getPublicBookedSlots(true);
+        setAppointments(currentSlots);
+        if (!isSlotAvailable({
+          candidateTime: selectedTime,
+          serviceDurationMinutes: selectedService.durationMinutes,
+          barberId: selectedBarber.id,
+          dateString: selectedDate,
+          existingAppointments: currentSlots,
+          allServices: services,
+        })) {
+          setStep(3);
+          setSelectedTime(null);
+          setFormError('Este horario acaba de ocuparse. Por favor elegí otro.');
+          return;
+        }
+
         const cleanEmail = clientEmail.trim().toLowerCase();
 
         const created = await createAppointment({
