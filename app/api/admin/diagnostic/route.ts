@@ -15,7 +15,7 @@ async function directProbe(url: string, key: string, includeBearer: boolean) {
   try {
     const headers: Record<string, string> = { apikey: key, Accept: 'application/json' };
     if (includeBearer) headers.Authorization = `Bearer ${key}`;
-    const response = await fetch(`${url}/rest/v1/barbers?select=id&limit=0`, {
+    const response = await fetch(`${url}/rest/v1/appointments?select=id&limit=0`, {
       method: 'GET',
       headers,
       cache: 'no-store',
@@ -43,7 +43,7 @@ export async function GET() {
   const [client, bearer, apikeyOnly] = await Promise.all([
     (async () => {
       try {
-        const { error } = await getSupabaseServer().from('barbers').select('id', { count: 'exact', head: true });
+        const { error } = await getSupabaseServer().from('appointments').select('id', { count: 'exact', head: true });
         return { ok: !error, ...compactError(error) };
       } catch {
         return { ok: false, code: 'client_exception', roleHint: null };
