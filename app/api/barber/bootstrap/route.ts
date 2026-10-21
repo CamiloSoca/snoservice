@@ -14,33 +14,50 @@ export async function GET() {
   try {
     const db = getSupabaseServer();
     const startedAt = performance.now();
+    const durations: Record<string, number> = {};
+    async function timed<T>(name: string, query: PromiseLike<T>): Promise<T> {
+      const start = performance.now();
+      try {
+        return await query;
+      } finally {
+        durations[name] = performance.now() - start;
+      }
+    }
+
     const [barber, appointments, tips, charges, cash] = await Promise.all([
-      db.from('barbers')
+      timed('barber', db.from('barbers')
         .select('id,name,active,commission_rate')
         .eq('shop_id', SHOP_UUID)
         .eq('id', session.sub)
-        .maybeSingle(),
-      db.from('appointments')
+        .maybeSingle()),
+      timed('appointments', db.from('appointments')
         .select('id,code,service_id,barber_id,date_string,time_slot,duration_minutes,client_name,client_phone,client_email,client_notes,price_snapshot,status,created_at,services(name,price,duration_minutes),barbers(name)')
         .eq('shop_id', SHOP_UUID)
         .eq('barber_id', session.sub)
-        .order('created_at', {ascending: false}),
-      db.from('tips')
+        .order('created_at', {ascending: false})),
+      timed('tips', db.from('tips')
         .select('id,barber_id,amount,note,date_string,created_at')
         .eq('shop_id', SHOP_UUID)
         .eq('barber_id', session.sub)
-        .order('created_at', {ascending: false}),
-      db.from('manual_charges')
+        .order('created_at', {ascending: false})),
+      timed('charges', db.from('manual_charges')
         .select('id,barber_id,amount,note,date_string,created_at')
         .eq('shop_id', SHOP_UUID)
         .eq('barber_id', session.sub)
-        .order('created_at', {ascending: false}),
-      db.from('cash_registers')
+        .order('created_at', {ascending: false})),
+      timed('cash', db.from('cash_registers')
         .select('id')
         .eq('shop_id', SHOP_UUID)
         .eq('status', 'abierta')
-        .limit(2),
+        .limit(2)),
     ]);
+
+    const totalDuration = performance.now() - startedAt;
+    if (totalDuration > 1500) {
+      console.warn('Barber bootstrap lento (ms):',
+        Object.fromEntries(Object.entries(durations).map(([key, value]) =>
+          [key, Math.round(value)])));
+    }
 
     if (barber.error || !barber.data || !barber.data.active) {
       return NextResponse.json({error: 'Acceso del barbero no disponible.'}, {status: 403, headers});
@@ -109,7 +126,11 @@ export async function GET() {
       {
         headers: {
           ...headers,
-          'Server-Timing': `db;dur=${(performance.now() - startedAt).toFixed(1)}`,
+          'Server-Timing': [
+            `db;dur=${totalDuration.toFixed(1)}`,
+            ...Object.entries(durations).map(([name, duration]) =>
+              `${name};dur=${duration.toFixed(1)}`),
+          ].join(', '),
         },
       }
     );

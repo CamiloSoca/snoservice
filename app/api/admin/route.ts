@@ -183,30 +183,21 @@ export async function POST(request: Request) {
       }
       case 'SAVE_BARBERS': {
         const items = Array.isArray(body.barbers) ? body.barbers : [];
+        // Validar toda la lista antes de escribir. Una única operación SQL
+        // sustituye las N upserts secuenciales y evita guardados parciales.
+        const payloads = [];
         for (const b of items) {
           const id = isValidUUID(b.id) ? b.id : generateUUID();
           const name = sanitizeInput(String(b.name || '')).slice(0, 80);
           if (!name) {
-            return NextResponse.json(
-              { error: 'El nombre del barbero es obligatorio.' },
-              { status: 400 }
-            );
+            return NextResponse.json({error: 'El nombre del barbero es obligatorio.'}, {status: 400});
           }
-          const slug =
-            sanitizeInput(String(b.slug || '')) ||
-            name
-              .toLowerCase()
-              .normalize('NFD')
-              .replace(/[\u0300-\u036f]/g, '')
-              .replace(/\s+/g, '-');
-
+          const slug = sanitizeInput(String(b.slug || '')) ||
+            name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '-');
           const commissionRate = Math.min(100, Math.max(0, Number(b.commissionRate ?? 50)));
           const pin = String(b.pin ?? '').trim();
           if (!/^\d{4,6}$/.test(pin)) {
-            return NextResponse.json(
-              {error: 'El PIN debe tener de 4 a 6 dígitos numéricos.'},
-              {status: 400}
-            );
+            return NextResponse.json({error: 'El PIN debe tener de 4 a 6 dígitos numéricos.'}, {status: 400});
           }
           const serviceIds = Array.isArray(b.serviceIds)
             ? b.serviceIds.filter((sid: string) => isValidUUID(sid))
@@ -215,31 +206,24 @@ export async function POST(request: Request) {
             ? b.specialties.map((sp: string) => sanitizeInput(String(sp)).slice(0, 40))
             : ['Corte'];
 
-          const payload = {
-            id,
-            shop_id: SHOP_UUID,
-            slug,
-            name,
+          payloads.push({
+            id, shop_id: SHOP_UUID, slug, name,
             role: sanitizeInput(String(b.role || 'Barbero')).slice(0, 40),
             bio: sanitizeInput(String(b.bio || '')).slice(0, 300),
-            specialties,
-            service_ids: serviceIds,
-            commission_rate: commissionRate,
-            pin,
-            active: b.active ?? true,
-          };
-
-          const { error } = await supabase.from('barbers').upsert(payload, { onConflict: 'id' });
+            specialties, service_ids: serviceIds,
+            commission_rate: commissionRate, pin, active: b.active ?? true,
+          });
+        }
+        if (payloads.length) {
+          const {error} = await supabase.from('barbers')
+            .upsert(payloads, {onConflict: 'id'});
           if (error) {
-            return NextResponse.json(
-              { error: `Error al guardar barbero ${name}: ${error.message}` },
-              { status: 400 }
-            );
+            console.error('Error guardando barberos en lote:', error.code);
+            return NextResponse.json({error: 'No se pudieron guardar los barberos.'}, {status: 400});
           }
         }
-        return NextResponse.json({ ok: true });
+        return NextResponse.json({ok: true});
       }
-
       case 'DELETE_BARBER': {
         const id = String(body.id || '');
         if (!isValidUUID(id)) {
@@ -258,42 +242,37 @@ export async function POST(request: Request) {
 
       case 'SAVE_SERVICES': {
         const items = Array.isArray(body.services) ? body.services : [];
-        for (const s of items) {
-          const id = isValidUUID(s.id) ? s.id : generateUUID();
-          const name = sanitizeInput(String(s.name || '')).slice(0, 80);
+        // Una sola transacción PostgREST; los valores quedan todos validados
+        // antes de tocar la base de datos.
+        const payloads = [];
+        for (const service of items) {
+          const id = isValidUUID(service.id) ? service.id : generateUUID();
+          const name = sanitizeInput(String(service.name || '')).slice(0, 80);
           if (!name) {
-            return NextResponse.json(
-              { error: 'El nombre del servicio es obligatorio.' },
-              { status: 400 }
-            );
+            return NextResponse.json({error: 'El nombre del servicio es obligatorio.'}, {status: 400});
           }
-          const price = Math.max(0, Number(s.price) || 0);
-          const durationMinutes = Math.max(15, Number(s.durationMinutes) || 60);
-
-          const payload = {
-            id,
-            shop_id: SHOP_UUID,
-            name,
-            price,
+          const price = Math.max(0, Number(service.price) || 0);
+          const durationMinutes = Math.max(15, Number(service.durationMinutes) || 60);
+          payloads.push({
+            id, shop_id: SHOP_UUID, name, price,
             duration_minutes: durationMinutes,
             description: sanitizeInput(
-              String(s.description || `${durationMinutes} min`)
+              String(service.description || `${durationMinutes} min`)
             ).slice(0, 120),
-            image_url: s.imageUrl ? String(s.imageUrl).slice(0, 500) : null,
-            active: s.active ?? true,
-          };
-
-          const { error } = await supabase.from('services').upsert(payload, { onConflict: 'id' });
+            image_url: service.imageUrl ? String(service.imageUrl).slice(0, 500) : null,
+            active: service.active ?? true,
+          });
+        }
+        if (payloads.length) {
+          const {error} = await supabase.from('services')
+            .upsert(payloads, {onConflict: 'id'});
           if (error) {
-            return NextResponse.json(
-              { error: `Error al guardar servicio ${name}: ${error.message}` },
-              { status: 400 }
-            );
+            console.error('Error guardando servicios en lote:', error.code);
+            return NextResponse.json({error: 'No se pudieron guardar los servicios.'}, {status: 400});
           }
         }
-        return NextResponse.json({ ok: true });
+        return NextResponse.json({ok: true});
       }
-
       case 'DELETE_SERVICE': {
         const id = String(body.id || '');
         if (!isValidUUID(id)) {

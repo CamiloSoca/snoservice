@@ -407,7 +407,11 @@ async function apiRequest(path: string, options?: RequestInit): Promise<any> {
     ...options,
   });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.error || 'No se pudo completar la operación.');
+  if (!response.ok) {
+    const error = new Error(payload.error || 'No se pudo completar la operación.') as Error & {status: number};
+    error.status = response.status;
+    throw error;
+  }
   return payload;
 }
 
@@ -642,8 +646,18 @@ export async function getAdminDashboardSnapshot(): Promise<AdminDashboardSnapsho
 }
 
 export async function getPublicBookedSlots(forceRefresh = false): Promise<AppointmentItem[]> {
-  const { appointments } = await apiRequest('/api/public/booking', {cache: 'no-store'});
-  return (appointments || []) as AppointmentItem[];
+  const {appointments} = await apiRequest('/api/public/booking', {cache: 'no-store'});
+  // El servidor devuelve sólo estos cinco campos públicos. Restaurar en
+  // memoria el modelo necesario para la lógica existente de solapamientos.
+  type BookedSlot = Pick<AppointmentItem, 'barberId' | 'dateString' |
+    'timeSlot' | 'durationMinutes' | 'status'>;
+  return ((appointments || []) as BookedSlot[]).map((slot) => ({
+    id: '', code: '', serviceId: '', serviceName: '', servicePrice: 0,
+    priceSnapshot: 0, durationMinutes: Number(slot.durationMinutes) || 60,
+    barberId: slot.barberId, barberName: '', dateString: slot.dateString,
+    timeSlot: slot.timeSlot, status: slot.status, createdAt: '',
+    clientName: '', clientPhone: '', clientEmail: '', clientNotes: '',
+  }));
 }
 
 export async function createAppointment(item: {
@@ -668,16 +682,11 @@ export async function createAppointment(item: {
 export async function updateAppointmentStatus(
   id: string,
   status: AppointmentItem['status']
-): Promise<AppointmentItem[]> {
-  await apiRequest('/api/barber', jsonRequest('PATCH', { id, status }));
-  const admin = await fetch('/api/admin?resource=appointments', {credentials: 'same-origin', cache: 'no-store'});
-  if (admin.ok) {
-    const payload = await admin.json();
-    return (payload.data || []).map(mapAppointment);
-  }
-  if (admin.status !== 401) throw new Error('No se pudo recargar la agenda.');
-  const { appointments } = await apiRequest('/api/barber', {cache: 'no-store'});
-  return appointments || [];
+): Promise<{id: string; status: AppointmentItem['status']}> {
+  // El PATCH valida autorizacion, caja y guarda el cambio. No descargar
+  // toda la agenda otra vez para actualizar una sola fila local.
+  await apiRequest('/api/barber', jsonRequest('PATCH', {id, status}));
+  return {id, status};
 }
 
 export async function getExpenses(): Promise<ExpenseItem[]> {

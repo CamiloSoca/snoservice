@@ -1,7 +1,7 @@
 import nodemailer from 'nodemailer';
 import { randomBytes } from 'crypto';
 // app/api/public/booking/route.ts
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { getSupabaseServer, SHOP_UUID, SHOP_PREFIX } from '@/lib/supabase-server';
 import {
   isSlotAvailable,
@@ -39,7 +39,7 @@ export async function GET() {
 
     const { data, error } = await supabase
       .from('appointments')
-      .select('id, barber_id, service_id, date_string, time_slot, duration_minutes, status')
+      .select('barber_id,date_string,time_slot,duration_minutes,status')
       .eq('shop_id', SHOP_UUID)
       .neq('status', 'cancelado')
       .in('date_string', getVisibleBookingDates());
@@ -52,24 +52,14 @@ export async function GET() {
       );
     }
 
-    const sanitizedSlots: AppointmentItem[] = (data || []).map((apt) => ({
-      id: apt.id,
-      code: '',
-      serviceId: apt.service_id,
-      serviceName: '',
-      servicePrice: 0,
-      priceSnapshot: 0,
-      durationMinutes: Number(apt.duration_minutes) || 60,
+    // El navegador solo necesita intervalos ocupados, no una estructura
+    // completa de turno con campos vacíos ni datos de clientes.
+    const sanitizedSlots = (data || []).map((apt) => ({
       barberId: apt.barber_id,
-      barberName: '',
       dateString: apt.date_string,
       timeSlot: apt.time_slot,
-      clientName: '',
-      clientPhone: '',
-      clientEmail: '',
-      clientNotes: '',
+      durationMinutes: Number(apt.duration_minutes) || 60,
       status: apt.status || 'confirmado',
-      createdAt: '',
     }));
 
     return NextResponse.json({ appointments: sanitizedSlots }, {
@@ -234,12 +224,20 @@ export async function POST(request: Request) {
     const { data: inserted, error: insertErr } = await supabase
       .from('appointments')
       .insert([insertPayload])
-      .select()
+      .select('id,code,created_at')
       .single();
 
-    if (insertErr || !inserted) {
+    if (insertErr?.code === '23505' || insertErr?.code === '23P01') {
+      // La restricción SQL es la última defensa contra reservas simultáneas.
       return NextResponse.json(
-        { error: `No se pudo guardar el turno: ${insertErr?.message || 'Error interno'}` },
+        {error: 'Este horario acaba de ocuparse. Elegí otro horario.'},
+        {status: 409}
+      );
+    }
+    if (insertErr || !inserted) {
+      console.error('No se pudo insertar el turno:', insertErr?.code);
+      return NextResponse.json(
+        { error: 'No se pudo guardar el turno. Intentá nuevamente.' },
         { status: 400 }
       );
     }
@@ -265,27 +263,34 @@ export async function POST(request: Request) {
     };
 
     if (process.env.SMTP_USER && process.env.SMTP_PASS) {
-      try {
-        const transporter = nodemailer.createTransport({
-          host: process.env.SMTP_HOST || 'smtp.zoho.com',
-          port: Number(process.env.SMTP_PORT) || 465,
-          secure: true,
-          auth: {user: process.env.SMTP_USER, pass: process.env.SMTP_PASS},
-        });
-        const safe = (value: unknown) => String(value || '').replace(/[&<>"']/g, (c) =>
-          ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c] || c));
-        await transporter.sendMail({
-          from: process.env.SMTP_USER,
-          to: cleanEmail,
-          subject: 'Confirmación de turno - 13-Cut',
-          html: '<h2>Reserva confirmada</h2><p>Hola ' + safe(cleanName) +
-            '</p><p>Servicio: ' + safe(serviceRow.name) + '</p><p>Barbero: ' +
-            safe(barberRow.name) + '</p><p>Fecha: ' + safe(cleanDate) +
-            '</p><p>Hora: ' + safe(cleanTime) + '</p><p>Código: ' + safe(confirmed.code) + '</p>',
-        });
-      } catch (mailError) {
-        console.error('No se pudo enviar la confirmación de la reserva', mailError);
-      }
+      // El turno ya quedó persistido. El envío SMTP no debe bloquear la
+      // confirmación en pantalla; Next/Vercel esperan este callback tras responder.
+      after(async () => {
+        try {
+          const transporter = nodemailer.createTransport({
+            host: process.env.SMTP_HOST || 'smtp.zoho.com',
+            port: Number(process.env.SMTP_PORT) || 465,
+            secure: true,
+            connectionTimeout: 5000,
+            greetingTimeout: 5000,
+            socketTimeout: 10000,
+            auth: {user: process.env.SMTP_USER, pass: process.env.SMTP_PASS},
+          });
+          const safe = (value: unknown) => String(value || '').replace(/[&<>"']/g, (c) =>
+            ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c] || c));
+          await transporter.sendMail({
+            from: process.env.SMTP_USER,
+            to: cleanEmail,
+            subject: 'Confirmación de turno - 13-Cut',
+            html: '<h2>Reserva confirmada</h2><p>Hola ' + safe(cleanName) +
+              '</p><p>Servicio: ' + safe(serviceRow.name) + '</p><p>Barbero: ' +
+              safe(barberRow.name) + '</p><p>Fecha: ' + safe(cleanDate) +
+              '</p><p>Hora: ' + safe(cleanTime) + '</p><p>Código: ' + safe(confirmed.code) + '</p>',
+          });
+        } catch (mailError) {
+          console.error('No se pudo enviar la confirmación de la reserva', mailError);
+        }
+      });
     }
 
     return NextResponse.json({ appointment: confirmed }, { status: 201 });
