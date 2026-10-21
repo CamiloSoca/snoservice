@@ -150,7 +150,7 @@ export default function AdminDashboard() {
   const [savingBarberId, setSavingBarberId] = useState<string | null>(null);
   const [adminError, setAdminError] = useState<string>('');
 
-  const [cashStatus, setCashStatus] = useState<'abierta' | 'cerrada'>('abierta');
+  const [cashStatus, setCashStatus] = useState<'abierta' | 'cerrada'>('cerrada');
   const [lastClosedDate, setLastClosedDate] = useState<string>('');
   const [blockedBarbers, setBlockedBarbers] = useState<Record<string, boolean>>({});
 
@@ -226,8 +226,12 @@ export default function AdminDashboard() {
         const {data: cashRows} = await cashResponse.json();
         const cashData = cashRows?.[0];
         if (cashData) {
-          setCashStatus(cashData.status || 'abierta');
+          setCashStatus(cashData.status === 'abierta' ? 'abierta' : 'cerrada');
           if (cashData.closed_at) setLastClosedDate(cashData.closed_at.split('T')[0]);
+        } else {
+          // Sin registros, la caja no está abierta.
+          setCashStatus('cerrada');
+          setLastClosedDate('');
         }
 
         setAppointments(sortAppointmentsChronologically(Array.isArray(apts) ? apts : []));
