@@ -59,7 +59,7 @@ export async function GET() {
           .eq('shop_id', SHOP_UUID).eq('barber_id', session.sub)
           .order('created_at', {ascending: false})),
         timed('tips', db.from('tips')
-          .select('id,barber_id,amount,note,date_string,created_at,commission_rate_snapshot,barber_earnings_snapshot,business_earnings_snapshot,cash_register_id')
+          .select('id,barber_id,amount,note,date_string,created_at,cash_register_id')
           .eq('shop_id', SHOP_UUID).eq('barber_id', session.sub)
           .order('created_at', {ascending: false})),
         timed('charges', db.from('manual_charges')
