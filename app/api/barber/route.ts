@@ -33,7 +33,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Barbero no encontrado.' }, { status: 404 });
     }
 
-    const expectedPin = String(barber.pin || '1234').trim();
+    const expectedPin = String(barber.pin || '').trim();
+    if (!expectedPin || expectedPin === '1234') {
+      return NextResponse.json({error: 'El barbero debe configurar un PIN nuevo.'}, {status: 403});
+    }
     if (pin.trim() !== expectedPin) {
       return NextResponse.json(
         { error: `PIN incorrecto para ${barber.name}` },
@@ -94,6 +97,31 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
+}
+
+export async function GET() {
+  const [admin, staff] = await Promise.all([requireAdminSession(), getBarberSession()]);
+  if (!admin && !staff) return NextResponse.json({error: 'No autorizado'}, {status: 401});
+  const supabase = getSupabaseServer();
+  let query = supabase.from('appointments')
+    .select('id,code,service_id,barber_id,date_string,time_slot,duration_minutes,client_name,client_phone,client_email,client_notes,price_snapshot,status,created_at,services(name,price,duration_minutes),barbers(name)')
+    .eq('shop_id', SHOP_UUID).order('created_at', {ascending: false});
+  if (!admin && staff) query = query.eq('barber_id', staff.sub);
+  const {data, error} = await query;
+  if (error) return NextResponse.json({error: 'No se pudo cargar la agenda'}, {status: 500});
+  const appointments = (data || []).map((apt: any) => ({
+    id: apt.id, code: apt.code || '',
+    serviceId: apt.service_id, serviceName: apt.services?.name || 'Servicio',
+    servicePrice: Number(apt.price_snapshot ?? apt.services?.price ?? 0),
+    priceSnapshot: Number(apt.price_snapshot ?? 0),
+    durationMinutes: Number(apt.duration_minutes ?? apt.services?.duration_minutes ?? 60),
+    barberId: apt.barber_id, barberName: apt.barbers?.name || '',
+    dateString: apt.date_string, timeSlot: apt.time_slot,
+    clientName: apt.client_name, clientPhone: apt.client_phone,
+    clientEmail: apt.client_email || '', clientNotes: apt.client_notes || '',
+    status: apt.status, createdAt: apt.created_at,
+  }));
+  return NextResponse.json({appointments});
 }
 
 export async function PATCH(request: Request) {
