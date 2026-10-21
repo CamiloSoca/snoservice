@@ -16,7 +16,7 @@ export async function POST(request: Request) {
     const { username, password } = body;
 
     // 1. Valores de respaldo desde variables de entorno
-    let validUser = process.env.ADMIN_USER || 'admin';
+    let validUser = process.env.ADMIN_USER || '';
     let validPass = process.env.ADMIN_PASS || process.env.ADMIN_PASSWORD;
 
     // 2. Si en la tabla 'shops' de Supabase existen admin_user / admin_pass para esta barbería, tienen prioridad
@@ -36,7 +36,7 @@ export async function POST(request: Request) {
       // Si falla la lectura opcional, continúa usando las variables de entorno
     }
 
-    if (!validPass) {
+    if (!validPass || !validUser) {
       return NextResponse.json(
         { ok: false, error: 'Configuración de seguridad del servidor incompleta.' },
         { status: 500 }
@@ -47,7 +47,7 @@ export async function POST(request: Request) {
     const inputPass = typeof password === 'string' ? password : '';
 
     // Permite validar con usuario+contraseña o solo contraseña si el formulario envía solo password
-    const userMatches = !username || inputUser === validUser;
+    const userMatches = inputUser === validUser;
     const passMatches = inputPass === validPass;
 
     if (userMatches && passMatches) {
