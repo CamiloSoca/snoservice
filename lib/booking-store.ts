@@ -556,6 +556,68 @@ export async function getAppointments(forceRefresh = false): Promise<Appointment
   return (data || []).map(mapAppointment);
 }
 
+export interface AdminDashboardSnapshot {
+  appointments: AppointmentItem[];
+  services: ServiceItem[];
+  barbers: BarberItem[];
+  expenses: ExpenseItem[];
+  tips: TipItem[];
+  manualCharges: ManualChargeItem[];
+  config: ShopConfig;
+  cashStatus: 'abierta' | 'cerrada';
+  lastClosedDate: string;
+}
+
+// Reemplaza las ocho peticiones iniciales del admin por una sola petición.
+// La API verifica la sesión antes de consultar datos privados.
+export async function getAdminDashboardSnapshot(): Promise<AdminDashboardSnapshot> {
+  const payload = await apiRequest('/api/admin/bootstrap', { cache: 'no-store' });
+
+  const appointments = (payload.appointments || []).map(mapAppointment);
+  const services = (payload.services || []).map(mapService);
+  const barbers = (payload.barbers || []).map(mapBarber);
+  const expenses: ExpenseItem[] = (payload.expenses || []).map((d: any) => ({
+    id: d.id,
+    description: d.description,
+    amount: Number(d.amount) || 0,
+    category: d.category || 'Otros',
+    date: d.expense_date || '',
+    createdAt: d.created_at,
+  }));
+  const tips = (payload.tips || []).map(mapFinancialEntry);
+  const manualCharges = (payload.manualCharges || []).map(mapFinancialEntry);
+
+  const shop = payload.shop;
+  const config: ShopConfig = shop ? {
+    id: shop.id,
+    name: shop.name || DEFAULT_SHOP_CONFIG.name,
+    phone: shop.phone || DEFAULT_SHOP_CONFIG.phone,
+    address: shop.address || DEFAULT_SHOP_CONFIG.address,
+    city: shop.city || DEFAULT_SHOP_CONFIG.city,
+    logoUrl: shop.logo_url || '',
+    backgroundImageUrl: shop.background_image_url || '',
+    coverImageUrl: shop.cover_image_url || '',
+    schedule: shop.schedule || DEFAULT_SHOP_CONFIG.schedule,
+  } : cachedShopConfig;
+
+  const cash = payload.cashRegisters?.[0];
+  cachedShopConfig = config;
+  cachedServices = services;
+  cachedBarbers = barbers;
+
+  return {
+    appointments,
+    services,
+    barbers,
+    expenses,
+    tips,
+    manualCharges,
+    config,
+    cashStatus: cash?.status === 'abierta' ? 'abierta' : 'cerrada',
+    lastClosedDate: cash?.closed_at ? cash.closed_at.split('T')[0] : '',
+  };
+}
+
 export async function getPublicBookedSlots(forceRefresh = false): Promise<AppointmentItem[]> {
   const { appointments } = await apiRequest('/api/public/booking', {cache: 'no-store'});
   return (appointments || []) as AppointmentItem[];
