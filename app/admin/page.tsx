@@ -795,6 +795,10 @@ const handleAddBarber = async () => {
 
   const todayStr = getMontevideoDateKey();
   const isTodayClosed = cashStatus === 'cerrada' && lastClosedDate === todayStr;
+  // El modo de pruebas se habilita únicamente cuando esta web usa la base staging.
+  // Producción mantiene el bloqueo de reapertura tras el cierre del mismo día.
+  const isStagingTest = process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://vjtwvhdiypfxgodhnjiw.supabase.co';
+  const canOpenCash = cashStatus === 'cerrada' && (!isTodayClosed || isStagingTest);
 
   if (initialLoad === 'loading') {
     return (
@@ -1007,17 +1011,22 @@ const handleAddBarber = async () => {
                       Estado de Caja: <span className={cashStatus === 'abierta' ? 'text-emerald-400 uppercase' : 'text-rose-400 uppercase'}>{cashStatus}</span>
                     </h3>
                     <p className="text-xs text-zinc-400 mt-1">
-                      {isTodayClosed 
-                        ? 'La caja de hoy ya fue cerrada. El sistema se abrirá automáticamente para la próxima jornada.'
-                        : 'Controlá la apertura y el cierre diario de la caja de la barbería.'}
+                      {isTodayClosed
+                        ? (isStagingTest
+                            ? 'Caja cerrada hoy. En staging podés abrir una nueva sesión de prueba; el cierre anterior queda guardado.'
+                            : 'La caja de hoy ya fue cerrada. Podrás abrir otra en la próxima jornada.')
+                        : 'Controlá la apertura y el cierre de cada jornada de la barbería.'}
                     </p>
                   </div>
 
                   <div className="flex items-center gap-2">
-                    {!isTodayClosed && cashStatus === 'cerrada' && (
+                    {canOpenCash && (
                       <button
                         type="button"
                         onClick={async () => {
+                          if (isTodayClosed && isStagingTest && !window.confirm(
+                            '¿Abrir una nueva caja de PRUEBA? La caja que cerraste hoy quedará guardada y esta nueva empezará desde $0.'
+                          )) return;
                           const res = await fetch('/api/admin', {
                             method: 'POST', headers: {'Content-Type':'application/json'},
                             body: JSON.stringify({operation:'OPEN_CASH', initialAmount:0}),
@@ -1032,7 +1041,7 @@ const handleAddBarber = async () => {
                         }}
                         className="px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs cursor-pointer"
                       >
-                        🟢 Abrir Caja
+                        {isTodayClosed && isStagingTest ? '🧪 Abrir nueva caja de prueba' : '🟢 Abrir Caja'}
                       </button>
                     )}
 
