@@ -3,6 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import {
   MapPin,
   Scissors,
@@ -165,11 +166,14 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
     >
       <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
         {bgImage ? (
-          <img
+          <Image
             src={bgImage}
             alt="Fondo"
-            decoding="async"
-            className={`w-full h-full object-cover object-center filter blur-md scale-105 grayscale transition-opacity duration-700 ${
+            fill
+            sizes="100vw"
+            quality={45}
+            loading="lazy"
+            className={`object-cover object-center filter blur-md scale-105 grayscale transition-opacity duration-700 ${
               isDark ? 'opacity-20 contrast-125' : 'opacity-10 contrast-100'
             }`}
           />
@@ -193,8 +197,8 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
           <div className="max-w-5xl mx-auto flex items-center justify-between gap-2">
             <div className="flex items-center space-x-2.5 min-w-0">
               {logoImage ? (
-                <div className="w-9 h-9 rounded-xl overflow-hidden border border-zinc-700/60 bg-zinc-900 shrink-0">
-                  <img src={logoImage} alt={shopConfig.name} className="w-full h-full object-cover" />
+                <div className="relative w-9 h-9 rounded-xl overflow-hidden border border-zinc-700/60 bg-zinc-900 shrink-0">
+                  <Image src={logoImage} alt={shopConfig.name} fill sizes="36px" quality={75} className="object-cover" />
                 </div>
               ) : (
                 <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-zinc-800 text-zinc-100">
@@ -254,12 +258,14 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
         <section className="max-w-5xl mx-auto px-4 pt-4 sm:pt-5">
           <div className="relative rounded-3xl overflow-hidden border border-zinc-800 text-white shadow-2xl">
             <div className="absolute inset-0">
-              <img
+              <Image
                 src={bannerUrl}
                 alt={shopConfig.name}
-                fetchPriority="high"
-                decoding="async"
-                className="w-full h-full object-cover object-center opacity-75"
+                fill
+                preload
+                sizes="(max-width: 640px) 100vw, 1024px"
+                quality={72}
+                className="object-cover object-center opacity-75"
               />
               <div className="absolute inset-0 bg-gradient-to-r from-zinc-950/95 via-zinc-950/80 to-zinc-950/40" />
             </div>
@@ -267,8 +273,8 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
             <div className="relative p-5 sm:p-10 flex flex-col sm:flex-row sm:items-center justify-between gap-5">
               <div className="flex items-center gap-4 sm:gap-6">
                 {logoImage && (
-                  <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl overflow-hidden border-2 border-white/20 shadow-2xl bg-zinc-950 shrink-0">
-                    <img src={logoImage} alt={shopConfig.name} className="w-full h-full object-cover" />
+                  <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-2xl overflow-hidden border-2 border-white/20 shadow-2xl bg-zinc-950 shrink-0">
+                    <Image src={logoImage} alt={shopConfig.name} fill sizes="80px" quality={75} className="object-cover" />
                   </div>
                 )}
 
@@ -503,12 +509,14 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
                   key={post.id}
                   className="relative aspect-square rounded-2xl overflow-hidden border border-zinc-800 bg-zinc-900"
                 >
-                  <img
+                  <Image
                     src={post.image}
                     alt={post.tag}
+                    fill
+                    sizes="(max-width: 640px) 50vw, 25vw"
+                    quality={65}
                     loading="lazy"
-                    decoding="async"
-                    className="w-full h-full object-cover"
+                    className="object-cover"
                   />
                   <div className="absolute bottom-2.5 left-2.5">
                     <span className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-zinc-950/80 text-white backdrop-blur-sm border border-white/10">
