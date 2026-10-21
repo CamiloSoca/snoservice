@@ -9,6 +9,7 @@ import {
   verifyCsrfOrigin,
 } from '@/lib/session';
 import { isValidUUID } from '@/lib/booking-store';
+import { requireOpenCash } from '@/lib/cash-guard';
 
 export async function POST(request: Request) {
   if (!verifyCsrfOrigin(request)) {
@@ -167,6 +168,22 @@ export async function PATCH(request: Request) {
     }
 
     const supabase = getSupabaseServer();
+
+    // Verificar también el estado anterior: revertir un turno completado
+    // modifica la facturación, no solo marcarlo como completado.
+    let lookup = supabase.from('appointments')
+      .select('status').eq('id', id).eq('shop_id', SHOP_UUID);
+    if (!adminSession && barberSession) {
+      lookup = lookup.eq('barber_id', barberSession.sub);
+    }
+    const {data: current, error: lookupError} = await lookup.maybeSingle();
+    if (lookupError) return NextResponse.json({error: 'No se pudo consultar el turno.'}, {status: 500});
+    if (!current) return NextResponse.json({error: 'Turno inexistente o sin permiso.'}, {status: 404});
+
+    if (status !== current.status && (status === 'completado' || current.status === 'completado')) {
+      const cashDenied = await requireOpenCash();
+      if (cashDenied) return cashDenied;
+    }
 
     let query = supabase
       .from('appointments')
