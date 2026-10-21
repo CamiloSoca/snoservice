@@ -149,9 +149,9 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
   const handleStatusChange = async (appointmentId: string, status: AppointmentItem['status']) => {
     try {
       setErrorMsg('');
-      await updateAppointmentStatus(appointmentId, status);
+      const persisted = await updateAppointmentStatus(appointmentId, status);
       setBarberAppointments((current) => current.map((appointment) =>
-        appointment.id === appointmentId ? {...appointment, status} : appointment
+        appointment.id === appointmentId ? {...appointment, ...persisted} : appointment
       ));
     } catch (err: any) {
       setErrorMsg(err?.message || 'No se pudo actualizar el estado del turno.');
