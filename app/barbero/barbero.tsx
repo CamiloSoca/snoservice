@@ -568,16 +568,17 @@ function BarberPageContent() {
                 <div>
                   <h3 className="font-bold text-base">Área Privada de {currentBarber.name}</h3>
                   <p className="text-xs text-zinc-400">
-                    Ingresá tu PIN de 4 dígitos para acceder al calendario y tus finanzas
+                    Ingresá tu PIN de 4 a 6 dígitos para acceder al calendario y tus finanzas
                   </p>
                 </div>
 
                 <input
                   type="password"
-                  maxLength={4}
-                  placeholder="••••"
+                  inputMode="numeric"
+                  maxLength={6}
+                  placeholder="••••••"
                   value={pinInput}
-                  onChange={(e) => setPinInput(e.target.value)}
+                  onChange={(e) => setPinInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
                   className="w-full text-center tracking-[0.5em] font-mono text-xl py-3 rounded-xl bg-zinc-950 border border-zinc-800 outline-none"
                 />
 
