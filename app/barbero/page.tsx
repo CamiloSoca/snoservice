@@ -380,10 +380,11 @@ function BarberPortalContent() {
                 <label className="block text-xs font-medium text-zinc-400 mb-1.5">PIN de Acceso</label>
                 <input
                   type="password"
-                  maxLength={4}
-                  placeholder="••••"
+                  inputMode="numeric"
+                  maxLength={6}
+                  placeholder="PIN de 4 a 6 dígitos"
                   value={pin}
-                  onChange={(e) => setPin(e.target.value)}
+                  onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
                   className="w-full px-3.5 py-3 rounded-xl bg-zinc-950 border border-zinc-800 text-center font-mono text-lg tracking-widest outline-none text-zinc-100"
                 />
               </div>
