@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   Scissors,
@@ -15,7 +14,6 @@ import {
 } from 'lucide-react';
 
 export default function LoginPage() {
-  const router = useRouter();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -42,9 +40,10 @@ export default function LoginPage() {
         return;
       }
 
-      // La cookie ya fue establecida; una sola navegación evita duplicar
-      // la carga inicial del panel después de validar las credenciales.
-      router.replace('/admin');
+      // Un login cambia el estado de autenticación en el servidor. Hacer
+      // una navegación real garantiza que Next no reutilice una respuesta
+      // /admin prefetched cuando todavía no existía la cookie.
+      window.location.replace('/admin');
     } catch {
       setError('No se pudo conectar con el servidor.');
       setLoading(false);
