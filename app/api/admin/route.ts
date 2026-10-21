@@ -133,7 +133,7 @@ export async function POST(request: Request) {
       }
       case 'CLOSE_CASH': {
         const amount = Number(body.finalAmount);
-        if (!Number.isFinite(amount) || amount < 0) return NextResponse.json({error: 'Monto inválido'}, {status: 400});
+        if (!Number.isFinite(amount)) return NextResponse.json({error: 'Monto inválido'}, {status: 400});
         const {data, error} = await supabase.from('cash_registers')
           .update({closed_at: new Date().toISOString(), final_amount: amount, status: 'cerrada'})
           .eq('shop_id', SHOP_UUID).eq('status', 'abierta').select('id');
