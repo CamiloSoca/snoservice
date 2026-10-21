@@ -145,6 +145,7 @@ export default function AdminDashboard() {
   const [savingBarberId, setSavingBarberId] = useState<string | null>(null);
   const [adminError, setAdminError] = useState<string>('');
   const [initialLoad, setInitialLoad] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [loadingTooLong, setLoadingTooLong] = useState(false);
 
   const [cashStatus, setCashStatus] = useState<'abierta' | 'cerrada'>('cerrada');
   const [lastClosedDate, setLastClosedDate] = useState<string>('');
@@ -191,6 +192,12 @@ export default function AdminDashboard() {
     });
     setBlockedBarbers(locks);
   };
+
+  useEffect(() => {
+    if (initialLoad !== 'loading') return;
+    const timer = window.setTimeout(() => setLoadingTooLong(true), 6000);
+    return () => window.clearTimeout(timer);
+  }, [initialLoad]);
 
   useEffect(() => {
     async function loadAdminData() {
@@ -771,7 +778,23 @@ const handleAddBarber = async () => {
   const isTodayClosed = cashStatus === 'cerrada' && lastClosedDate === todayStr;
 
   if (initialLoad === 'loading') {
-    return <InitialShopSkeleton variant="admin" label="Cargando agenda, barberos y caja..." />;
+    return (
+      <>
+        <InitialShopSkeleton variant="admin" label="Cargando agenda, barberos y caja..." />
+        {loadingTooLong && (
+          <div role="status" className="fixed z-50 bottom-24 sm:bottom-6 left-4 right-4 mx-auto max-w-md rounded-2xl border border-zinc-700 bg-zinc-900 p-4 shadow-xl flex items-center justify-between gap-3">
+            <p className="text-sm text-zinc-300">La carga está demorando más de lo normal.</p>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="shrink-0 bg-zinc-100 text-zinc-950 text-xs font-semibold px-3 py-2 rounded-xl"
+            >
+              Reintentar
+            </button>
+          </div>
+        )}
+      </>
+    );
   }
   if (initialLoad === 'error') {
     return <InitialShopError label={adminError || 'No se pudieron cargar los datos del administrador. Intentá de nuevo.'} />;
