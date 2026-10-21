@@ -29,6 +29,24 @@ export async function GET(request: Request) {
     const resource = searchParams.get('resource');
     const supabase = getSupabaseServer();
 
+    if (resource === 'services') {
+      const {data, error} = await supabase.from('services')
+        .select('id,name,price,duration_minutes,description,image_url,active')
+        .eq('shop_id', SHOP_UUID);
+      if (error) return NextResponse.json({error: 'No se pudieron cargar los servicios'}, {status: 500});
+      return NextResponse.json({data: data || []});
+    }
+
+    if (resource === 'cash_registers') {
+      const {data, error} = await supabase.from('cash_registers')
+        .select('id,status,closed_at,opened_at')
+        .eq('shop_id', SHOP_UUID)
+        .order('opened_at', {ascending: false})
+        .limit(1);
+      if (error) return NextResponse.json({error: 'No se pudo consultar caja'}, {status: 500});
+      return NextResponse.json({data: data || []});
+    }
+
     if (resource === 'barbers') {
       const { data, error } = await supabase
         .from('barbers')
@@ -83,6 +101,25 @@ export async function POST(request: Request) {
     const supabase = getSupabaseServer();
 
     switch (operation) {
+      case 'OPEN_CASH': {
+        const total = Number(body.initialAmount);
+        if (!Number.isFinite(total) || total < 0) return NextResponse.json({error: 'Monto inválido'}, {status: 400});
+        const {error} = await supabase.from('cash_registers').insert({
+          shop_id: SHOP_UUID, initial_amount: total,
+          total_sales: total, status: 'abierta',
+        });
+        if (error) return NextResponse.json({error: 'No se pudo abrir caja'}, {status: 500});
+        return NextResponse.json({ok: true});
+      }
+      case 'CLOSE_CASH': {
+        const amount = Number(body.finalAmount);
+        if (!Number.isFinite(amount) || amount < 0) return NextResponse.json({error: 'Monto inválido'}, {status: 400});
+        const {data, error} = await supabase.from('cash_registers')
+          .update({closed_at: new Date().toISOString(), final_amount: amount, status: 'cerrada'})
+          .eq('shop_id', SHOP_UUID).eq('status', 'abierta').select('id');
+        if (error || !data?.length) return NextResponse.json({error: 'No se pudo cerrar caja'}, {status: 400});
+        return NextResponse.json({ok: true});
+      }
       case 'SAVE_BARBERS': {
         const items = Array.isArray(body.barbers) ? body.barbers : [];
         for (const b of items) {
