@@ -580,6 +580,17 @@ export interface AdminDashboardSnapshot {
 
 // Reemplaza las ocho peticiones iniciales del admin por una sola petición.
 // La API verifica la sesión antes de consultar datos privados.
+// Fechas operativas de la barberia: no comparar dias usando UTC,
+// porque en Uruguay un cierre nocturno puede caer al dia siguiente en UTC.
+export function getMontevideoDateKey(value: Date | string = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Montevideo',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(typeof value === 'string' ? new Date(value) : value);
+  const read = (type: string) => parts.find((p) => p.type === type)?.value || '';
+  return `${read('year')}-${read('month')}-${read('day')}`;
+}
+
 export async function getAdminDashboardSnapshot(): Promise<AdminDashboardSnapshot> {
   // Los datos de caja, turnos y gastos no se cachean. Si una consulta queda
   // pendiente por red o Supabase, no mantener el panel cargando indefinidamente.
@@ -641,7 +652,7 @@ export async function getAdminDashboardSnapshot(): Promise<AdminDashboardSnapsho
     manualCharges,
     config,
     cashStatus: cash?.status === 'abierta' ? 'abierta' : 'cerrada',
-    lastClosedDate: cash?.closed_at ? cash.closed_at.split('T')[0] : '',
+    lastClosedDate: cash?.closed_at ? getMontevideoDateKey(cash.closed_at) : '',
   };
 }
 
