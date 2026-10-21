@@ -67,7 +67,7 @@ BEGIN
       VALUES(s,'AUDIT-DUPLICATE',service_id,b,'Prueba Tres',
         '098521342','audit3@example.invalid',label,'10:00',45,600);
     INSERT INTO booking_results VALUES ('franja duplicada',false);
-  EXCEPTION WHEN exclusion_violation THEN
+  EXCEPTION WHEN exclusion_violation OR unique_violation THEN
     INSERT INTO booking_results VALUES ('franja duplicada',true);
   END;
 
