@@ -35,7 +35,6 @@ import {
   Coins,
   BarChart3,
 } from 'lucide-react';
-import { createClient } from '@supabase/supabase-js';
 import {
   ServiceItem,
   BarberItem,
@@ -73,10 +72,6 @@ import {
   canCompleteAppointment,
   DayOption,
 } from '@/lib/booking-store';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null;
 
 type PeriodFilter = 'hoy' | 'semana' | 'mes';
 
@@ -270,13 +265,17 @@ export default function AdminDashboard() {
 
   const handleUnblockBarberPin = async (barberId: string, barberName: string) => {
     try {
-      if (!supabase) throw new Error('Sin conexión con la base de datos.');
-
-      const { error } = await supabase.rpc('admin_unblock_barber_pin', {
-        p_barber_id: barberId,
+      // Solo la API administrativa, con cookie firmada, puede desbloquear un PIN.
+      const response = await fetch('/api/admin', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({operation: 'UNBLOCK_BARBER_PIN', barberId}),
       });
-
-      if (error) throw new Error(error.message);
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.ok) {
+        throw new Error(result.error || 'No se pudo desbloquear el PIN.');
+      }
 
       localStorage.removeItem(`pin_lock_${barberId}`);
       localStorage.removeItem(`pin_attempts_${barberId}`);
