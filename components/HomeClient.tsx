@@ -19,8 +19,6 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import {
-  BarberItem,
-  ShopConfig,
   DEFAULT_SHOP_CONFIG,
 } from '@/lib/booking-store';
 import type { PublicShopData } from '@/lib/public-shop-data';
@@ -120,8 +118,9 @@ function GoogleLogoSvg({ className = 'w-5 h-5' }: { className?: string }) {
 
 export default function HomeClient({initialShop}: {initialShop: PublicShopData}) {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
-  const [shopConfig] = useState<ShopConfig>(initialShop.shopConfig);
-  const [barbers] = useState<BarberItem[]>(() => initialShop.barbers.filter(b => b.active !== false));
+  // Usar siempre la version mas reciente del cache compartido.
+  const shopConfig = initialShop.shopConfig;
+  const barbers = initialShop.barbers.filter(b => b.active !== false);
 
   useEffect(() => {
     // Solo se persiste la preferencia visual. Los datos del negocio
