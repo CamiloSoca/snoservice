@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSupabaseServer, SHOP_UUID } from '@/lib/supabase-server';
 import { getBarberSession, requireAdminSession, verifyCsrfOrigin } from '@/lib/session';
 import { isValidUUID, sanitizeInput } from '@/lib/booking-store';
+import { requireOpenCash } from '@/lib/cash-guard';
 
 type FinanceTable = 'tips' | 'manual_charges';
 function tableOf(value: unknown): FinanceTable | null {
@@ -41,6 +42,8 @@ export async function POST(request: Request) {
   if (!session) return NextResponse.json({error: 'No autorizado'}, {status: 401});
   const amount = Number(body.item?.amount);
   if (!Number.isFinite(amount) || amount <= 0 || amount > 100000000) return NextResponse.json({error: 'Monto inválido'}, {status: 400});
+  const cashDenied = await requireOpenCash();
+  if (cashDenied) return cashDenied;
   const supabase = getSupabaseServer();
   const {data: barber} = await supabase.from('barbers').select('id,active').eq('shop_id', SHOP_UUID).eq('id', barberId).maybeSingle();
   if (!barber || !barber.active) return NextResponse.json({error: 'Barbero no encontrado'}, {status: 404});
@@ -61,6 +64,8 @@ export async function DELETE(request: Request) {
   if (!table || !isValidUUID(body.id)) return NextResponse.json({error: 'Solicitud inválida'}, {status: 400});
   const session = await authorize(null);
   if (!session) return NextResponse.json({error: 'No autorizado'}, {status: 401});
+  const cashDenied = await requireOpenCash();
+  if (cashDenied) return cashDenied;
   const supabase = getSupabaseServer();
   let query = supabase.from(table).delete().eq('shop_id', SHOP_UUID).eq('id', body.id);
   if (!session.admin) query = query.eq('barber_id', session.barberId!);
