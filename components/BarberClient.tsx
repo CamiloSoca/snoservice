@@ -35,6 +35,7 @@ import {
 } from '@/lib/booking-store';
 import { InitialShopSkeleton, PanelLoading } from '@/components/InitialShopState';
 import type { PublicShopData } from '@/lib/public-shop-data';
+import { splitBusinessRevenue } from '@/lib/financial-allocations';
 
 const MONTH_NAMES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
