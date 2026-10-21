@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseServer, SHOP_UUID } from '@/lib/supabase-server';
 import { requireAdminSession, verifyCsrfOrigin } from '@/lib/session';
+import { requireOpenCash } from '@/lib/cash-guard';
 import {
   generateUUID,
   isValidUUID,
@@ -354,6 +355,19 @@ export async function POST(request: Request) {
         if (!isValidUUID(id) || !['confirmado', 'completado', 'cancelado'].includes(status)) {
           return NextResponse.json({ error: 'Datos de turno inválidos.' }, { status: 400 });
         }
+        const {data: current, error: lookupError} = await supabase
+          .from('appointments')
+          .select('status')
+          .eq('id', id)
+          .eq('shop_id', SHOP_UUID)
+          .maybeSingle();
+        if (lookupError) return NextResponse.json({error: 'No se pudo consultar el turno.'}, {status: 500});
+        if (!current) return NextResponse.json({error: 'Turno inexistente.'}, {status: 404});
+        if (status !== current.status && (status === 'completado' || current.status === 'completado')) {
+          const cashDenied = await requireOpenCash();
+          if (cashDenied) return cashDenied;
+        }
+
         const { error } = await supabase
           .from('appointments')
           .update({ status })
@@ -376,12 +390,15 @@ export async function POST(request: Request) {
           String(exp.date || new Date().toISOString().split('T')[0])
         ).slice(0, 20);
 
-        if (!description || isNaN(amount) || amount <= 0) {
+        if (!description || !Number.isFinite(amount) || amount <= 0) {
           return NextResponse.json(
             { error: 'Descripción y monto mayor a 0 son obligatorios.' },
             { status: 400 }
           );
         }
+
+        const cashDenied = await requireOpenCash();
+        if (cashDenied) return cashDenied;
 
         const { error } = await supabase.from('expenses').insert([
           {
@@ -404,6 +421,9 @@ export async function POST(request: Request) {
         if (!isValidUUID(id)) {
           return NextResponse.json({ error: 'ID de gasto inválido.' }, { status: 400 });
         }
+        const cashDenied = await requireOpenCash();
+        if (cashDenied) return cashDenied;
+
         const { error } = await supabase
           .from('expenses')
           .delete()
