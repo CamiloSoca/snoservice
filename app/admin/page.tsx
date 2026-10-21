@@ -132,8 +132,8 @@ function isWithinPeriod(
 export default function AdminDashboard() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<
-    'caja' | 'facturacion' | 'agenda' | 'turnos' | 'barberos' | 'servicios' | 'marca'
-  >('caja');
+    'inicio' | 'caja' | 'facturacion' | 'agenda' | 'turnos' | 'barberos' | 'servicios' | 'marca' | 'configuracion'
+  >('inicio');
 
   const [appointments, setAppointments] = useState<AppointmentItem[]>([]);
   const [services, setServices] = useState<ServiceItem[]>([]);
@@ -903,98 +903,50 @@ const handleAddBarber = async () => {
             </div>
           )}
 
-          <div className="grid grid-cols-2 sm:grid-cols-7 gap-1.5 bg-zinc-900/90 p-1.5 rounded-2xl border border-zinc-800 backdrop-blur-sm">
-            <button
-              type="button"
-              onClick={() => setActiveTab('caja')}
-              className={`py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 touch-manipulation ${
-                activeTab === 'caja'
-                  ? 'bg-zinc-100 text-zinc-950 shadow-sm'
-                  : 'text-zinc-400 hover:text-zinc-200'
-              }`}
-            >
-              <Wallet className="w-3.5 h-3.5" />
-              <span>Caja</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('facturacion')}
-              className={`py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 touch-manipulation ${
-                activeTab === 'facturacion'
-                  ? 'bg-zinc-100 text-zinc-950 shadow-sm'
-                  : 'text-zinc-400 hover:text-zinc-200'
-              }`}
-            >
-              <BarChart3 className="w-3.5 h-3.5" />
-              <span>Facturación</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('agenda')}
-              className={`py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 touch-manipulation ${
-                activeTab === 'agenda'
-                  ? 'bg-zinc-100 text-zinc-950 shadow-sm'
-                  : 'text-zinc-400 hover:text-zinc-200'
-              }`}
-            >
-              <CalendarIcon className="w-3.5 h-3.5" />
-              <span>Agenda</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('turnos')}
-              className={`py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 touch-manipulation ${
-                activeTab === 'turnos'
-                  ? 'bg-zinc-100 text-zinc-950 shadow-sm'
-                  : 'text-zinc-400 hover:text-zinc-200'
-              }`}
-            >
-              <CalendarIcon className="w-3.5 h-3.5" />
-              <span>Lista</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('barberos')}
-              className={`py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 touch-manipulation ${
-                activeTab === 'barberos'
-                  ? 'bg-zinc-100 text-zinc-950 shadow-sm'
-                  : 'text-zinc-400 hover:text-zinc-200'
-              }`}
-            >
-              <Users className="w-3.5 h-3.5" />
-              <span>Barberos</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('servicios')}
-              className={`py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 touch-manipulation ${
-                activeTab === 'servicios'
-                  ? 'bg-zinc-100 text-zinc-950 shadow-sm'
-                  : 'text-zinc-400 hover:text-zinc-200'
-              }`}
-            >
-              <Scissors className="w-3.5 h-3.5" />
-              <span>Servicios</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('marca')}
-              className={`py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 touch-manipulation ${
-                activeTab === 'marca'
-                  ? 'bg-zinc-100 text-zinc-950 shadow-sm'
-                  : 'text-zinc-400 hover:text-zinc-200'
-              }`}
-            >
-              <Settings className="w-3.5 h-3.5" />
-              <span>Local</span>
-            </button>
+          {/* SNOSERVICE_PRESET_V1 */}
+          <div className="grid grid-cols-3 gap-2 rounded-2xl border border-zinc-800 bg-zinc-900/90 p-2 sm:grid-cols-6">
+            {([
+              {id:'inicio',label:'Inicio',icon:BarChart3},
+              {id:'agenda',label:'Agenda',icon:CalendarIcon},
+              {id:'caja',label:'Caja',icon:Wallet},
+              {id:'facturacion',label:'Informes',icon:TrendingUp},
+              {id:'barberos',label:'Equipo',icon:Users},
+              {id:'configuracion',label:'Configuración',icon:Settings},
+            ] as const).map(({id,label,icon:Icon}) => {
+              const active = activeTab===id || (id==='agenda' && activeTab==='turnos') || (id==='configuracion' && (activeTab==='servicios'||activeTab==='marca'));
+              return <button type="button" key={id} onClick={() => setActiveTab(id)}
+                className={'flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl p-2 text-[11px] font-bold sm:flex-row ' + (active?'bg-zinc-100 text-zinc-950':'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100')}>
+                <Icon className="h-4 w-4"/>{label}</button>;
+            })}
           </div>
+          {(activeTab==='agenda'||activeTab==='turnos') && <div className="flex flex-wrap gap-2 rounded-xl border border-zinc-800 bg-zinc-900 p-2">
+            <button type="button" onClick={() => setActiveTab('agenda')} className={'rounded-lg px-4 py-2 text-xs '+(activeTab==='agenda'?'bg-emerald-400 text-zinc-950':'bg-zinc-800 text-zinc-200')}>Calendario</button>
+            <button type="button" onClick={() => setActiveTab('turnos')} className={'rounded-lg px-4 py-2 text-xs '+(activeTab==='turnos'?'bg-emerald-400 text-zinc-950':'bg-zinc-800 text-zinc-200')}>Listado de reservas</button>
+          </div>}
+          {(activeTab==='configuracion'||activeTab==='servicios'||activeTab==='marca') && <div className="flex flex-wrap gap-2 rounded-xl border border-zinc-800 bg-zinc-900 p-2">
+            <button type="button" onClick={() => setActiveTab('servicios')} className={'rounded-lg px-4 py-2 text-xs '+(activeTab==='servicios'?'bg-emerald-400 text-zinc-950':'bg-zinc-800 text-zinc-200')}>Servicios y precios</button>
+            <button type="button" onClick={() => setActiveTab('marca')} className={'rounded-lg px-4 py-2 text-xs '+(activeTab==='marca'?'bg-emerald-400 text-zinc-950':'bg-zinc-800 text-zinc-200')}>Datos del local</button>
+          </div>}
+          {activeTab==='configuracion' && <div className="grid gap-3 sm:grid-cols-2">
+            <button type="button" onClick={() => setActiveTab('servicios')} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6 text-left hover:border-emerald-400"><Scissors className="mb-3 h-7 w-7 text-emerald-400"/><strong>Servicios y precios</strong><p className="mt-2 text-xs text-zinc-400">Precios, duración y disponibilidad.</p></button>
+            <button type="button" onClick={() => setActiveTab('marca')} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6 text-left hover:border-emerald-400"><Settings className="mb-3 h-7 w-7 text-emerald-400"/><strong>Datos de la barbería</strong><p className="mt-2 text-xs text-zinc-400">Horarios, contacto y marca.</p></button>
+          </div>}
+          {activeTab==='inicio' && <div className="space-y-5">
+            <div><span className="text-xs font-bold uppercase tracking-widest text-emerald-400">Control del negocio</span><h2 className="mt-1 text-2xl font-extrabold">Resumen de {shopConfig.name}</h2><p className="mt-1 text-xs text-zinc-400">Cifras según el filtro de Informes. Los cierres se calculan en Supabase.</p></div>
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              {([
+                {k:'Facturación',v:grossRevenueTotal,sub:'Cortes y cobros completados',color:'text-white'},
+                {k:'Comisiones generadas',v:staffCommissionsToPay,sub:'Importes del equipo',color:'text-amber-400'},
+                {k:'Gastos',v:totalExpensesAmount,sub:'Egresos del período',color:'text-white'},
+                {k:'Resultado fondo común',v:ownerFinalNetPocket,sub:'Antes de retiros de dueños',color:'text-emerald-400'},
+              ] as const).map(m=><div key={m.k} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4"><p className="text-xs text-zinc-400">{m.k}</p><p className={'mt-2 text-2xl font-extrabold '+m.color}>{'$'+Number(m.v).toLocaleString('es-UY')}</p><p className="mt-2 text-[11px] text-zinc-500">{m.sub}</p></div>)}
+            </div>
+            <div className="grid gap-3 lg:grid-cols-2"><div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5"><h3 className="mb-4 font-bold">Accesos rápidos</h3><div className="flex flex-col gap-2">
+              <button type="button" onClick={() => setActiveTab('agenda')} className="rounded-xl border border-zinc-700 p-3 text-left text-sm hover:bg-zinc-800">📅 Agenda y clientes →</button>
+              <button type="button" onClick={() => setActiveTab('caja')} className="rounded-xl border border-zinc-700 p-3 text-left text-sm hover:bg-zinc-800">💳 Caja y movimientos →</button>
+              <button type="button" onClick={() => setActiveTab('facturacion')} className="rounded-xl border border-zinc-700 p-3 text-left text-sm hover:bg-zinc-800">📊 Ganancias por barbero →</button>
+            </div></div><div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5"><h3 className="mb-3 font-bold">Caja actual</h3><span className={'rounded-full px-3 py-1 text-xs font-bold '+(cashStatus==='abierta'?'bg-emerald-500/20 text-emerald-300':'bg-rose-500/20 text-rose-300')}>{cashStatus}</span><p className="mt-4 text-sm text-zinc-400">{filteredAppointments.length} turnos completados en el período consultado.</p><p className="mt-2 text-xs text-zinc-500">Resultado del fondo común no equivale a efectivo contado.</p><button type="button" onClick={() => setActiveTab('caja')} className="mt-5 w-full rounded-xl bg-emerald-400 p-3 text-xs font-bold text-zinc-950">Ir a caja →</button></div></div>
+          </div>}
 
           {activeTab === 'caja' && (
             <div className="space-y-6">
