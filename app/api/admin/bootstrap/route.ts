@@ -16,41 +16,61 @@ export async function GET() {
   try {
     const supabase = getSupabaseServer();
     const startedAt = performance.now();
+    // Medir cada consulta por separado sin exponer datos privados.
+    // Server-Timing permite detectar la tabla lenta en DevTools.
+    const durations: Record<string, number> = {};
+    async function timed<T>(name: string, query: PromiseLike<T>): Promise<T> {
+      const start = performance.now();
+      try {
+        return await query;
+      } finally {
+        durations[name] = performance.now() - start;
+      }
+    }
+
     const [
       appointments, services, barbers, expenses, tips, manualCharges, shop, cashRegisters,
     ] = await Promise.all([
-      supabase.from('appointments')
+      timed('appointments', supabase.from('appointments')
         .select('id,code,service_id,barber_id,date_string,time_slot,duration_minutes,status,created_at,client_name,client_phone,client_email,client_notes,price_snapshot,services(name,price,duration_minutes),barbers(name)')
         .eq('shop_id', SHOP_UUID)
-        .order('created_at', { ascending: false }),
-      supabase.from('services')
+        .order('created_at', {ascending: false})),
+      timed('services', supabase.from('services')
         .select('id,name,price,duration_minutes,description,image_url,active')
-        .eq('shop_id', SHOP_UUID),
-      supabase.from('barbers')
+        .eq('shop_id', SHOP_UUID)),
+      timed('barbers', supabase.from('barbers')
+        // La vista admin necesita también PIN/comisión para editar barberos.
         .select('*')
-        .eq('shop_id', SHOP_UUID),
-      supabase.from('expenses')
+        .eq('shop_id', SHOP_UUID)),
+      timed('expenses', supabase.from('expenses')
         .select('id,description,amount,category,expense_date,created_at')
         .eq('shop_id', SHOP_UUID)
-        .order('expense_date', { ascending: false }),
-      supabase.from('tips')
+        .order('expense_date', {ascending: false})),
+      timed('tips', supabase.from('tips')
         .select('id,barber_id,amount,note,date_string,created_at,barbers(name)')
         .eq('shop_id', SHOP_UUID)
-        .order('created_at', { ascending: false }),
-      supabase.from('manual_charges')
+        .order('created_at', {ascending: false})),
+      timed('charges', supabase.from('manual_charges')
         .select('id,barber_id,amount,note,date_string,created_at,barbers(name)')
         .eq('shop_id', SHOP_UUID)
-        .order('created_at', { ascending: false }),
-      supabase.from('shops')
+        .order('created_at', {ascending: false})),
+      timed('shop', supabase.from('shops')
         .select('id,name,phone,address,city,logo_url,background_image_url,cover_image_url,schedule')
         .eq('id', SHOP_UUID)
-        .maybeSingle(),
-      supabase.from('cash_registers')
+        .maybeSingle()),
+      timed('cash', supabase.from('cash_registers')
         .select('id,status,closed_at,opened_at')
         .eq('shop_id', SHOP_UUID)
-        .order('opened_at', { ascending: false })
-        .limit(1),
+        .order('opened_at', {ascending: false})
+        .limit(1)),
     ]);
+
+    const totalDuration = performance.now() - startedAt;
+    if (totalDuration > 1500) {
+      console.warn('Admin bootstrap lento (ms):',
+        Object.fromEntries(Object.entries(durations).map(([key, value]) =>
+          [key, Math.round(value)])));
+    }
 
     const errors = [
       ['turnos', appointments.error],
@@ -85,7 +105,11 @@ export async function GET() {
       {
         headers: {
           'Cache-Control': 'private, no-store',
-          'Server-Timing': `database;dur=${(performance.now() - startedAt).toFixed(1)}`,
+          'Server-Timing': [
+            `database;dur=${totalDuration.toFixed(1)}`,
+            ...Object.entries(durations).map(([name, duration]) =>
+              `${name};dur=${duration.toFixed(1)}`),
+          ].join(', '),
         },
       }
     );
