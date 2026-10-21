@@ -967,6 +967,11 @@ const handleAddBarber = async () => {
 
           {activeTab === 'caja' && (
             <div className="space-y-6">
+              {cashStatus !== 'abierta' && (
+                <div role="status" className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
+                  La caja está cerrada. Podés consultar el historial, pero no agregar ni borrar gastos, propinas o cobros manuales hasta abrir la próxima caja.
+                </div>
+              )}
               <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-6 space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div>
@@ -1161,7 +1166,8 @@ const handleAddBarber = async () => {
 
                   <button
                     type="submit"
-                    className="sm:col-span-2 py-2.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs cursor-pointer flex items-center justify-center gap-1 touch-manipulation"
+                    disabled={cashStatus !== 'abierta'}
+                    className="sm:col-span-2 py-2.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs cursor-pointer flex items-center justify-center gap-1 touch-manipulation disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <Plus className="w-4 h-4" />
                     <span>Registrar</span>
@@ -1197,7 +1203,8 @@ const handleAddBarber = async () => {
                             <button
                               type="button"
                               onClick={() => handleRemoveChargeAdmin(chg.id)}
-                              className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-rose-400 cursor-pointer"
+                              disabled={cashStatus !== 'abierta'}
+                              className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-rose-400 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -1246,7 +1253,8 @@ const handleAddBarber = async () => {
 
                   <button
                     type="submit"
-                    className="sm:col-span-2 py-2.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs cursor-pointer flex items-center justify-center gap-1 touch-manipulation"
+                    disabled={cashStatus !== 'abierta'}
+                    className="sm:col-span-2 py-2.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs cursor-pointer flex items-center justify-center gap-1 touch-manipulation disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <Plus className="w-4 h-4" />
                     <span>Sumar</span>
@@ -1284,7 +1292,8 @@ const handleAddBarber = async () => {
                             <button
                               type="button"
                               onClick={() => handleRemoveTipAdmin(tp.id)}
-                              className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-rose-400 cursor-pointer"
+                              disabled={cashStatus !== 'abierta'}
+                              className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-rose-400 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -1331,7 +1340,7 @@ const handleAddBarber = async () => {
                   />
                   <button
                     type="submit"
-                    disabled={savingExpense}
+                    disabled={savingExpense || cashStatus !== 'abierta'}
                     className="sm:col-span-2 py-2.5 px-4 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-bold text-xs cursor-pointer flex items-center justify-center gap-1 touch-manipulation disabled:opacity-50 disabled:cursor-wait"
                   >
                     <Plus className="w-4 h-4" />
@@ -1367,7 +1376,8 @@ const handleAddBarber = async () => {
                         <button
                           type="button"
                           onClick={() => handleRemoveExpense(exp.id)}
-                          className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-rose-400 cursor-pointer"
+                          disabled={cashStatus !== 'abierta'}
+                          className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-rose-400 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
