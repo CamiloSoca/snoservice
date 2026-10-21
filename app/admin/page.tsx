@@ -1649,6 +1649,7 @@ const handleAddBarber = async () => {
                               }
                               handleStatusChange(apt.id, 'completado');
                             }}
+                            disabled={cashStatus !== 'abierta'}
                             className="px-3 py-2 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-bold flex items-center gap-1 cursor-pointer"
                           >
                             <CheckCircle2 className="w-3.5 h-3.5" />
@@ -1733,6 +1734,7 @@ const handleAddBarber = async () => {
                             }
                             handleStatusChange(apt.id, 'completado');
                           }}
+                          disabled={cashStatus !== 'abierta'}
                           className="px-3 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 text-xs font-semibold flex items-center space-x-1 cursor-pointer"
                         >
                           <CheckCircle2 className="w-3.5 h-3.5" />
