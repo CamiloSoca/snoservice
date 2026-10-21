@@ -1029,16 +1029,18 @@ const handleAddBarber = async () => {
                           const todayIso = new Date().toISOString();
                           const res = await fetch('/api/admin', {
                             method: 'POST', headers: {'Content-Type':'application/json'},
-                            body: JSON.stringify({operation:'CLOSE_CASH', finalAmount:ownerFinalNetPocket}),
+                            body: JSON.stringify({operation:'CLOSE_CASH'}),
                           });
                           if (!res.ok) {
                             const payload = await res.json().catch(() => ({}));
                             alert(payload.error || 'No se pudo cerrar la caja.');
                             return;
                           }
+                          const payload = await res.json();
                           setCashStatus('cerrada');
                           setLastClosedDate(getMontevideoDateKey(todayIso));
-                          alert(`¡Caja cerrada correctamente! Total neto consolidado: $${ownerFinalNetPocket}`);
+                          const closing = payload.summary;
+                          alert(`¡Caja cerrada! Facturación: ${closing.grossSales}. Comisiones: ${closing.barberCommissions}. Gastos: ${closing.expenses}. Fondo común neto: ${closing.fundNet}.`);
                         }}
                         className="px-4 py-2.5 rounded-xl bg-rose-500 hover:bg-rose-400 text-white font-bold text-xs cursor-pointer"
                       >
