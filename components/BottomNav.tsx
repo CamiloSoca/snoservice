@@ -59,7 +59,9 @@ export default function BottomNav() {
 
         <Link
           href="/admin"
-          prefetch={true}
+          // No precargar rutas protegidas: el estado de la cookie puede
+          // cambiar despues del prefetch (login o expiracion).
+          prefetch={false}
           className={`flex flex-col items-center justify-center gap-1 py-2 rounded-2xl transition-all touch-manipulation active:scale-95 ${
             isAdmin
               ? 'bg-amber-500/15 text-amber-400 font-bold border border-amber-500/30'

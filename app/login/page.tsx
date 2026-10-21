@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   Scissors,
@@ -15,7 +14,6 @@ import {
 } from 'lucide-react';
 
 export default function LoginPage() {
-  const router = useRouter();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -27,26 +25,32 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
 
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 12_000);
     try {
       const res = await fetch('/api/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: username.trim(), password }),
+        cache: 'no-store',
+        signal: controller.signal,
       });
-
       const data = await res.json();
 
       if (!res.ok || !data.ok) {
         setError(data.error || 'Usuario o contraseña incorrectos.');
-        setLoading(false);
         return;
       }
 
-      // La cookie ya fue establecida; una sola navegación evita duplicar
-      // la carga inicial del panel después de validar las credenciales.
-      router.replace('/admin');
+      // La cookie acaba de cambiar. Una navegacion real evita reutilizar
+      // el prefetch de /admin hecho antes de iniciar sesion.
+      window.location.replace('/admin');
     } catch {
-      setError('No se pudo conectar con el servidor.');
+      setError(controller.signal.aborted
+        ? 'El acceso demoró demasiado. Volvé a intentar; no hace falta cerrar la aplicación.'
+        : 'No se pudo conectar con el servidor.');
+    } finally {
+      window.clearTimeout(timeout);
       setLoading(false);
     }
   };

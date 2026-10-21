@@ -577,7 +577,24 @@ export interface AdminDashboardSnapshot {
 // Reemplaza las ocho peticiones iniciales del admin por una sola petición.
 // La API verifica la sesión antes de consultar datos privados.
 export async function getAdminDashboardSnapshot(): Promise<AdminDashboardSnapshot> {
-  const payload = await apiRequest('/api/admin/bootstrap', { cache: 'no-store' });
+  // Los datos de caja, turnos y gastos no se cachean. Si una consulta queda
+  // pendiente por red o Supabase, no mantener el panel cargando indefinidamente.
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12_000);
+  let payload: Awaited<ReturnType<typeof apiRequest>>;
+  try {
+    payload = await apiRequest('/api/admin/bootstrap', {
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error('La carga del panel demoró demasiado. Tocá Reintentar para volver a consultar.');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 
   const appointments = (payload.appointments || []).map(mapAppointment);
   const services = (payload.services || []).map(mapService);
