@@ -42,14 +42,15 @@ BEGIN
   END LOOP;
 END $$;
 
--- Columnas publicas minimas. No conceder shop_id: filtro RLS administrado por servidor.
-GRANT SELECT (id, slug, name, role, bio, specialties, service_ids, active)
+-- Columnas publicas minimas. shop_id es necesario para filtros .eq('shop_id') del frontend.
+-- El UUID no es secreto; RLS sigue restringiendo filas al negocio permitido.
+GRANT SELECT (id, shop_id, slug, name, role, bio, specialties, service_ids, active)
   ON public.barbers TO anon, authenticated;
 CREATE POLICY security_public_barbers_read ON public.barbers
   FOR SELECT TO anon, authenticated
   USING (shop_id = '11111111-1111-1111-1111-111111111113'::uuid AND active IS TRUE);
 
-GRANT SELECT (id, name, price, duration_minutes, description, image_url, active)
+GRANT SELECT (id, shop_id, name, price, duration_minutes, description, image_url, active)
   ON public.services TO anon, authenticated;
 CREATE POLICY security_public_services_read ON public.services
   FOR SELECT TO anon, authenticated
