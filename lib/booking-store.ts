@@ -74,6 +74,11 @@ export interface AppointmentItem {
   serviceName: string;
   servicePrice: number;
   priceSnapshot?: number;
+  completedAt?: string | null;
+  commissionRateSnapshot?: number | null;
+  barberEarningsSnapshot?: number | null;
+  businessEarningsSnapshot?: number | null;
+  completedCashRegisterId?: string | null;
   durationMinutes: number;
   barberId: string;
   barberName: string;
@@ -109,6 +114,10 @@ export interface TipItem {
 }
 
 export interface ManualChargeItem {
+  commissionRateSnapshot?: number | null;
+  barberEarningsSnapshot?: number | null;
+  businessEarningsSnapshot?: number | null;
+  cashRegisterId?: string | null;
   id: string;
   barberId: string;
   barberName?: string;
@@ -465,6 +474,11 @@ function mapAppointment(d: any): AppointmentItem {
     clientName: d.client_name || '', clientPhone: d.client_phone || '',
     clientEmail: d.client_email || '', clientNotes: d.client_notes || '',
     status: d.status || 'confirmado', createdAt: d.created_at,
+    completedAt: d.completed_at ?? null,
+    commissionRateSnapshot: d.commission_rate_snapshot == null ? null : Number(d.commission_rate_snapshot),
+    barberEarningsSnapshot: d.barber_earnings_snapshot == null ? null : Number(d.barber_earnings_snapshot),
+    businessEarningsSnapshot: d.business_earnings_snapshot == null ? null : Number(d.business_earnings_snapshot),
+    completedCashRegisterId: d.completed_cash_register_id ?? null,
   };
 }
 
@@ -731,6 +745,10 @@ function mapFinancialEntry(d: any): TipItem {
     amount: Number(d.amount) || 0,
     note: d.note || '', dateString: d.date_string || '',
     createdAt: d.created_at,
+    commissionRateSnapshot: d.commission_rate_snapshot == null ? null : Number(d.commission_rate_snapshot),
+    barberEarningsSnapshot: d.barber_earnings_snapshot == null ? null : Number(d.barber_earnings_snapshot),
+    businessEarningsSnapshot: d.business_earnings_snapshot == null ? null : Number(d.business_earnings_snapshot),
+    cashRegisterId: d.cash_register_id ?? null,
   };
 }
 
@@ -789,6 +807,7 @@ export interface BarberDashboardSnapshot {
   manualCharges: ManualChargeItem[];
   cashOpen: boolean;
   commissionRate: number;
+  isOwner: boolean;
 }
 
 export async function getBarberDashboardSnapshot(): Promise<BarberDashboardSnapshot> {
@@ -799,6 +818,7 @@ export async function getBarberDashboardSnapshot(): Promise<BarberDashboardSnaps
     manualCharges: (response.manualCharges || []) as ManualChargeItem[],
     cashOpen: response.cashOpen === true,
     commissionRate: Number(response.commissionRate ?? 50),
+    isOwner: response.isOwner === true,
   };
 }
 
