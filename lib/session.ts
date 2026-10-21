@@ -7,9 +7,9 @@ export const BARBER_COOKIE_NAME = 'barber_staff_session';
 
 function getSessionSecret(): string {
   const secret = process.env.SESSION_SECRET;
-  if (!secret || secret.length < 16) {
+  if (!secret || secret.length < 32) {
     throw new Error(
-      'Configuración incompleta: Definí SESSION_SECRET (mínimo 16 caracteres) en las variables de entorno del servidor.'
+      'Configuración incompleta: Definí SESSION_SECRET (mínimo 32 caracteres) en las variables de entorno del servidor.'
     );
   }
   return secret;
@@ -47,7 +47,7 @@ export function verifySessionToken(token: string | undefined): SessionPayload | 
     
     // Usamos performance API recomendada por Next.js 16 para evitar el error de prerendering de Date.now()
     const currentTime = performance.timeOrigin + performance.now();
-    if (!payload.exp || currentTime > payload.exp) {
+    if (!payload || (payload.role !== 'admin' && payload.role !== 'barber') || typeof payload.sub !== 'string' || !payload.sub || typeof payload.exp !== 'number' || !Number.isFinite(payload.exp) || currentTime > payload.exp) {
       return null;
     }
     return payload;
