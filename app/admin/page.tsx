@@ -1009,7 +1009,11 @@ const handleAddBarber = async () => {
                             method: 'POST', headers: {'Content-Type':'application/json'},
                             body: JSON.stringify({operation:'CLOSE_CASH', finalAmount:ownerFinalNetPocket}),
                           });
-                          if (!res.ok) {alert('No se pudo cerrar la caja.'); return;}
+                          if (!res.ok) {
+                            const payload = await res.json().catch(() => ({}));
+                            alert(payload.error || 'No se pudo cerrar la caja.');
+                            return;
+                          }
                           setCashStatus('cerrada');
                           setLastClosedDate(todayIso.split('T')[0]);
                           alert(`¡Caja cerrada correctamente! Total neto consolidado: $${ownerFinalNetPocket}`);
