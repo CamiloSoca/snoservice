@@ -134,10 +134,9 @@ function BarberPortalContent() {
     try {
       setLoading(true);
       setErrorMsg('');
-      const [res, myTips, myCharges] = await Promise.all([
-        unlockBarberPanelWithPin(selectedBarberId, pin.trim()),
-        getTips(selectedBarberId),
-        getManualCharges(selectedBarberId),
+      const res = await unlockBarberPanelWithPin(selectedBarberId, pin.trim());
+      const [myTips, myCharges] = await Promise.all([
+        getTips(selectedBarberId), getManualCharges(selectedBarberId),
       ]);
       setCommissionRate(res.commissionRate);
       setBarberAppointments(sortAppointmentsChronologically(res.appointments));
