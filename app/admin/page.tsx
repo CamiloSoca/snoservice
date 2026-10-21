@@ -339,6 +339,19 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleToggleServiceActive = async (id: string, active: boolean) => {
+    const previous = services;
+    const updated = services.map((service) => service.id === id ? {...service, active} : service);
+    setServices(updated);
+    try {
+      setAdminError('');
+      await saveServices(updated);
+    } catch (err: any) {
+      setServices(previous);
+      setAdminError(err?.message || 'No se pudo actualizar el servicio.');
+    }
+  };
+
   const handleDeleteService = async (id: string) => {
     const previous = services;
     const updated = services.filter((s) => s.id !== id);
@@ -416,7 +429,7 @@ const handleAddBarber = async () => {
 
   const handleUpdateBarberField = async (
     id: string,
-    field: 'commissionRate' | 'pin' | 'isOwner',
+    field: 'commissionRate' | 'pin' | 'isOwner' | 'active',
     value: number | string | boolean
   ) => {
     const previous = barbers;
@@ -427,6 +440,7 @@ const handleAddBarber = async () => {
         return { ...b, commissionRate: rate };
       }
       if (field === 'isOwner') return { ...b, isOwner: value === true };
+      if (field === 'active') return { ...b, active: value === true };
       return { ...b, pin: String(value).trim() };
     });
     setBarbers(updated);
@@ -1864,6 +1878,10 @@ const handleAddBarber = async () => {
                             <input type="checkbox" className="size-4 accent-emerald-500" checked={brb.isOwner === true} onChange={(e) => handleUpdateBarberField(brb.id, 'isOwner', e.target.checked)} />
                             Propietario
                           </label>
+                          <label className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-zinc-800 bg-zinc-950 text-xs text-zinc-300 cursor-pointer">
+                            <input type="checkbox" className="size-4 accent-emerald-500" checked={brb.active !== false} onChange={(e) => handleUpdateBarberField(brb.id, 'active', e.target.checked)} />
+                            Habilitado
+                          </label>
                           <div className="flex items-center space-x-1.5 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-1.5">
                             <span className="text-xs text-zinc-400">{brb.isOwner ? 'Comisión no aplica:' : 'Comisión:'}</span>
                             <input
@@ -2023,6 +2041,10 @@ const handleAddBarber = async () => {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2.5">
+                      <label className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-xs text-zinc-300 cursor-pointer">
+                        <input type="checkbox" className="size-4 accent-emerald-500" checked={srv.active !== false} onChange={(e) => handleToggleServiceActive(srv.id, e.target.checked)} />
+                        Habilitado
+                      </label>
                       <div className="flex items-center bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-1.5">
                         <Clock className="w-3.5 h-3.5 text-zinc-500 mr-1.5" />
                         <input
