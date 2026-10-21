@@ -342,6 +342,9 @@ export function getSlotsForDayOfWeek(
   return { morning, afternoon };
 }
 
+// Las duraciones son estimadas. La agenda permite aprovechar SOLO huecos
+// anteriores a reservas existentes, nunca pisar un turno ya iniciado.
+// Servicios >90 minutos son estrictos en ambas direcciones.
 export function isSlotAvailable(params: {
   candidateTime: string;
   serviceDurationMinutes: number;
@@ -360,32 +363,42 @@ export function isSlotAvailable(params: {
     allServices,
   } = params;
 
-  if (!candidateTime || !barberId || !dateString) return true;
-
+  if (!candidateTime || !barberId || !dateString) return false;
   const candidateStart = timeToMinutes(candidateTime);
   const duration = Math.max(15, Number(serviceDurationMinutes) || 60);
   const candidateEnd = candidateStart + duration;
+  const FLEXIBLE_LIMIT_MINUTES = 90;
+  const MINIMUM_START_GAP_MINUTES = 30;
 
-  const list = Array.isArray(existingAppointments) ? existingAppointments : [];
-
-  for (const apt of list) {
+  for (const apt of Array.isArray(existingAppointments) ? existingAppointments : []) {
     if (apt.status === 'cancelado') continue;
-    if (apt.barberId !== barberId) continue;
-    if (apt.dateString !== dateString) continue;
+    if (apt.barberId !== barberId || apt.dateString !== dateString) continue;
 
     const aptStart = timeToMinutes(apt.timeSlot);
-    const matchedServiceDur = allServices?.find((s) => s.id === apt.serviceId)?.durationMinutes;
-    const aptDuration = Number(apt.durationMinutes || matchedServiceDur) || 60;
+    const matchedDuration = allServices?.find((s) => s.id === apt.serviceId)?.durationMinutes;
+    const aptDuration = Math.max(15, Number(apt.durationMinutes || matchedDuration) || 60);
     const aptEnd = aptStart + aptDuration;
 
-    if (candidateStart < aptEnd && candidateEnd > aptStart) {
-      return false;
+    // Nunca asignar el mismo horario exacto.
+    if (aptStart === candidateStart) return false;
+
+    if (aptStart < candidateStart) {
+      // Si el cliente EXISTENTE llegó primero a la agenda, se respeta
+      // su duración hacia adelante, aunque su corte sea flexible.
+      if (aptEnd > candidateStart) return false;
+    } else if (candidateEnd > aptStart) {
+      // Solo una reserva CORTA que se agrega ANTES de otra reserva CORTA
+      // puede usar el hueco previo de >=30 min.
+      if (duration > FLEXIBLE_LIMIT_MINUTES ||
+          aptDuration > FLEXIBLE_LIMIT_MINUTES ||
+          aptStart - candidateStart < MINIMUM_START_GAP_MINUTES) {
+        return false;
+      }
     }
   }
 
   return true;
 }
-
 
 async function apiRequest(path: string, options?: RequestInit): Promise<any> {
   const response = await fetch(path, {
