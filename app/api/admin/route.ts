@@ -152,34 +152,16 @@ export async function POST(request: Request) {
         return NextResponse.json({ok: true});
       }
       case 'CLOSE_CASH': {
-        const amount = Number(body.finalAmount);
-        if (!Number.isFinite(amount)) return NextResponse.json({error: 'Monto inválido.'}, {status: 400});
-
-        const {data: openRows, error: lookupError} = await supabase.from('cash_registers')
-          .select('id')
-          .eq('shop_id', SHOP_UUID)
-          .eq('status', 'abierta')
-          .order('opened_at', {ascending: false})
-          .limit(2);
-        if (lookupError) {
-          return NextResponse.json({error: 'No se pudo verificar la caja abierta.'}, {status: 500});
+        // Calcular el cierre dentro de una transacción SQL bloqueando la caja.
+        // Nunca confiar en importes enviados por el navegador.
+        const {data, error} = await supabase.rpc('close_cash_financial', {
+          p_shop_id: SHOP_UUID,
+        });
+        if (error) {
+          console.error('No se pudo consolidar la caja:', error.code);
+          return NextResponse.json({error: 'No se pudo consolidar la caja. Actualizá e intentá nuevamente.'}, {status: 409});
         }
-        if (!openRows?.length) {
-          return NextResponse.json({error: 'No existe una caja abierta para cerrar.'}, {status: 409});
-        }
-        if (openRows.length !== 1) {
-          return NextResponse.json({error: 'Hay varias cajas abiertas; se requiere revisión antes de cerrar.'}, {status: 409});
-        }
-
-        const {data, error} = await supabase.from('cash_registers')
-          .update({closed_at: new Date().toISOString(), final_amount: amount, status: 'cerrada'})
-          .eq('id', openRows[0].id)
-          .eq('shop_id', SHOP_UUID)
-          .eq('status', 'abierta')
-          .select('id');
-        if (error) return NextResponse.json({error: 'No se pudo cerrar la caja.'}, {status: 500});
-        if (data?.length !== 1) return NextResponse.json({error: 'La caja ya estaba cerrada o cambió de estado.'}, {status: 409});
-        return NextResponse.json({ok: true});
+        return NextResponse.json({ok: true, summary: data});
       }
       case 'SAVE_BARBERS': {
         const items = Array.isArray(body.barbers) ? body.barbers : [];
