@@ -47,25 +47,19 @@ import {
   DEFAULT_SHOP_CONFIG,
   SHOP_UUID,
   generateUUID,
-  getServices,
-  getAdminServices,
   saveServices,
   deleteServiceFromDb,
   getAdminBarbers,
+  getAdminDashboardSnapshot,
   saveBarbers,
   deleteBarberFromDb,
-  getAppointments,
   updateAppointmentStatus,
-  getExpenses,
   createExpense,
   deleteExpense,
-  getTips,
   createTip,
   deleteTip,
-  getManualCharges,
   createManualCharge,
   deleteManualCharge,
-  getShopConfig,
   saveShopConfig,
   buildRealOpenDays,
   sortAppointmentsChronologically,
@@ -200,48 +194,28 @@ export default function AdminDashboard() {
     async function loadAdminData() {
       try {
         setAdminError('');
-        const [apts, srvs, brbs, exps, tps, charges, cfg] = await Promise.all([
-          getAppointments(),
-          getAdminServices(true),
-          getAdminBarbers(),
-          getExpenses(),
-          getTips(),
-          getManualCharges(),
-          getShopConfig(true),
-        ]);
-
-        const freshConfig = cfg || DEFAULT_SHOP_CONFIG;
+        const snapshot = await getAdminDashboardSnapshot();
+        const freshConfig = snapshot.config || DEFAULT_SHOP_CONFIG;
         const openDays = buildRealOpenDays(30, freshConfig.schedule);
         setDays(openDays);
         if (openDays.length > 0) {
           setAdminAgendaDate(openDays[0].dateString);
         }
 
-        const freshBarbers = Array.isArray(brbs) ? brbs : [];
+        const freshBarbers = snapshot.barbers;
         if (freshBarbers.length > 0) {
           setTipBarberId(freshBarbers[0].id);
           setChargeBarberId(freshBarbers[0].id);
         }
 
-        const cashResponse = await fetch('/api/admin?resource=cash_registers');
-        if (!cashResponse.ok) throw new Error('No se pudo cargar la caja.');
-        const {data: cashRows} = await cashResponse.json();
-        const cashData = cashRows?.[0];
-        if (cashData) {
-          setCashStatus(cashData.status === 'abierta' ? 'abierta' : 'cerrada');
-          if (cashData.closed_at) setLastClosedDate(cashData.closed_at.split('T')[0]);
-        } else {
-          // Sin registros, la caja no está abierta.
-          setCashStatus('cerrada');
-          setLastClosedDate('');
-        }
-
-        setAppointments(sortAppointmentsChronologically(Array.isArray(apts) ? apts : []));
-        setServices(Array.isArray(srvs) ? srvs : []);
+        setCashStatus(snapshot.cashStatus);
+        setLastClosedDate(snapshot.lastClosedDate);
+        setAppointments(sortAppointmentsChronologically(snapshot.appointments));
+        setServices(snapshot.services);
         setBarbers(freshBarbers);
-        setExpenses(Array.isArray(exps) ? exps : []);
-        setTips(Array.isArray(tps) ? tps : []);
-        setManualCharges(Array.isArray(charges) ? charges : []);
+        setExpenses(snapshot.expenses);
+        setTips(snapshot.tips);
+        setManualCharges(snapshot.manualCharges);
         setShopConfig(freshConfig);
 
         checkBarberLocks(freshBarbers);
