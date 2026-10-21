@@ -738,7 +738,7 @@ export async function deleteExpense(id: string): Promise<ExpenseItem[]> {
   return getExpenses();
 }
 
-function mapFinancialEntry(d: any): TipItem {
+function mapFinancialEntry(d: any): TipItem & ManualChargeItem {
   return {
     id: d.id, barberId: d.barber_id,
     barberName: d.barbers?.name || 'Barbero',
