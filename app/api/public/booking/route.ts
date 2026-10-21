@@ -1,3 +1,4 @@
+import nodemailer from 'nodemailer';
 import { randomBytes } from 'crypto';
 // app/api/public/booking/route.ts
 import { NextResponse } from 'next/server';
@@ -239,6 +240,30 @@ export async function POST(request: Request) {
       status: 'confirmado',
       createdAt: inserted.created_at || new Date().toISOString(),
     };
+
+    if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+      try {
+        const transporter = nodemailer.createTransport({
+          host: process.env.SMTP_HOST || 'smtp.zoho.com',
+          port: Number(process.env.SMTP_PORT) || 465,
+          secure: true,
+          auth: {user: process.env.SMTP_USER, pass: process.env.SMTP_PASS},
+        });
+        const safe = (value: unknown) => String(value || '').replace(/[&<>"']/g, (c) =>
+          ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c] || c));
+        await transporter.sendMail({
+          from: process.env.SMTP_USER,
+          to: cleanEmail,
+          subject: 'Confirmación de turno - 13-Cut',
+          html: '<h2>Reserva confirmada</h2><p>Hola ' + safe(cleanName) +
+            '</p><p>Servicio: ' + safe(serviceRow.name) + '</p><p>Barbero: ' +
+            safe(barberRow.name) + '</p><p>Fecha: ' + safe(cleanDate) +
+            '</p><p>Hora: ' + safe(cleanTime) + '</p><p>Código: ' + safe(confirmed.code) + '</p>',
+        });
+      } catch (mailError) {
+        console.error('No se pudo enviar la confirmación de la reserva', mailError);
+      }
+    }
 
     return NextResponse.json({ appointment: confirmed }, { status: 201 });
   } catch (err: any) {
