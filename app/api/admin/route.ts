@@ -212,6 +212,16 @@ export async function POST(request: Request) {
         if (!isValidUUID(id)) {
           return NextResponse.json({ error: 'ID de barbero inválido.' }, { status: 400 });
         }
+        // No borrar historial por las FK ON DELETE CASCADE existentes.
+        const barberUsage = await Promise.all([
+          supabase.from('appointments').select('id', {count:'exact',head:true}).eq('shop_id',SHOP_UUID).eq('barber_id',id),
+          supabase.from('manual_charges').select('id', {count:'exact',head:true}).eq('shop_id',SHOP_UUID).eq('barber_id',id),
+          supabase.from('tips').select('id', {count:'exact',head:true}).eq('shop_id',SHOP_UUID).eq('barber_id',id),
+        ]);
+        if (barberUsage.some(row => row.error)) return NextResponse.json({error:'No se pudo verificar el historial del barbero.'},{status:500});
+        if (barberUsage.some(row => (row.count || 0)>0)) {
+          return NextResponse.json({error:'Este barbero tiene historial. Desactivalo en lugar de eliminarlo.'},{status:409});
+        }
         const { error } = await supabase
           .from('barbers')
           .delete()
@@ -261,6 +271,10 @@ export async function POST(request: Request) {
         if (!isValidUUID(id)) {
           return NextResponse.json({ error: 'ID de servicio inválido.' }, { status: 400 });
         }
+        const {count, error: historyError} = await supabase.from('appointments')
+          .select('id', {count:'exact',head:true}).eq('shop_id',SHOP_UUID).eq('service_id',id);
+        if (historyError) return NextResponse.json({error:'No se pudo verificar el historial del servicio.'},{status:500});
+        if ((count || 0)>0) return NextResponse.json({error:'Este servicio tiene historial. Desactivalo en lugar de eliminarlo.'},{status:409});
         const { error } = await supabase
           .from('services')
           .delete()
