@@ -130,9 +130,13 @@ export function invalidatePublicShopData(): void {
   publish(EMPTY_SNAPSHOT);
   if (typeof window !== 'undefined') {
     try { window.sessionStorage.removeItem(STORAGE_KEY); } catch {}
-    // Admin saves are confirmed server-side before invoking this function.
-    // Refresh the shared public projection immediately.
-    void getPublicShopData(true).catch(() => {});
+    // Desde /admin no consultar innecesariamente el catálogo público.
+    // El proveedor lo recargará cuando la navegación vuelva a una
+    // pantalla pública; mientras tanto la caché previa queda invalidada.
+    const pathname = window.location.pathname;
+    if (pathname === '/' || pathname.startsWith('/agendar') || pathname.startsWith('/barbero')) {
+      void getPublicShopData(true).catch(() => {});
+    }
   }
 }
 
