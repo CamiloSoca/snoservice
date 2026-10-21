@@ -1,6 +1,6 @@
 // app/api/barber/route.ts
 import { NextResponse } from 'next/server';
-import { getSupabaseServer, SHOP_UUID, SHOP_PREFIX } from '@/lib/supabase-server';
+import { getSupabaseServer, SHOP_UUID } from '@/lib/supabase-server';
 import {
   BARBER_COOKIE_NAME,
   getBarberSession,
@@ -23,31 +23,30 @@ export async function POST(request: Request) {
     }
 
     const supabase = getSupabaseServer();
-    const { data: barber, error } = await supabase
-      .from('barbers')
-      .select('id, name, pin, commission_rate, active')
-      .eq('id', barberId)
-      .eq('shop_id', SHOP_UUID)
-      .maybeSingle();
-
-    if (error || !barber || !barber.active) {
-      return NextResponse.json({ error: 'Barbero no encontrado.' }, { status: 404 });
-    }
-
-    // Las excepciones dentro de una función SQL revierten su INSERT de auditoría.
-    // Registramos los intentos en operaciones Supabase independientes y verificamos
-    // el bloqueo ANTES de comprobar el PIN.
+    // Consultas independientes: comprobar perfil y límites de PIN a la vez.
+    // Conservamos el mismo bloqueo y la auditoría de intentos fallidos.
     const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
-    const {count, error: countError} = await supabase.from('audit_logs')
-      .select('*', {count: 'exact', head: true})
-      .eq('shop_id', SHOP_UUID)
-      .eq('action', 'PIN_FAILED')
-      .eq('details', barberId)
-      .gte('created_at', cutoff);
-    if (countError) {
+    const [barberLookup, attemptsLookup] = await Promise.all([
+      supabase.from('barbers')
+        .select('id,name,pin,commission_rate,active')
+        .eq('id', barberId)
+        .eq('shop_id', SHOP_UUID)
+        .maybeSingle(),
+      supabase.from('audit_logs')
+        .select('id', {count: 'exact', head: true})
+        .eq('shop_id', SHOP_UUID)
+        .eq('action', 'PIN_FAILED')
+        .eq('details', barberId)
+        .gte('created_at', cutoff),
+    ]);
+    const {data: barber, error} = barberLookup;
+    if (error || !barber || !barber.active) {
+      return NextResponse.json({error: 'Barbero no encontrado.'}, {status: 404});
+    }
+    if (attemptsLookup.error) {
       return NextResponse.json({error: 'No se pudo verificar el límite de intentos.'}, {status: 503});
     }
-    if ((count ?? 0) >= 5) {
+    if ((attemptsLookup.count ?? 0) >= 5) {
       return NextResponse.json({error: 'Demasiados intentos. Intentá nuevamente en 15 minutos.'}, {status: 429});
     }
 
@@ -73,36 +72,11 @@ export async function POST(request: Request) {
       exp: Date.now() + 1000 * 60 * 60 * 12,
     });
 
-    const { data: apts } = await supabase
-      .from('appointments')
-      .select('*, services(name, price, duration_minutes), barbers(name)')
-      .eq('shop_id', SHOP_UUID)
-      .eq('barber_id', barber.id)
-      .order('created_at', { ascending: false });
-
-    const mappedAppointments = (apts || []).map((apt) => ({
-      id: apt.id,
-      code: apt.code || `${SHOP_PREFIX}-0000`,
-      serviceId: apt.service_id,
-      serviceName: apt.services?.name || 'Servicio',
-      servicePrice: Number(apt.price_snapshot ?? apt.services?.price ?? 0),
-      priceSnapshot: Number(apt.price_snapshot ?? 0),
-      durationMinutes: Number(apt.duration_minutes ?? apt.services?.duration_minutes ?? 60),
-      barberId: apt.barber_id,
-      barberName: apt.barbers?.name || barber.name,
-      dateString: apt.date_string,
-      timeSlot: apt.time_slot,
-      clientName: apt.client_name,
-      clientPhone: apt.client_phone,
-      clientNotes: apt.client_notes,
-      status: apt.status || 'confirmado',
-      createdAt: apt.created_at,
-    }));
-
+    // La autenticación termina acá. La agenda y las finanzas se cargan
+    // mediante /api/barber/bootstrap luego de recibir la cookie segura.
     const response = NextResponse.json({
       ok: true,
       commissionRate: Number(barber.commission_rate ?? 50),
-      appointments: mappedAppointments,
     });
 
     response.cookies.set(BARBER_COOKIE_NAME, token, {
