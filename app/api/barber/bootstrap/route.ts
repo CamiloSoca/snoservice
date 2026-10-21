@@ -45,6 +45,9 @@ export async function GET() {
     if (barber.error || !barber.data || !barber.data.active) {
       return NextResponse.json({error: 'Acceso del barbero no disponible.'}, {status: 403, headers});
     }
+    // Conservar un perfil validado que TypeScript pueda usar también
+    // dentro de los callbacks de mapeo.
+    const activeBarber = barber.data;
     if (appointments.error || tips.error || charges.error || cash.error) {
       console.error('Error cargando portal de barbero:', {
         appointments: appointments.error?.code,
@@ -67,7 +70,7 @@ export async function GET() {
       priceSnapshot: Number(apt.price_snapshot ?? 0),
       durationMinutes: Number(apt.duration_minutes ?? (Array.isArray(apt.services) ? apt.services[0] : apt.services)?.duration_minutes ?? 60),
       barberId: apt.barber_id,
-      barberName: (Array.isArray(apt.barbers) ? apt.barbers[0] : apt.barbers)?.name || barber.data.name,
+      barberName: (Array.isArray(apt.barbers) ? apt.barbers[0] : apt.barbers)?.name || activeBarber.name,
       dateString: apt.date_string,
       timeSlot: apt.time_slot,
       clientName: apt.client_name,
@@ -88,7 +91,7 @@ export async function GET() {
     }) => ({
       id: item.id,
       barberId: item.barber_id,
-      barberName: barber.data.name,
+      barberName: activeBarber.name,
       amount: Number(item.amount) || 0,
       note: item.note || '',
       dateString: item.date_string || '',
@@ -101,7 +104,7 @@ export async function GET() {
         tips: (tips.data || []).map(mapEntry),
         manualCharges: (charges.data || []).map(mapEntry),
         cashOpen: cash.data?.length === 1,
-        commissionRate: Number(barber.data.commission_rate ?? 50),
+        commissionRate: Number(activeBarber.commission_rate ?? 50),
       },
       {
         headers: {
