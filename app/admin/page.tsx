@@ -990,7 +990,11 @@ const handleAddBarber = async () => {
                             method: 'POST', headers: {'Content-Type':'application/json'},
                             body: JSON.stringify({operation:'OPEN_CASH', initialAmount:grossRevenueTotal}),
                           });
-                          if (!res.ok) {alert('No se pudo abrir la caja.'); return;}
+                          if (!res.ok) {
+                            const payload = await res.json().catch(() => ({}));
+                            alert(payload.error || 'No se pudo abrir la caja.');
+                            return;
+                          }
                           setCashStatus('abierta');
                           alert('¡Caja abierta con éxito!');
                         }}
