@@ -248,8 +248,11 @@ export default function AdminDashboard() {
   const handleStatusChange = async (id: string, status: AppointmentItem['status']) => {
     try {
       setAdminError('');
-      const updated = await updateAppointmentStatus(id, status);
-      setAppointments(sortAppointmentsChronologically(Array.isArray(updated) ? updated : []));
+      await updateAppointmentStatus(id, status);
+      // La API confirmó el cambio: modificar solo el turno afectado.
+      setAppointments((current) => current.map((appointment) =>
+        appointment.id === id ? {...appointment, status} : appointment
+      ));
     } catch (err: any) {
       setAdminError(err?.message || 'No se pudo actualizar el estado del turno.');
     }
