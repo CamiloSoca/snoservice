@@ -12,6 +12,27 @@ import {
   ServiceItem,
 } from '@/lib/booking-store';
 
+// Los turnos se guardan como "Mié 21 Oct" (sin año), el mismo formato
+// generado por buildRealOpenDays. La agenda publica muestra los siguientes
+// 30 dias calendario: no tiene sentido consultar todo el historial.
+function getVisibleBookingDates(): string[] {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Montevideo',
+    day: '2-digit', month: '2-digit', year: 'numeric',
+  }).formatToParts(new Date());
+  const part = (type: string) => Number(parts.find(p => p.type === type)?.value || 0);
+  const utcDay = Date.UTC(part('year'), part('month') - 1, part('day'));
+  const weekNames = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+  const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+  const dates: string[] = ['Hoy'];
+  // Margen de 2 dias por diferencias de huso horario, 45 hacia adelante.
+  for (let offset = -2; offset < 46; offset += 1) {
+    const d = new Date(utcDay + offset * 86_400_000);
+    dates.push(`${weekNames[d.getUTCDay()]} ${d.getUTCDate()} ${monthNames[d.getUTCMonth()]}`);
+  }
+  return dates;
+}
+
 export async function GET() {
   try {
     const supabase = getSupabaseServer();
@@ -21,7 +42,7 @@ export async function GET() {
       .select('id, barber_id, service_id, date_string, time_slot, duration_minutes, status')
       .eq('shop_id', SHOP_UUID)
       .neq('status', 'cancelado')
-      .order('created_at', { ascending: false });
+      .in('date_string', getVisibleBookingDates());
 
     if (error) {
       console.error('Error detallado de Supabase en GET /booking:', error);
@@ -51,7 +72,9 @@ export async function GET() {
       createdAt: '',
     }));
 
-    return NextResponse.json({ appointments: sanitizedSlots });
+    return NextResponse.json({ appointments: sanitizedSlots }, {
+      headers: {'Cache-Control': 'private, no-store'},
+    });
   } catch (err: any) {
     return NextResponse.json(
       { error: err?.message || 'Error de configuración en el servidor.' },
