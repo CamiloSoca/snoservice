@@ -21,11 +21,9 @@ import {
   BarberItem,
   ShopConfig,
   DEFAULT_SHOP_CONFIG,
-  getBarbers,
-  getShopConfig,
-  getServices,
 } from '@/lib/booking-store';
 import { InitialShopSkeleton, InitialShopError } from '@/components/InitialShopState';
+import { getPublicShopData } from '@/lib/public-shop-data';
 
 const INSTAGRAM_POSTS = [
   {
@@ -136,11 +134,7 @@ export default function HomePage() {
 
     async function loadData() {
       try {
-        const [config, brbs] = await Promise.all([
-          getShopConfig(true),
-          getBarbers(true),
-          getServices(true),
-        ]);
+        const {shopConfig: config, barbers: brbs} = await getPublicShopData();
         setShopConfig(config);
         setBarbers(brbs.filter((b) => b.active !== false));
         setInitialLoad('ready');
@@ -181,7 +175,7 @@ export default function HomePage() {
   const activeBarbers = barbers;
 
   if (!mounted || initialLoad === 'loading') {
-    return <InitialShopSkeleton label="Cargando la barbería..." />;
+    return <InitialShopSkeleton variant="home" label="Preparando tu experiencia..." />;
   }
   if (initialLoad === 'error') {
     return <InitialShopError />;

@@ -771,7 +771,7 @@ const handleAddBarber = async () => {
   const isTodayClosed = cashStatus === 'cerrada' && lastClosedDate === todayStr;
 
   if (initialLoad === 'loading') {
-    return <InitialShopSkeleton label="Cargando agenda, barberos y caja..." />;
+    return <InitialShopSkeleton variant="admin" label="Cargando agenda, barberos y caja..." />;
   }
   if (initialLoad === 'error') {
     return <InitialShopError label="No se pudieron cargar los datos del administrador. Intentá de nuevo." />;

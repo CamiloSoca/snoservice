@@ -24,3 +24,36 @@
     font-size: 16px !important;
   }
 }
+
+/* Carga ligera: animaciones por transform, sin desenfoques costosos. */
+.sno-skeleton {
+  position: relative;
+  overflow: hidden;
+  background-color: rgba(63, 63, 70, 0.33);
+}
+.sno-skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 20%, rgba(161, 161, 170, 0.09) 50%, transparent 80%);
+  transform: translateX(-110%);
+  animation: sno-shimmer 2.2s ease-in-out infinite;
+}
+.sno-progress {
+  animation: sno-progress 1.8s ease-in-out infinite;
+  will-change: transform;
+}
+@keyframes sno-shimmer {
+  to { transform: translateX(110%); }
+}
+@keyframes sno-progress {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sno-skeleton::after,
+  .sno-progress {
+    animation: none;
+    transform: none;
+  }
+}

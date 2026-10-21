@@ -1,5 +1,6 @@
 // lib/booking-store.ts
 import { createClient } from '@supabase/supabase-js';
+import { invalidatePublicShopData } from '@/lib/public-shop-data';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -490,6 +491,7 @@ export async function getShopConfig(forceRefresh = false): Promise<ShopConfig> {
 export async function saveShopConfig(cfg: ShopConfig): Promise<void> {
   await apiRequest('/api/admin', jsonRequest('POST', {operation: 'SAVE_SHOP_CONFIG', config: cfg}));
   cachedShopConfig = cfg;
+  invalidatePublicShopData();
 }
 
 export async function getServices(forceRefresh = false): Promise<ServiceItem[]> {
@@ -515,10 +517,12 @@ export async function getAdminServices(forceRefresh = false): Promise<ServiceIte
 export async function saveServices(services: ServiceItem[]): Promise<void> {
   await apiRequest('/api/admin', jsonRequest('POST', {operation: 'SAVE_SERVICES', services}));
   cachedServices = services;
+  invalidatePublicShopData();
 }
 
 export async function deleteServiceFromDb(id: string): Promise<void> {
   await apiRequest('/api/admin', jsonRequest('POST', {operation: 'DELETE_SERVICE', id}));
+  invalidatePublicShopData();
 }
 
 export async function getBarbers(forceRefresh = false): Promise<BarberItem[]> {
@@ -545,10 +549,12 @@ export async function getAdminBarbers(forceRefresh = false): Promise<BarberItem[
 export async function saveBarbers(barbers: BarberItem[]): Promise<void> {
   await apiRequest('/api/admin', jsonRequest('POST', {operation: 'SAVE_BARBERS', barbers}));
   cachedBarbers = barbers;
+  invalidatePublicShopData();
 }
 
 export async function deleteBarberFromDb(id: string): Promise<void> {
   await apiRequest('/api/admin', jsonRequest('POST', {operation: 'DELETE_BARBER', id}));
+  invalidatePublicShopData();
 }
 
 export async function getAppointments(forceRefresh = false): Promise<AppointmentItem[]> {

@@ -25,8 +25,6 @@ import {
   TipItem,
   ManualChargeItem,
   DEFAULT_SHOP_CONFIG,
-  getBarbers,
-  getShopConfig,
   unlockBarberPanelWithPin,
   getBarberDashboardSnapshot,
   updateAppointmentStatus,
@@ -39,7 +37,8 @@ import {
   sortAppointmentsChronologically,
   canCompleteAppointment,
 } from '@/lib/booking-store';
-import { InitialShopSkeleton, InitialShopError } from '@/components/InitialShopState';
+import { InitialShopSkeleton, InitialShopError, PanelLoading } from '@/components/InitialShopState';
+import { getPublicShopData } from '@/lib/public-shop-data';
 
 const MONTH_NAMES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -108,7 +107,7 @@ function BarberPortalContent() {
     setMounted(true);
     async function init() {
       try {
-        const [cfg, brbs] = await Promise.all([getShopConfig(true), getBarbers(true)]);
+        const {shopConfig: cfg, barbers: brbs} = await getPublicShopData();
         setShopConfig(cfg);
         const activeBrbs = brbs.filter((b) => b.active !== false);
         setBarbers(activeBrbs);
@@ -245,7 +244,7 @@ function BarberPortalContent() {
   };
 
   if (!mounted || initialLoad === 'loading') {
-    return <InitialShopSkeleton label="Cargando perfiles de barberos..." />;
+    return <InitialShopSkeleton variant="barber" label="Preparando el portal de barberos..." />;
   }
   if (initialLoad === 'error') {
     return <InitialShopError label="No se pudieron cargar los perfiles de barberos. Intentá de nuevo." />;
@@ -417,9 +416,7 @@ function BarberPortalContent() {
             </form>
           </div>
         ) : panelLoading ? (
-          <div role="status" className="p-6 rounded-2xl border border-zinc-800 bg-zinc-900 text-sm text-zinc-300 text-center">
-            PIN validado. Cargando tus turnos, movimientos y caja...
-          </div>
+          <PanelLoading label="PIN validado. Preparando tus turnos y finanzas..." />
         ) : (
           <div className="space-y-6">
             {!cashOpen && (
