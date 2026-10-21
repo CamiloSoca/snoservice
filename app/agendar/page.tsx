@@ -168,6 +168,41 @@ function AgendarContent() {
     loadData();
   }, []);
 
+  // Sin suscribirse a tablas privadas ni exponer datos de clientes:
+  // la API publica devuelve unicamente los horarios ocupados.
+  useEffect(() => {
+    let disposed = false;
+    let refreshing = false;
+
+    async function refreshAvailability() {
+      if (document.visibilityState === 'hidden' || refreshing) return;
+      refreshing = true;
+      try {
+        const latest = await getPublicBookedSlots(true);
+        if (!disposed) setAppointments(latest);
+      } catch (error) {
+        console.error('No se pudo actualizar la disponibilidad:', error);
+      } finally {
+        refreshing = false;
+      }
+    }
+
+    const interval = window.setInterval(refreshAvailability, 20000);
+    const handleFocus = () => { void refreshAvailability(); };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') void refreshAvailability();
+    };
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      disposed = true;
+      window.clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, []);
+
   useEffect(() => {
     if (barberoParam && barbers.length > 0) {
       const cleanParam = barberoParam.trim().toLowerCase();
@@ -255,8 +290,9 @@ function AgendarContent() {
     if (step === 1) return selectedService !== null;
     if (step === 2) return selectedBarber !== null;
     if (step === 3) {
-      if (!selectedDate || !selectedTime || !currentDayRule.isOpen) return false;
-      return !isSlotPastForSelectedDay(activeDayObj, selectedTime);
+      if (!selectedDate || !selectedTime || !selectedBarber || !currentDayRule.isOpen) return false;
+      return !isSlotPastForSelectedDay(activeDayObj, selectedTime)
+        && !checkSlotBooked(selectedBarber.id, selectedDate, selectedTime);
     }
     if (step === 4) {
       return !isSubmitting && clientName.trim().length >= 3 && isValidEmail(clientEmail);
@@ -292,6 +328,9 @@ function AgendarContent() {
     if (!canProceed()) {
       if (step === 3 && !currentDayRule.isOpen) {
         setFormError('El local se encuentra cerrado este día.');
+      } else if (step === 3 && selectedBarber && selectedTime && checkSlotBooked(selectedBarber.id, selectedDate, selectedTime)) {
+        setSelectedTime(null);
+        setFormError('El horario acaba de ocuparse. Elegí otro horario.');
       } else if (step === 4 && !isSubmitting) {
         setFormError('Ingresá tu nombre y un correo electrónico válido (ej: tu@correo.com).');
       }
@@ -346,10 +385,14 @@ function AgendarContent() {
         });
 
         localStorage.setItem(BOOKING_STORAGE_KEY, String(Date.now()));
+        // Mostrar inmediatamente el horario como ocupado sin recargar la pagina.
+        setAppointments((prev) => prev.some((apt) => apt.id === created.id) ? prev : [...prev, created]);
         setConfirmedAppointment(created);
         scrollToTop();
       } catch (err: any) {
         setFormError(err?.message || 'Error al confirmar el turno.');
+        // Si otro cliente tomo el mismo horario, refrescar lo que se ofrece.
+        void getPublicBookedSlots(true).then(setAppointments).catch(() => {});
       } finally {
         setIsSubmitting(false);
       }
