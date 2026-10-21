@@ -736,8 +736,26 @@ export async function deleteManualCharge(id: string): Promise<ManualChargeItem[]
 export async function unlockBarberPanelWithPin(barberId: string, pin: string) {
   const result = await apiRequest('/api/barber', jsonRequest('POST', {barberId, pin}));
   return {
-    commissionRate: Number(result.commissionRate) || 50,
-    appointments: (result.appointments || []) as AppointmentItem[],
+    commissionRate: Number(result.commissionRate ?? 50),
+  };
+}
+
+export interface BarberDashboardSnapshot {
+  appointments: AppointmentItem[];
+  tips: TipItem[];
+  manualCharges: ManualChargeItem[];
+  cashOpen: boolean;
+  commissionRate: number;
+}
+
+export async function getBarberDashboardSnapshot(): Promise<BarberDashboardSnapshot> {
+  const response = await apiRequest('/api/barber/bootstrap', {cache: 'no-store'});
+  return {
+    appointments: (response.appointments || []) as AppointmentItem[],
+    tips: (response.tips || []) as TipItem[],
+    manualCharges: (response.manualCharges || []) as ManualChargeItem[],
+    cashOpen: response.cashOpen === true,
+    commissionRate: Number(response.commissionRate ?? 50),
   };
 }
 

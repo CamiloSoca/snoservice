@@ -24,7 +24,7 @@ export async function POST(request: Request) {
       const supabase = getSupabaseServer();
       const { data: shopData } = await supabase
         .from('shops')
-        .select('*')
+        .select('admin_user,admin_pass')
         .eq('id', SHOP_UUID)
         .maybeSingle();
 

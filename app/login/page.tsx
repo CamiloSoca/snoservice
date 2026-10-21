@@ -42,8 +42,9 @@ export default function LoginPage() {
         return;
       }
 
-      router.push('/admin');
-      router.refresh();
+      // La cookie ya fue establecida; una sola navegación evita duplicar
+      // la carga inicial del panel después de validar las credenciales.
+      router.replace('/admin');
     } catch {
       setError('No se pudo conectar con el servidor.');
       setLoading(false);
