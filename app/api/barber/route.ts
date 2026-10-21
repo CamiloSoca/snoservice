@@ -89,9 +89,10 @@ export async function POST(request: Request) {
     });
 
     return response;
-  } catch (err: any) {
+  } catch {
+    // No exponer errores internos o detalles de credenciales al visitante.
     return NextResponse.json(
-      { error: err?.message || 'Error verificando el PIN.' },
+      { error: 'No se pudo verificar el acceso. Intentá nuevamente.' },
       { status: 500 }
     );
   }
@@ -205,9 +206,10 @@ export async function PATCH(request: Request) {
         completedCashRegisterId: data.completed_cash_register_id ?? null,
       },
     });
-  } catch (err: any) {
+  } catch {
+    // Los errores internos no deben filtrarse por una ruta privada.
     return NextResponse.json(
-      { error: err?.message || 'Error al actualizar turno.' },
+      { error: 'No se pudo actualizar el turno. Intentá nuevamente.' },
       { status: 500 }
     );
   }
