@@ -774,7 +774,7 @@ const handleAddBarber = async () => {
     return <InitialShopSkeleton variant="admin" label="Cargando agenda, barberos y caja..." />;
   }
   if (initialLoad === 'error') {
-    return <InitialShopError label="No se pudieron cargar los datos del administrador. Intentá de nuevo." />;
+    return <InitialShopError label={adminError || 'No se pudieron cargar los datos del administrador. Intentá de nuevo.'} />;
   }
 
   return (
