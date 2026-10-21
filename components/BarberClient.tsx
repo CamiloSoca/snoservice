@@ -147,11 +147,10 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
   const handleStatusChange = async (appointmentId: string, status: AppointmentItem['status']) => {
     try {
       setErrorMsg('');
-      const updatedAll = await updateAppointmentStatus(appointmentId, status);
-      const myUpdated = (Array.isArray(updatedAll) ? updatedAll : []).filter(
-        (a) => a.barberId === selectedBarberId
-      );
-      setBarberAppointments(sortAppointmentsChronologically(myUpdated));
+      await updateAppointmentStatus(appointmentId, status);
+      setBarberAppointments((current) => current.map((appointment) =>
+        appointment.id === appointmentId ? {...appointment, status} : appointment
+      ));
     } catch (err: any) {
       setErrorMsg(err?.message || 'No se pudo actualizar el estado del turno.');
     }
