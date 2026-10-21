@@ -1,4 +1,5 @@
-// lib/supabase-server.ts
+// Cliente exclusivo del servidor. No introducir cookies ni credenciales
+// de visitantes en la instancia con service_role.
 import { createClient } from '@supabase/supabase-js';
 
 export const SHOP_UUID =
@@ -9,7 +10,11 @@ export const SHOP_UUID =
 export const SHOP_PREFIX =
   process.env.NEXT_PUBLIC_SHOP_PREFIX || '13C';
 
-export function getSupabaseServer() {
+type ServerClient = ReturnType<typeof createClient>;
+let cachedClient: ServerClient | null = null;
+let cachedConfiguration = '';
+
+export function getSupabaseServer(): ServerClient {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
@@ -17,10 +22,20 @@ export function getSupabaseServer() {
     throw new Error('Faltan las credenciales de Supabase en las variables de entorno.');
   }
 
-  return createClient(supabaseUrl, supabaseKey, {
+  // Reusar en invocaciones calientes: evita reconstruir auth/fetch/storage
+  // de supabase-js en cada consulta. Nunca exponer este modulo al cliente.
+  const configuration = `${supabaseUrl}:${supabaseKey}`;
+  if (cachedClient && cachedConfiguration === configuration) {
+    return cachedClient;
+  }
+
+  cachedClient = createClient(supabaseUrl, supabaseKey, {
     auth: {
       persistSession: false,
       autoRefreshToken: false,
+      detectSessionInUrl: false,
     },
   });
+  cachedConfiguration = configuration;
+  return cachedClient;
 }
