@@ -99,7 +99,7 @@ export async function GET() {
       return NextResponse.json({error: 'Hay más de una caja abierta. Consultá al administrador.'}, {status: 409, headers});
     }
 
-    const appointmentsMapped = (appointments.data || []).map((apt) => ({
+    const appointmentsMapped = (appointments.data || []).map((apt: any) => ({
       id: apt.id,
       code: apt.code || '',
       serviceId: apt.service_id,
