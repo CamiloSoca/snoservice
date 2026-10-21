@@ -1,3 +1,4 @@
+import { requireAdminSession, verifyCsrfOrigin } from '@/lib/session';
 // app/api/send-email/route.ts
 import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
@@ -13,6 +14,8 @@ const transporter = nodemailer.createTransport({
 });
 
 export async function POST(request: Request) {
+  if (!verifyCsrfOrigin(request)) return NextResponse.json({error: 'Origen inválido'}, {status: 403});
+  if (!await requireAdminSession()) return NextResponse.json({error: 'No autorizado'}, {status: 401});
   try {
     const { clientEmail, clientName, serviceName, barberName, dateString, timeSlot, code, shopName, shopAddress } = await request.json();
 
