@@ -33,15 +33,37 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Barbero no encontrado.' }, { status: 404 });
     }
 
+    // Las excepciones dentro de una función SQL revierten su INSERT de auditoría.
+    // Registramos los intentos en operaciones Supabase independientes y verificamos
+    // el bloqueo ANTES de comprobar el PIN.
+    const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+    const {count, error: countError} = await supabase.from('audit_logs')
+      .select('*', {count: 'exact', head: true})
+      .eq('shop_id', SHOP_UUID)
+      .eq('action', 'PIN_FAILED')
+      .eq('details', barberId)
+      .gte('created_at', cutoff);
+    if (countError) {
+      return NextResponse.json({error: 'No se pudo verificar el límite de intentos.'}, {status: 503});
+    }
+    if ((count ?? 0) >= 5) {
+      return NextResponse.json({error: 'Demasiados intentos. Intentá nuevamente en 15 minutos.'}, {status: 429});
+    }
+
     const expectedPin = String(barber.pin || '').trim();
     if (!expectedPin || expectedPin === '1234') {
       return NextResponse.json({error: 'El barbero debe configurar un PIN nuevo.'}, {status: 403});
     }
     if (pin.trim() !== expectedPin) {
-      return NextResponse.json(
-        { error: `PIN incorrecto para ${barber.name}` },
-        { status: 401 }
-      );
+      const {error: logError} = await supabase.from('audit_logs').insert({
+        shop_id: SHOP_UUID,
+        action: 'PIN_FAILED',
+        details: barberId,
+      });
+      if (logError) {
+        return NextResponse.json({error: 'No se pudo verificar el PIN de forma segura.'}, {status: 503});
+      }
+      return NextResponse.json({error: 'PIN incorrecto.'}, {status: 401});
     }
 
     const token = signSessionToken({
