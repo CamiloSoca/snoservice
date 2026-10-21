@@ -1,7 +1,7 @@
 // app/admin/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -64,9 +64,9 @@ import {
   saveShopConfig,
   buildRealOpenDays,
   sortAppointmentsChronologically,
-  canCompleteAppointment,
   DayOption,
 } from '@/lib/booking-store';
+import { appointmentTimeState } from '@/lib/appointment-rules';
 import { InitialShopSkeleton, InitialShopError } from '@/components/InitialShopState';
 import { splitBusinessRevenue } from '@/lib/financial-allocations';
 
@@ -177,10 +177,14 @@ export default function AdminDashboard() {
   const [tipBarberId, setTipBarberId] = useState<string>('');
   const [tipAmount, setTipAmount] = useState<string>('');
   const [tipNote, setTipNote] = useState<string>('');
+  const [savingTip, setSavingTip] = useState(false);
+  const tipAttempt = useRef<{fingerprint: string; id: string; pending: boolean} | null>(null);
 
   const [chargeBarberId, setChargeBarberId] = useState<string>('');
   const [chargeAmount, setChargeAmount] = useState<string>('');
   const [chargeNote, setChargeNote] = useState<string>('');
+  const [savingCharge, setSavingCharge] = useState(false);
+  const chargeAttempt = useRef<{fingerprint: string; id: string; pending: boolean} | null>(null);
 
   const checkBarberLocks = (brbs: BarberItem[]) => {
     const locks: Record<string, boolean> = {};
@@ -418,7 +422,8 @@ const handleAddBarber = async () => {
       
       // Recargamos la lista oficial de la base de datos
       const freshBarbers = await getAdminBarbers(true);
-      const finalBarbers = Array.isArray(freshBarbers) && freshBarbers.length > 0 ? freshBarbers : updated;
+      const finalBarbers = (Array.isArray(freshBarbers) && freshBarbers.length > 0 ? freshBarbers : updated)
+        .map((barber) => ({...barber, pin: ''}));
       
       setBarbers(finalBarbers);
       
@@ -457,7 +462,7 @@ const handleAddBarber = async () => {
       if (field === 'active') return { ...b, active: value === true };
       return { ...b, pin: String(value).trim() };
     });
-    setBarbers(updated);
+    setBarbers(updated.map((barber) => ({...barber, pin: ''})));
     try {
       setAdminError('');
       await saveBarbers(updated);
@@ -574,18 +579,30 @@ const handleAddBarber = async () => {
   const handleAddTipAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!tipBarberId || !tipAmount || Number(tipAmount) <= 0) return;
+    const fingerprint = JSON.stringify([tipBarberId, Number(tipAmount), tipNote.trim()]);
+    if (tipAttempt.current?.pending) return;
+    if (tipAttempt.current?.fingerprint !== fingerprint) {
+      tipAttempt.current = {fingerprint, id: generateUUID(), pending: false};
+    }
+    tipAttempt.current!.pending = true;
     try {
+      setSavingTip(true);
       setAdminError('');
       const updated = await createTip({
         barberId: tipBarberId,
         amount: Number(tipAmount),
         note: tipNote.trim() || 'Agregada por Admin',
+        requestId: tipAttempt.current!.id,
       });
       setTips(Array.isArray(updated) ? updated : []);
       setTipAmount('');
       setTipNote('');
+      tipAttempt.current = null;
     } catch (err: any) {
       setAdminError(err?.message || 'Error al registrar la propina.');
+    } finally {
+      if (tipAttempt.current) tipAttempt.current.pending = false;
+      setSavingTip(false);
     }
   };
 
@@ -602,18 +619,30 @@ const handleAddBarber = async () => {
   const handleAddChargeAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!chargeBarberId || !chargeAmount || Number(chargeAmount) <= 0) return;
+    const fingerprint = JSON.stringify([chargeBarberId, Number(chargeAmount), chargeNote.trim()]);
+    if (chargeAttempt.current?.pending) return;
+    if (chargeAttempt.current?.fingerprint !== fingerprint) {
+      chargeAttempt.current = {fingerprint, id: generateUUID(), pending: false};
+    }
+    chargeAttempt.current!.pending = true;
     try {
+      setSavingCharge(true);
       setAdminError('');
       const updated = await createManualCharge({
         barberId: chargeBarberId,
         amount: Number(chargeAmount),
         note: chargeNote.trim() || 'Cobro manual extra',
+        requestId: chargeAttempt.current!.id,
       });
       setManualCharges(Array.isArray(updated) ? updated : []);
       setChargeAmount('');
       setChargeNote('');
+      chargeAttempt.current = null;
     } catch (err: any) {
       setAdminError(err?.message || 'Error al registrar el cobro manual.');
+    } finally {
+      if (chargeAttempt.current) chargeAttempt.current.pending = false;
+      setSavingCharge(false);
     }
   };
 
@@ -1138,11 +1167,11 @@ const handleAddBarber = async () => {
 
                   <button
                     type="submit"
-                    disabled={cashStatus !== 'abierta'}
+                    disabled={savingCharge || cashStatus !== 'abierta'}
                     className="sm:col-span-2 py-2.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs cursor-pointer flex items-center justify-center gap-1 touch-manipulation disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <Plus className="w-4 h-4" />
-                    <span>Registrar</span>
+                    <span>{savingCharge ? 'Guardando...' : 'Registrar'}</span>
                   </button>
                 </form>
 
@@ -1225,11 +1254,11 @@ const handleAddBarber = async () => {
 
                   <button
                     type="submit"
-                    disabled={cashStatus !== 'abierta'}
+                    disabled={savingTip || cashStatus !== 'abierta'}
                     className="sm:col-span-2 py-2.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs cursor-pointer flex items-center justify-center gap-1 touch-manipulation disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <Plus className="w-4 h-4" />
-                    <span>Sumar</span>
+                    <span>{savingTip ? 'Guardando...' : 'Sumar'}</span>
                   </button>
                 </form>
 
@@ -1724,12 +1753,12 @@ const handleAddBarber = async () => {
                           <span>WhatsApp</span>
                         </a>
 
-                        {apt.status !== 'completado' && (
+                        {apt.status === 'confirmado' && (
                           <button
                             type="button"
                             onClick={() => {
-                              if (!canCompleteAppointment(apt.dateString)) {
-                                alert('No podés completar un turno que corresponde a una fecha futura.');
+                              if (appointmentTimeState(apt) !== 'started') {
+                                alert('Podés completar el turno cuando llegue su hora de inicio.');
                                 return;
                               }
                               handleStatusChange(apt.id, 'completado');
@@ -1741,14 +1770,20 @@ const handleAddBarber = async () => {
                             <span>Completar</span>
                           </button>
                         )}
-                        <button
+                        {apt.status === 'confirmado' && <button
                           type="button"
-                          onClick={() => handleStatusChange(apt.id, 'cancelado')}
+                          onClick={() => {
+                            if (appointmentTimeState(apt) !== 'future') {
+                              alert('Este turno ya comenzó o pasó y no se puede cancelar.');
+                              return;
+                            }
+                            handleStatusChange(apt.id, 'cancelado');
+                          }}
                           className="px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-rose-400 text-xs font-semibold flex items-center gap-1 cursor-pointer"
                         >
                           <XCircle className="w-3.5 h-3.5" />
                           <span>Cancelar</span>
-                        </button>
+                        </button>}
                       </div>
                     </div>
                   ))
@@ -1809,12 +1844,12 @@ const handleAddBarber = async () => {
                         <span>WhatsApp</span>
                       </a>
 
-                      {apt.status !== 'completado' && (
+                      {apt.status === 'confirmado' && (
                         <button
                           type="button"
                           onClick={() => {
-                            if (!canCompleteAppointment(apt.dateString)) {
-                              alert('No podés completar un turno que corresponde a una fecha futura.');
+                            if (appointmentTimeState(apt) !== 'started') {
+                              alert('Podés completar el turno cuando llegue su hora de inicio.');
                               return;
                             }
                             handleStatusChange(apt.id, 'completado');
@@ -1827,10 +1862,16 @@ const handleAddBarber = async () => {
                         </button>
                       )}
 
-                      {apt.status !== 'cancelado' && (
+                      {apt.status === 'confirmado' && (
                         <button
                           type="button"
-                          onClick={() => handleStatusChange(apt.id, 'cancelado')}
+                          onClick={() => {
+                            if (appointmentTimeState(apt) !== 'future') {
+                              alert('Este turno ya comenzó o pasó y no se puede cancelar.');
+                              return;
+                            }
+                            handleStatusChange(apt.id, 'cancelado');
+                          }}
                           className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-rose-400 hover:bg-rose-500/10 text-xs font-medium flex items-center space-x-1 cursor-pointer"
                         >
                           <XCircle className="w-3.5 h-3.5" />
@@ -1956,12 +1997,14 @@ const handleAddBarber = async () => {
 
                           <div className="flex items-center space-x-1.5 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-1.5">
                             <KeyRound className="w-3.5 h-3.5 text-zinc-400" />
-                            <span className="text-xs text-zinc-400">PIN:</span>
+                            <span className="text-xs text-zinc-400">Cambiar PIN:</span>
                             <input
-                              type="text"
+                              type="password"
                               inputMode="numeric"
+                              autoComplete="new-password"
+                              placeholder="Nuevo PIN"
                               maxLength={6}
-                              value={barberPinDrafts[brb.id] ?? brb.pin}
+                              value={barberPinDrafts[brb.id] ?? ''}
                               onChange={(e) => setBarberPinDrafts((prev) => ({
                                 ...prev,
                                 [brb.id]: e.target.value.replace(/\D/g, '').slice(0, 6),

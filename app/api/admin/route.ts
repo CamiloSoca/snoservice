@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { getSupabaseServer, SHOP_UUID } from '@/lib/supabase-server';
 import { requireAdminSession, verifyCsrfOrigin } from '@/lib/session';
 import { requireOpenCash } from '@/lib/cash-guard';
+import {appointmentTimeState} from '@/lib/appointment-rules';
 import {
   generateUUID,
   isValidUUID,
@@ -51,7 +52,7 @@ export async function GET(request: Request) {
     if (resource === 'barbers') {
       const { data, error } = await supabase
         .from('barbers')
-        .select('*')
+        .select('id,slug,name,role,bio,specialties,service_ids,active,commission_rate,is_owner')
         .eq('shop_id', SHOP_UUID);
       if (error) return NextResponse.json({ error: error.message }, { status: 400 });
       return NextResponse.json({ data: data || [] });
@@ -165,6 +166,7 @@ export async function POST(request: Request) {
       }
       case 'SAVE_BARBERS': {
         const items = Array.isArray(body.barbers) ? body.barbers : [];
+        if (items.length > 100) return NextResponse.json({error: 'Demasiados barberos en una operación.'}, {status: 400});
         // Validar toda la lista antes de escribir. Una única operación SQL
         // sustituye las N upserts secuenciales y evita guardados parciales.
         const payloads = [];
@@ -178,8 +180,8 @@ export async function POST(request: Request) {
             name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '-');
           const commissionRate = Math.min(100, Math.max(0, Number(b.commissionRate ?? 50)));
           const pin = String(b.pin ?? '').trim();
-          if (!/^\d{4,6}$/.test(pin)) {
-            return NextResponse.json({error: 'El PIN debe tener de 4 a 6 dígitos numéricos.'}, {status: 400});
+          if (pin && (!/^\d{4,6}$/.test(pin) || pin === '1234')) {
+            return NextResponse.json({error: 'El PIN nuevo debe tener de 4 a 6 dígitos y no puede ser 1234.'}, {status: 400});
           }
           const serviceIds = Array.isArray(b.serviceIds)
             ? b.serviceIds.filter((sid: string) => isValidUUID(sid))
@@ -198,6 +200,19 @@ export async function POST(request: Request) {
           });
         }
         if (payloads.length) {
+          const {data: existing, error: ownershipError} = await supabase.from('barbers')
+            .select('id,shop_id,pin').in('id', payloads.map(item => item.id));
+          if (ownershipError) return NextResponse.json({error: 'No se pudo verificar la pertenencia de los barberos.'}, {status: 503});
+          if (existing?.some(row => row.shop_id !== SHOP_UUID)) {
+            return NextResponse.json({error: 'Un barbero pertenece a otro negocio.'}, {status: 403});
+          }
+          const existingPins = new Map((existing || []).map(row => [row.id, row.pin]));
+          for (const item of payloads) {
+            if (!item.pin) item.pin = existingPins.get(item.id) || '';
+            if (!/^\d{4,6}$/.test(item.pin)) {
+              return NextResponse.json({error: 'Definí un PIN para cada barbero nuevo.'}, {status: 400});
+            }
+          }
           const {error} = await supabase.from('barbers')
             .upsert(payloads, {onConflict: 'id'});
           if (error) {
@@ -235,6 +250,7 @@ export async function POST(request: Request) {
 
       case 'SAVE_SERVICES': {
         const items = Array.isArray(body.services) ? body.services : [];
+        if (items.length > 100) return NextResponse.json({error: 'Demasiados servicios en una operación.'}, {status: 400});
         // Una sola transacción PostgREST; los valores quedan todos validados
         // antes de tocar la base de datos.
         const payloads = [];
@@ -257,6 +273,12 @@ export async function POST(request: Request) {
           });
         }
         if (payloads.length) {
+          const {data: existing, error: ownershipError} = await supabase.from('services')
+            .select('id,shop_id').in('id', payloads.map(item => item.id));
+          if (ownershipError) return NextResponse.json({error: 'No se pudo verificar la pertenencia de los servicios.'}, {status: 503});
+          if (existing?.some(row => row.shop_id !== SHOP_UUID)) {
+            return NextResponse.json({error: 'Un servicio pertenece a otro negocio.'}, {status: 403});
+          }
           const {error} = await supabase.from('services')
             .upsert(payloads, {onConflict: 'id'});
           if (error) {
@@ -328,30 +350,46 @@ export async function POST(request: Request) {
       case 'UPDATE_APPOINTMENT_STATUS': {
         const id = String(body.id || '');
         const status = body.status;
-        if (!isValidUUID(id) || !['confirmado', 'completado', 'cancelado'].includes(status)) {
+        if (!isValidUUID(id) || !['completado', 'cancelado'].includes(status)) {
           return NextResponse.json({ error: 'Datos de turno inválidos.' }, { status: 400 });
         }
         const {data: current, error: lookupError} = await supabase
           .from('appointments')
-          .select('status')
+          .select('status,date_string,time_slot,created_at')
           .eq('id', id)
           .eq('shop_id', SHOP_UUID)
           .maybeSingle();
         if (lookupError) return NextResponse.json({error: 'No se pudo consultar el turno.'}, {status: 500});
         if (!current) return NextResponse.json({error: 'Turno inexistente.'}, {status: 404});
-        if (status !== current.status && (status === 'completado' || current.status === 'completado')) {
+        if (current.status !== 'confirmado') {
+          return NextResponse.json({error: 'Solo se puede modificar un turno confirmado una vez.'}, {status: 409});
+        }
+        const timeState = appointmentTimeState({
+          dateString: current.date_string, timeSlot: current.time_slot,
+          createdAt: current.created_at,
+        });
+        if (status === 'cancelado' && timeState !== 'future') {
+          return NextResponse.json({error: 'El horario ya comenzó o pasó; no se puede cancelar.'}, {status: 409});
+        }
+        if (status === 'completado' && timeState !== 'started') {
+          return NextResponse.json({error: 'No se puede completar un turno futuro o con fecha inválida.'}, {status: 409});
+        }
+        if (status === 'completado') {
           const cashDenied = await requireOpenCash();
           if (cashDenied) return cashDenied;
         }
 
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from('appointments')
           .update({ status })
           .eq('id', id)
-          .eq('shop_id', SHOP_UUID);
+          .eq('shop_id', SHOP_UUID)
+          .eq('status', 'confirmado')
+          .select('id');
         if (error) {
           return NextResponse.json({ error: error.message }, { status: 400 });
         }
+        if (!data?.length) return NextResponse.json({error: 'El turno ya cambió de estado.'}, {status: 409});
         return NextResponse.json({ ok: true });
       }
 

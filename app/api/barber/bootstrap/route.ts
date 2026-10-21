@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getBarberSession } from '@/lib/session';
 import { getSupabaseServer, SHOP_UUID } from '@/lib/supabase-server';
 
+let rpcUnavailableUntil = 0;
+
 // La sesión ya fue validada por el POST del PIN. Un solo viaje HTTP trae
 // turnos, movimientos y estado de caja, con consultas SQL paralelas.
 export async function GET() {
@@ -27,10 +29,13 @@ export async function GET() {
     // La cookie firmada se verificó arriba. El RPC recibe SIEMPRE el ID
     // de barbero de la sesión, no del cliente.
     const rpcStart = performance.now();
-    const {data: fastData, error: fastError} = await db.rpc(
-      'barber_bootstrap_snapshot',
-      {p_shop_id: SHOP_UUID, p_barber_id: session.sub}
-    );
+    const fastResult = Date.now() >= rpcUnavailableUntil
+      ? await db.rpc('barber_bootstrap_snapshot',
+        {p_shop_id: SHOP_UUID, p_barber_id: session.sub})
+      : null;
+    const fastData = fastResult?.data;
+    const fastError = fastResult?.error;
+    if (fastError?.code === 'PGRST202') rpcUnavailableUntil = Date.now() + 60_000;
     durations.rpc = performance.now() - rpcStart;
 
     type RowResult = {data: any; error: {code?: string} | null};
@@ -49,7 +54,7 @@ export async function GET() {
       ];
     } else {
       // Fall back to previous implementation if schema cache or RPC fails.
-      console.warn('RPC de barbero no disponible:', fastError?.code || 'invalid_response');
+      if (fastResult) console.warn('RPC de barbero no disponible:', fastError?.code || 'invalid_response');
       results = await Promise.all([
         timed('barber', db.from('barbers')
           .select('id,name,active,commission_rate,is_owner')

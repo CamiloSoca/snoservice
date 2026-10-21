@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server';
 import { requireAdminSession } from '@/lib/session';
 import { getSupabaseServer, SHOP_UUID } from '@/lib/supabase-server';
 
+// Cachea sólo la ausencia del RPC, nunca datos financieros. Un despliegue de
+// la función se detecta nuevamente a los 60 segundos sin reiniciar el servidor.
+let rpcUnavailableUntil = 0;
+
 // Una sola petición HTTP para iniciar el panel. Todas las consultas a Supabase
 // se ejecutan en paralelo, pero siempre detrás de la sesión de administrador.
 export async function GET() {
@@ -21,9 +25,12 @@ export async function GET() {
     // administrador. La función SQL usa SECURITY INVOKER y solo service_role
     // puede ejecutarla. Esta ruta verifica la sesión antes del RPC.
     const rpcStart = performance.now();
-    const {data: fastData, error: fastError} = await supabase.rpc(
-      'admin_bootstrap_snapshot', {p_shop_id: SHOP_UUID}
-    );
+    const fastResult = Date.now() >= rpcUnavailableUntil
+      ? await supabase.rpc('admin_bootstrap_snapshot', {p_shop_id: SHOP_UUID})
+      : null;
+    const fastData = fastResult?.data;
+    const fastError = fastResult?.error;
+    if (fastError?.code === 'PGRST202') rpcUnavailableUntil = Date.now() + 60_000;
     const rpcDuration = performance.now() - rpcStart;
     if (!fastError && fastData &&
       Array.isArray(fastData.appointments) &&
@@ -44,7 +51,7 @@ export async function GET() {
 
     // Mantener el fallback anterior durante el despliegue y ante una falla
     // del RPC: evita que el panel quede inaccesible por un desajuste de schema.
-    console.warn('RPC admin no disponible; usando consultas paralelas:', fastError?.code || 'invalid_response');
+    if (fastResult) console.warn('RPC admin no disponible; usando consultas paralelas:', fastError?.code || 'invalid_response');
     // Medir cada consulta por separado sin exponer datos privados.
     // Server-Timing permite detectar la tabla lenta en DevTools.
     const durations: Record<string, number> = {};
@@ -68,8 +75,8 @@ export async function GET() {
         .select('id,name,price,duration_minutes,description,image_url,active')
         .eq('shop_id', SHOP_UUID)),
       timed('barbers', supabase.from('barbers')
-        // La vista admin necesita también PIN/comisión para editar barberos.
-        .select('*')
+        // El PIN almacenado nunca debe enviarse al navegador.
+        .select('id,slug,name,role,bio,specialties,service_ids,active,commission_rate,is_owner')
         .eq('shop_id', SHOP_UUID)),
       timed('expenses', supabase.from('expenses')
         .select('id,description,amount,category,expense_date,created_at')

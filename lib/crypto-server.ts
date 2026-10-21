@@ -2,10 +2,10 @@
 import crypto from 'crypto';
 
 export function getSessionSecret(): string {
-  const secret = process.env.SESSION_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!secret || secret.length < 16) {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret || secret.length < 32) {
     throw new Error(
-      'Configuración incompleta: Definí SESSION_SECRET (mínimo 16 caracteres) en las variables de entorno del servidor.'
+      'Configuración incompleta: Definí SESSION_SECRET (mínimo 32 caracteres) en las variables de entorno del servidor.'
     );
   }
   return secret;

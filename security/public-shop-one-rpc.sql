@@ -1,7 +1,6 @@
 -- SNOSERVICE: catalogo publico en una sola ida al servidor de datos.
 -- La API de Next publica solamente campos permitidos; la funcion no
 -- permite acceso desde la clave anon de Supabase.
-BEGIN;
 
 CREATE OR REPLACE FUNCTION public.public_shop_snapshot(p_shop_id uuid)
 RETURNS jsonb
@@ -40,4 +39,3 @@ REVOKE ALL ON FUNCTION public.public_shop_snapshot(uuid)
 GRANT EXECUTE ON FUNCTION public.public_shop_snapshot(uuid)
   TO service_role;
 NOTIFY pgrst, 'reload schema';
-COMMIT;

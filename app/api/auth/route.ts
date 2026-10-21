@@ -1,7 +1,7 @@
 // app/api/auth/route.ts
 import { NextResponse } from 'next/server';
 import { ADMIN_COOKIE_NAME, signSessionToken, verifyCsrfOrigin } from '@/lib/session';
-import { getSupabaseServer, SHOP_UUID } from '@/lib/supabase-server';
+import { SHOP_UUID } from '@/lib/supabase-server';
 
 export async function POST(request: Request) {
   if (!verifyCsrfOrigin(request)) {
@@ -15,26 +15,10 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { username, password } = body;
 
-    // 1. Valores de respaldo desde variables de entorno
-    let validUser = process.env.ADMIN_USER || '';
-    let validPass = process.env.ADMIN_PASS || process.env.ADMIN_PASSWORD;
-
-    // 2. Si en la tabla 'shops' de Supabase existen admin_user / admin_pass para esta barbería, tienen prioridad
-    try {
-      const supabase = getSupabaseServer();
-      const { data: shopData } = await supabase
-        .from('shops')
-        .select('admin_user,admin_pass')
-        .eq('id', SHOP_UUID)
-        .maybeSingle();
-
-      if (shopData) {
-        if ((shopData as any).admin_user) validUser = String((shopData as any).admin_user);
-        if ((shopData as any).admin_pass) validPass = String((shopData as any).admin_pass);
-      }
-    } catch {
-      // Si falla la lectura opcional, continúa usando las variables de entorno
-    }
+    // La tabla shops no contiene credenciales de administrador. El intento de
+    // leer columnas inexistentes añadía un viaje a Supabase a cada acceso.
+    const validUser = process.env.ADMIN_USER || '';
+    const validPass = process.env.ADMIN_PASS || process.env.ADMIN_PASSWORD;
 
     if (!validPass || !validUser) {
       return NextResponse.json(
@@ -46,7 +30,7 @@ export async function POST(request: Request) {
     const inputUser = typeof username === 'string' ? username.trim() : '';
     const inputPass = typeof password === 'string' ? password : '';
 
-    // Permite validar con usuario+contraseña o solo contraseña si el formulario envía solo password
+    // Exigir usuario y contraseña configurados en el servidor.
     const userMatches = inputUser === validUser;
     const passMatches = inputPass === validPass;
 
@@ -75,9 +59,9 @@ export async function POST(request: Request) {
       { ok: false, error: 'Usuario o contraseña incorrectos.' },
       { status: 401 }
     );
-  } catch (err: any) {
+  } catch {
     return NextResponse.json(
-      { ok: false, error: err?.message || 'Error procesando la solicitud.' },
+      { ok: false, error: 'Error procesando la solicitud.' },
       { status: 500 }
     );
   }

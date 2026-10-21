@@ -34,6 +34,7 @@ import {
 } from '@/lib/booking-store';
 import { InitialShopSkeleton } from '@/components/InitialShopState';
 import type { PublicShopData } from '@/lib/public-shop-data';
+import {businessDayOptions} from '@/lib/appointment-rules';
 
 const BOOKING_COOLDOWN_MS = 60 * 1000;
 const BOOKING_STORAGE_KEY = '13cut_last_booking_ts';
@@ -63,7 +64,7 @@ function isSlotPastForSelectedDay(dayObj: DayOption | undefined, timeSlot: strin
   }
 
   const currentTotalMins = currentHour * 60 + currentMinute;
-  const isToday = dayObj.dateString.includes(String(currentDay));
+  const isToday = dayObj.dateString === businessDayOptions(now, 1)[0]?.dateString;
   if (!isToday) return false;
 
   const slotMinutes = timeToMinutes(timeSlot);

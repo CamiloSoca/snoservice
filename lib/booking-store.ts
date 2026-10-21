@@ -1,12 +1,13 @@
 // lib/booking-store.ts
 import { createClient } from '@supabase/supabase-js';
 import { invalidatePublicShopData } from '@/lib/public-shop-data';
+import {businessDayOptions, slotsOverlap} from '@/lib/appointment-rules';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null;
 
-export const SHOP_UUID = '11111111-1111-1111-1111-111111111113';
+export const SHOP_UUID = process.env.NEXT_PUBLIC_SHOP_ID || '';
 export const SHOP_PREFIX = '13C';
 
 export interface ShopConfig {
@@ -200,54 +201,6 @@ export function minutesToTime(totalMins: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
-export function canCompleteAppointment(dateString: string): boolean {
-  if (!dateString) return true;
-
-  const monthMap: Record<string, number> = {
-    ene: 0, feb: 1, mar: 2, abr: 3, may: 4, jun: 5,
-    jul: 6, ago: 7, sep: 8, oct: 9, nov: 10, dic: 11,
-    enero: 0, febrero: 1, marzo: 2, abril: 3, mayo: 4, junio: 5,
-    julio: 6, agosto: 7, septiembre: 8, octubre: 9, noviembre: 10, diciembre: 11,
-  };
-
-  const clean = dateString
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]/g, ' ')
-    .split(/\s+/)
-    .filter(Boolean);
-
-  const now = new Date();
-  let day: number | null = null;
-  let month: number = now.getMonth();
-  let year: number = now.getFullYear();
-
-  for (const t of clean) {
-    if (!isNaN(Number(t))) {
-      const num = Number(t);
-      if (num > 31) {
-        year = num;
-      } else if (day === null) {
-        day = num;
-      }
-    } else if (monthMap[t] !== undefined) {
-      month = monthMap[t];
-    }
-  }
-
-  if (day === null) return true;
-
-  if (now.getMonth() === 11 && month === 0 && year === now.getFullYear()) {
-    year += 1;
-  }
-
-  const aptDate = new Date(year, month, day, 0, 0, 0, 0);
-  const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
-
-  return aptDate.getTime() <= todayEnd.getTime();
-}
-
 export function sortAppointmentsChronologically(apts: AppointmentItem[]): AppointmentItem[] {
   const monthMap: Record<string, number> = {
     ene: 0, feb: 1, mar: 2, abr: 3, may: 4, jun: 5,
@@ -291,29 +244,11 @@ export function sortAppointmentsChronologically(apts: AppointmentItem[]): Appoin
 }
 
 export function buildRealOpenDays(count = 30, scheduleRule?: ShopConfig['schedule']): DayOption[] {
-  const days: DayOption[] = [];
-  const monthNames = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-  const dayNames = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
   const dayKeyMap = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
-  const now = new Date();
   const schedule = scheduleRule || DEFAULT_SHOP_CONFIG.schedule;
-
-  for (let i = 0; i < count; i++) {
-    const d = new Date(now.getTime());
-    d.setDate(now.getDate() + i);
-    const dayOfWeek = d.getDay();
-    const key = dayKeyMap[dayOfWeek];
-    const rule = schedule[key] || { isOpen: true };
-    if (rule.isOpen !== false) {
-      days.push({
-        dateString: `${dayNames[dayOfWeek]} ${d.getDate()} ${monthNames[d.getMonth()]}`,
-        dayName: dayNames[dayOfWeek],
-        dayNumber: String(d.getDate()),
-        monthName: monthNames[d.getMonth()],
-        dayOfWeek,
-      });
-    }
-  }
+  const days = businessDayOptions(new Date(), count).filter(day =>
+    schedule[dayKeyMap[day.dayOfWeek]]?.isOpen === true
+  );
   return days.length > 0
     ? days
     : [{ dateString: 'Hoy', dayName: 'Hoy', dayNumber: '1', monthName: 'Ene', dayOfWeek: 2 }];
@@ -352,9 +287,8 @@ export function getSlotsForDayOfWeek(
   return { morning, afternoon };
 }
 
-// Las duraciones son estimadas. La agenda permite aprovechar SOLO huecos
-// anteriores a reservas existentes, nunca pisar un turno ya iniciado.
-// Servicios >90 minutos son estrictos en ambas direcciones.
+// La agenda usa intervalos completos. Ningún turno del mismo barbero puede
+// compartir minutos con otro, independientemente del orden de creación.
 export function isSlotAvailable(params: {
   candidateTime: string;
   serviceDurationMinutes: number;
@@ -374,37 +308,15 @@ export function isSlotAvailable(params: {
   } = params;
 
   if (!candidateTime || !barberId || !dateString) return false;
-  const candidateStart = timeToMinutes(candidateTime);
   const duration = Math.max(15, Number(serviceDurationMinutes) || 60);
-  const candidateEnd = candidateStart + duration;
-  const FLEXIBLE_LIMIT_MINUTES = 90;
-  const MINIMUM_START_GAP_MINUTES = 30;
 
   for (const apt of Array.isArray(existingAppointments) ? existingAppointments : []) {
     if (apt.status === 'cancelado') continue;
     if (apt.barberId !== barberId || apt.dateString !== dateString) continue;
 
-    const aptStart = timeToMinutes(apt.timeSlot);
     const matchedDuration = allServices?.find((s) => s.id === apt.serviceId)?.durationMinutes;
     const aptDuration = Math.max(15, Number(apt.durationMinutes || matchedDuration) || 60);
-    const aptEnd = aptStart + aptDuration;
-
-    // Nunca asignar el mismo horario exacto.
-    if (aptStart === candidateStart) return false;
-
-    if (aptStart < candidateStart) {
-      // Si el cliente EXISTENTE llegó primero a la agenda, se respeta
-      // su duración hacia adelante, aunque su corte sea flexible.
-      if (aptEnd > candidateStart) return false;
-    } else if (candidateEnd > aptStart) {
-      // Solo una reserva CORTA que se agrega ANTES de otra reserva CORTA
-      // puede usar el hueco previo de >=30 min.
-      if (duration > FLEXIBLE_LIMIT_MINUTES ||
-          aptDuration > FLEXIBLE_LIMIT_MINUTES ||
-          aptStart - candidateStart < MINIMUM_START_GAP_MINUTES) {
-        return false;
-      }
-    }
+    if (slotsOverlap(candidateTime, duration, apt.timeSlot, aptDuration)) return false;
   }
 
   return true;
@@ -566,7 +478,7 @@ export async function getAdminBarbers(forceRefresh = false): Promise<BarberItem[
 
 export async function saveBarbers(barbers: BarberItem[]): Promise<void> {
   await apiRequest('/api/admin', jsonRequest('POST', {operation: 'SAVE_BARBERS', barbers}));
-  cachedBarbers = barbers;
+  cachedBarbers = barbers.map(barber => ({...barber, pin: ''}));
   invalidatePublicShopData();
 }
 
@@ -763,8 +675,11 @@ export async function createTip(item: {
   barberId: string;
   amount: number;
   note?: string;
+  requestId?: string;
 }): Promise<TipItem[]> {
-  await apiRequest('/api/finance', jsonRequest('POST', {resource: 'tips', item}));
+  await apiRequest('/api/finance', jsonRequest('POST', {resource: 'tips', item: {
+    ...item, requestId: item.requestId || generateUUID(),
+  }}));
   return getTips();
 }
 
@@ -784,8 +699,11 @@ export async function createManualCharge(item: {
   barberId: string;
   amount: number;
   note?: string;
+  requestId?: string;
 }): Promise<ManualChargeItem[]> {
-  await apiRequest('/api/finance', jsonRequest('POST', {resource: 'manual_charges', item}));
+  await apiRequest('/api/finance', jsonRequest('POST', {resource: 'manual_charges', item: {
+    ...item, requestId: item.requestId || generateUUID(),
+  }}));
   return getManualCharges();
 }
 

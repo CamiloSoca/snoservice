@@ -10,6 +10,7 @@ import {
 } from '@/lib/session';
 import { isValidUUID } from '@/lib/booking-store';
 import { requireOpenCash } from '@/lib/cash-guard';
+import {appointmentTimeState} from '@/lib/appointment-rules';
 
 export async function POST(request: Request) {
   if (!verifyCsrfOrigin(request)) {
@@ -137,7 +138,7 @@ export async function PATCH(request: Request) {
     }
 
     const { id, status } = await request.json();
-    if (!isValidUUID(id) || !['confirmado', 'completado', 'cancelado'].includes(status)) {
+    if (!isValidUUID(id) || !['completado', 'cancelado'].includes(status)) {
       return NextResponse.json({ error: 'Parámetros inválidos.' }, { status: 400 });
     }
 
@@ -146,15 +147,29 @@ export async function PATCH(request: Request) {
     // Verificar también el estado anterior: revertir un turno completado
     // modifica la facturación, no solo marcarlo como completado.
     let lookup = supabase.from('appointments')
-      .select('status').eq('id', id).eq('shop_id', SHOP_UUID);
+      .select('status,date_string,time_slot,created_at').eq('id', id).eq('shop_id', SHOP_UUID);
     if (!adminSession && barberSession) {
       lookup = lookup.eq('barber_id', barberSession.sub);
     }
     const {data: current, error: lookupError} = await lookup.maybeSingle();
     if (lookupError) return NextResponse.json({error: 'No se pudo consultar el turno.'}, {status: 500});
     if (!current) return NextResponse.json({error: 'Turno inexistente o sin permiso.'}, {status: 404});
+    if (current.status !== 'confirmado') {
+      return NextResponse.json({error: 'Solo se puede modificar un turno confirmado una vez.'}, {status: 409});
+    }
 
-    if (status !== current.status && (status === 'completado' || current.status === 'completado')) {
+    const timeState = appointmentTimeState({
+      dateString: current.date_string, timeSlot: current.time_slot,
+      createdAt: current.created_at,
+    });
+    if (status === 'cancelado' && timeState !== 'future') {
+      return NextResponse.json({error: 'El horario ya comenzó o pasó; no se puede cancelar.'}, {status: 409});
+    }
+    if (status === 'completado' && timeState !== 'started') {
+      return NextResponse.json({error: 'No se puede completar un turno futuro o con fecha inválida.'}, {status: 409});
+    }
+
+    if (status === 'completado') {
       const cashDenied = await requireOpenCash();
       if (cashDenied) return cashDenied;
     }
@@ -163,7 +178,8 @@ export async function PATCH(request: Request) {
       .from('appointments')
       .update({ status })
       .eq('id', id)
-      .eq('shop_id', SHOP_UUID);
+      .eq('shop_id', SHOP_UUID)
+      .eq('status', 'confirmado');
 
     if (!adminSession && barberSession) {
       query = query.eq('barber_id', barberSession.sub);

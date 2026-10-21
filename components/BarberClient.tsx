@@ -1,7 +1,7 @@
 // app/barbero/barbero.tsx
 'use client';
 
-import { useState, useEffect, useMemo, Suspense } from 'react';
+import { useState, useEffect, useMemo, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -31,8 +31,9 @@ import {
   createManualCharge,
   deleteManualCharge,
   sortAppointmentsChronologically,
-  canCompleteAppointment,
+  generateUUID,
 } from '@/lib/booking-store';
+import { appointmentTimeState } from '@/lib/appointment-rules';
 import { InitialShopSkeleton, PanelLoading } from '@/components/InitialShopState';
 import type { PublicShopData } from '@/lib/public-shop-data';
 import { splitBusinessRevenue } from '@/lib/financial-allocations';
@@ -98,10 +99,12 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
   const [newTipAmount, setNewTipAmount] = useState<string>('');
   const [newTipNote, setNewTipNote] = useState<string>('');
   const [savingTip, setSavingTip] = useState<boolean>(false);
+  const tipAttempt = useRef<{fingerprint: string; id: string; pending: boolean} | null>(null);
 
   const [newChargeAmount, setNewChargeAmount] = useState<string>('');
   const [newChargeNote, setNewChargeNote] = useState<string>('');
   const [savingCharge, setSavingCharge] = useState<boolean>(false);
+  const chargeAttempt = useRef<{fingerprint: string; id: string; pending: boolean} | null>(null);
 
   useEffect(() => {
     if (!profileSlug || barbers.length === 0) return;
@@ -162,6 +165,12 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
   const handleAddMyTip = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedBarberId || !newTipAmount || Number(newTipAmount) <= 0) return;
+    const fingerprint = JSON.stringify([selectedBarberId, Number(newTipAmount), newTipNote.trim()]);
+    if (tipAttempt.current?.pending) return;
+    if (tipAttempt.current?.fingerprint !== fingerprint) {
+      tipAttempt.current = {fingerprint, id: generateUUID(), pending: false};
+    }
+    tipAttempt.current!.pending = true;
     try {
       setSavingTip(true);
       setErrorMsg('');
@@ -169,13 +178,16 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
         barberId: selectedBarberId,
         amount: Number(newTipAmount),
         note: newTipNote.trim(),
+        requestId: tipAttempt.current!.id,
       });
       setBarberTips(Array.isArray(updatedTips) ? updatedTips : []);
       setNewTipAmount('');
       setNewTipNote('');
+      tipAttempt.current = null;
     } catch (err: any) {
       setErrorMsg(err?.message || 'No se pudo guardar la propina.');
     } finally {
+      if (tipAttempt.current) tipAttempt.current.pending = false;
       setSavingTip(false);
     }
   };
@@ -193,6 +205,12 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
   const handleAddMyCharge = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedBarberId || !newChargeAmount || Number(newChargeAmount) <= 0) return;
+    const fingerprint = JSON.stringify([selectedBarberId, Number(newChargeAmount), newChargeNote.trim()]);
+    if (chargeAttempt.current?.pending) return;
+    if (chargeAttempt.current?.fingerprint !== fingerprint) {
+      chargeAttempt.current = {fingerprint, id: generateUUID(), pending: false};
+    }
+    chargeAttempt.current!.pending = true;
     try {
       setSavingCharge(true);
       setErrorMsg('');
@@ -200,13 +218,16 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
         barberId: selectedBarberId,
         amount: Number(newChargeAmount),
         note: newChargeNote.trim() || 'Corte extra sin turno',
+        requestId: chargeAttempt.current!.id,
       });
       setBarberCharges(Array.isArray(updatedCharges) ? updatedCharges : []);
       setNewChargeAmount('');
       setNewChargeNote('');
+      chargeAttempt.current = null;
     } catch (err: any) {
       setErrorMsg(err?.message || 'No se pudo registrar el cobro.');
     } finally {
+      if (chargeAttempt.current) chargeAttempt.current.pending = false;
       setSavingCharge(false);
     }
   };
@@ -525,8 +546,8 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
                           <button
                             type="button"
                             onClick={() => {
-                              if (!canCompleteAppointment(apt.dateString)) {
-                                alert('No podés completar un turno que corresponde a una fecha futura.');
+                              if (appointmentTimeState(apt) !== 'started') {
+                                alert('Podés completar el turno cuando llegue su hora de inicio.');
                                 return;
                               }
                               handleStatusChange(apt.id, 'completado');
@@ -541,7 +562,13 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
                         {apt.status === 'confirmado' && (
                         <button
                           type="button"
-                          onClick={() => handleStatusChange(apt.id, 'cancelado')}
+                          onClick={() => {
+                            if (appointmentTimeState(apt) !== 'future') {
+                              alert('Este turno ya comenzó o pasó y no se puede cancelar.');
+                              return;
+                            }
+                            handleStatusChange(apt.id, 'cancelado');
+                          }}
                           className="px-3.5 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-rose-400 text-xs font-semibold flex items-center gap-1 cursor-pointer"
                         >
                           <XCircle className="w-3.5 h-3.5" />
