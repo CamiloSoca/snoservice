@@ -16,6 +16,10 @@ export async function POST(request: Request) {
   if (lookupError || !appointment || appointment.status === 'cancelado') {
     return NextResponse.json({error: 'No se encontró una reserva activa con esos datos.'}, {status: 404});
   }
+  if (appointment.status === 'completado') {
+    // No revertir facturación de turnos completados mediante cancelación pública.
+    return NextResponse.json({error: 'Un turno ya completado no se puede cancelar desde la web.'}, {status: 409});
+  }
   const {data, error} = await db.from('appointments')
     .update({status: 'cancelado'})
     .eq('id', appointment.id).eq('shop_id', SHOP_UUID).eq('status', appointment.status)
