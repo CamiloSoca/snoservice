@@ -540,8 +540,8 @@ function AgendarContent() {
                     <Hash className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
                     <input
                       type="text"
-                      maxLength={10}
-                      placeholder="Ej: A4F2"
+                      maxLength={80}
+                      placeholder="Ej: 13C-A1B2C3D4E5F60708"
                       value={cancelCode}
                       onChange={(e) => setCancelCode(e.target.value.toUpperCase())}
                       className="w-full pl-10 pr-4 py-3.5 rounded-xl border text-base outline-none font-mono uppercase bg-zinc-950 border-zinc-800 text-zinc-100 focus:border-zinc-500"
