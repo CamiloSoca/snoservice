@@ -51,6 +51,7 @@ import {
   deleteServiceFromDb,
   getAdminBarbers,
   getAdminDashboardSnapshot,
+  getMontevideoDateKey,
   saveBarbers,
   deleteBarberFromDb,
   updateAppointmentStatus,
@@ -155,7 +156,7 @@ export default function AdminDashboard() {
   const [period, setPeriod] = useState<PeriodFilter>('mes');
   const [selectedMonth, setSelectedMonth] = useState<string>(availableMonths[0].value);
 
-  const [auditDate, setAuditDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [auditDate, setAuditDate] = useState<string>(getMontevideoDateKey());
   const [auditBarberId, setAuditBarberId] = useState<string>('todos');
 
   const [adminAgendaDate, setAdminAgendaDate] = useState<string>('');
@@ -777,7 +778,7 @@ const handleAddBarber = async () => {
   const bgImage = shopConfig.backgroundImageUrl || DEFAULT_SHOP_CONFIG.backgroundImageUrl;
   const logoImage = shopConfig.logoUrl || DEFAULT_SHOP_CONFIG.logoUrl;
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getMontevideoDateKey();
   const isTodayClosed = cashStatus === 'cerrada' && lastClosedDate === todayStr;
 
   if (initialLoad === 'loading') {
@@ -1004,7 +1005,7 @@ const handleAddBarber = async () => {
                         onClick={async () => {
                           const res = await fetch('/api/admin', {
                             method: 'POST', headers: {'Content-Type':'application/json'},
-                            body: JSON.stringify({operation:'OPEN_CASH', initialAmount:grossRevenueTotal}),
+                            body: JSON.stringify({operation:'OPEN_CASH', initialAmount:0}),
                           });
                           if (!res.ok) {
                             const payload = await res.json().catch(() => ({}));
@@ -1035,7 +1036,7 @@ const handleAddBarber = async () => {
                             return;
                           }
                           setCashStatus('cerrada');
-                          setLastClosedDate(todayIso.split('T')[0]);
+                          setLastClosedDate(getMontevideoDateKey(todayIso));
                           alert(`¡Caja cerrada correctamente! Total neto consolidado: $${ownerFinalNetPocket}`);
                         }}
                         className="px-4 py-2.5 rounded-xl bg-rose-500 hover:bg-rose-400 text-white font-bold text-xs cursor-pointer"
