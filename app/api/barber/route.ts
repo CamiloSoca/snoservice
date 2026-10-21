@@ -169,12 +169,26 @@ export async function PATCH(request: Request) {
       query = query.eq('barber_id', barberSession.sub);
     }
 
-    const { error } = await query;
+    const { data, error } = await query
+      .select('id,status,completed_at,commission_rate_snapshot,barber_earnings_snapshot,business_earnings_snapshot,completed_cash_register_id')
+      .maybeSingle();
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
+    if (!data) return NextResponse.json({error: 'El turno cambió de estado o ya no está disponible.'}, {status: 409});
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({
+      ok: true,
+      appointment: {
+        id: data.id,
+        status: data.status,
+        completedAt: data.completed_at ?? null,
+        commissionRateSnapshot: data.commission_rate_snapshot == null ? null : Number(data.commission_rate_snapshot),
+        barberEarningsSnapshot: data.barber_earnings_snapshot == null ? null : Number(data.barber_earnings_snapshot),
+        businessEarningsSnapshot: data.business_earnings_snapshot == null ? null : Number(data.business_earnings_snapshot),
+        completedCashRegisterId: data.completed_cash_register_id ?? null,
+      },
+    });
   } catch (err: any) {
     return NextResponse.json(
       { error: err?.message || 'Error al actualizar turno.' },
