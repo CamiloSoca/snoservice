@@ -351,23 +351,9 @@ function AgendarContent({initialShop}: {initialShop: PublicShopData}) {
           return;
         }
 
-        // Revalidar la disponibilidad antes de confirmar: otra persona pudo
-        // haber reservado mientras el cliente completaba sus datos.
-        const currentSlots = await getPublicBookedSlots(true);
-        setAppointments(currentSlots);
-        if (!isSlotAvailable({
-          candidateTime: selectedTime,
-          serviceDurationMinutes: selectedService.durationMinutes,
-          barberId: selectedBarber.id,
-          dateString: selectedDate,
-          existingAppointments: currentSlots,
-          allServices: services,
-        })) {
-          setStep(3);
-          setSelectedTime(null);
-          setFormError('Este horario acaba de ocuparse. Por favor elegí otro.');
-          return;
-        }
+        // El POST valida disponibilidad de nuevo en el servidor y la base
+        // aplica un trigger transaccional contra dobles reservas. Evitar el
+        // GET redundante antes de confirmar: añade otro viaje de red.
 
         const cleanEmail = clientEmail.trim().toLowerCase();
 
@@ -394,7 +380,12 @@ function AgendarContent({initialShop}: {initialShop: PublicShopData}) {
         scrollToTop();
       } catch (err: any) {
         setFormError(err?.message || 'Error al confirmar el turno.');
-        // Si otro cliente tomo el mismo horario, refrescar lo que se ofrece.
+        if (err?.status === 409) {
+          setStep(3);
+          setSelectedTime(null);
+        }
+        // Una reserva concurrente requiere actualizar los horarios, no
+        // volver a consultar antes de cada POST.
         void getPublicBookedSlots(true).then(setAppointments).catch(() => {});
       } finally {
         setIsSubmitting(false);
