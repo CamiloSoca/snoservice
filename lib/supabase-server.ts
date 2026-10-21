@@ -10,11 +10,23 @@ export const SHOP_UUID =
 export const SHOP_PREFIX =
   process.env.NEXT_PUBLIC_SHOP_PREFIX || '13C';
 
-type ServerClient = ReturnType<typeof createClient>;
-let cachedClient: ServerClient | null = null;
+// Tipar a partir de la llamada real, no de ReturnType<typeof createClient>
+// (sus genéricos sin contexto harían que PostgREST infiera todas las tablas
+// como never y fallaría el build).
+function createServerClient(url: string, serviceKey: string) {
+  return createClient(url, serviceKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  });
+}
+
+let cachedClient: ReturnType<typeof createServerClient> | null = null;
 let cachedConfiguration = '';
 
-export function getSupabaseServer(): ServerClient {
+export function getSupabaseServer() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
@@ -29,13 +41,7 @@ export function getSupabaseServer(): ServerClient {
     return cachedClient;
   }
 
-  cachedClient = createClient(supabaseUrl, supabaseKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-    },
-  });
+  cachedClient = createServerClient(supabaseUrl, supabaseKey);
   cachedConfiguration = configuration;
   return cachedClient;
 }
