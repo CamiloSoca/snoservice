@@ -61,7 +61,7 @@ export async function GET() {
       appointments, services, barbers, expenses, tips, manualCharges, shop, cashRegisters,
     ] = await Promise.all([
       timed('appointments', supabase.from('appointments')
-        .select('id,code,service_id,barber_id,date_string,time_slot,duration_minutes,status,created_at,client_name,client_phone,client_email,client_notes,price_snapshot,services(name,price,duration_minutes),barbers(name)')
+        .select('id,code,service_id,barber_id,date_string,time_slot,duration_minutes,status,created_at,client_name,client_phone,client_email,client_notes,price_snapshot,completed_at,commission_rate_snapshot,barber_earnings_snapshot,business_earnings_snapshot,completed_cash_register_id,services(name,price,duration_minutes),barbers(name)')
         .eq('shop_id', SHOP_UUID)
         .order('created_at', {ascending: false})),
       timed('services', supabase.from('services')
@@ -76,11 +76,11 @@ export async function GET() {
         .eq('shop_id', SHOP_UUID)
         .order('expense_date', {ascending: false})),
       timed('tips', supabase.from('tips')
-        .select('id,barber_id,amount,note,date_string,created_at,barbers(name)')
+        .select('id,barber_id,amount,note,date_string,created_at,commission_rate_snapshot,barber_earnings_snapshot,business_earnings_snapshot,cash_register_id,barbers(name)')
         .eq('shop_id', SHOP_UUID)
         .order('created_at', {ascending: false})),
       timed('charges', supabase.from('manual_charges')
-        .select('id,barber_id,amount,note,date_string,created_at,barbers(name)')
+        .select('id,barber_id,amount,note,date_string,created_at,commission_rate_snapshot,barber_earnings_snapshot,business_earnings_snapshot,cash_register_id,barbers(name)')
         .eq('shop_id', SHOP_UUID)
         .order('created_at', {ascending: false})),
       timed('shop', supabase.from('shops')
