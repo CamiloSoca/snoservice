@@ -707,11 +707,11 @@ export async function createAppointment(item: {
 export async function updateAppointmentStatus(
   id: string,
   status: AppointmentItem['status']
-): Promise<{id: string; status: AppointmentItem['status']}> {
-  // El PATCH valida autorizacion, caja y guarda el cambio. No descargar
-  // toda la agenda otra vez para actualizar una sola fila local.
-  await apiRequest('/api/barber', jsonRequest('PATCH', {id, status}));
-  return {id, status};
+): Promise<Pick<AppointmentItem, 'id' | 'status' | 'completedAt' | 'commissionRateSnapshot' | 'barberEarningsSnapshot' | 'businessEarningsSnapshot' | 'completedCashRegisterId'>> {
+  // Sincronizar el resultado confirmado en Supabase, no un cálculo local.
+  const {appointment} = await apiRequest('/api/barber', jsonRequest('PATCH', {id, status}));
+  if (!appointment || appointment.id !== id) throw new Error('No se pudo confirmar el cierre económico del turno.');
+  return appointment;
 }
 
 export async function getExpenses(): Promise<ExpenseItem[]> {
