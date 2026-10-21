@@ -71,6 +71,16 @@ import { InitialShopSkeleton, InitialShopError } from '@/components/InitialShopS
 import { splitBusinessRevenue } from '@/lib/financial-allocations';
 
 type PeriodFilter = 'hoy' | 'semana' | 'mes';
+type CashHistoryEntry = {
+  id: string;
+  status: 'abierta' | 'cerrada';
+  opened_at: string;
+  closed_at: string | null;
+  initial_amount: number | string | null;
+  total_sales: number | string | null;
+  total_expenses: number | string | null;
+  final_amount: number | string | null;
+};
 
 const MONTH_NAMES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -97,36 +107,17 @@ function isWithinPeriod(
   period: PeriodFilter,
   selectedMonthYear: string
 ): boolean {
-  if (!isoOrDateStr) return true;
-  const target = new Date(isoOrDateStr);
-  if (isNaN(target.getTime())) return true;
-
-  const now = new Date();
-  if (period === 'hoy') {
-    return (
-      target.getFullYear() === now.getFullYear() &&
-      target.getMonth() === now.getMonth() &&
-      target.getDate() === now.getDate()
-    );
-  }
+  if (!isoOrDateStr) return false;
+  const date = new Date(isoOrDateStr);
+  if (Number.isNaN(date.getTime())) return false;
+  const dateKey = getMontevideoDateKey(date);
+  const todayKey = getMontevideoDateKey();
+  if (period === 'hoy') return dateKey === todayKey;
   if (period === 'semana') {
-    const diffDays = (now.getTime() - target.getTime()) / (1000 * 3600 * 24);
-    return diffDays <= 7 && diffDays >= -7;
+    const delta = (Date.parse(todayKey + 'T00:00:00Z') - Date.parse(dateKey + 'T00:00:00Z')) / 86400000;
+    return delta >= 0 && delta < 7;
   }
-  if (period === 'mes') {
-    const [selYear, selMonth] = selectedMonthYear.split('-').map(Number);
-    if (!selYear || !selMonth) {
-      return (
-        target.getFullYear() === now.getFullYear() &&
-        target.getMonth() === now.getMonth()
-      );
-    }
-    return (
-      target.getFullYear() === selYear &&
-      target.getMonth() + 1 === selMonth
-    );
-  }
-  return true;
+  return dateKey.slice(0, 7) === selectedMonthYear;
 }
 
 export default function AdminDashboard() {
@@ -151,6 +142,10 @@ export default function AdminDashboard() {
 
   const [cashStatus, setCashStatus] = useState<'abierta' | 'cerrada'>('cerrada');
   const [lastClosedDate, setLastClosedDate] = useState<string>('');
+  const [cashHistoryOpen, setCashHistoryOpen] = useState(false);
+  const [cashHistoryLoading, setCashHistoryLoading] = useState(false);
+  const [cashHistoryError, setCashHistoryError] = useState('');
+  const [cashHistory, setCashHistory] = useState<CashHistoryEntry[]>([]);
   const [blockedBarbers, setBlockedBarbers] = useState<Record<string, boolean>>({});
 
   const availableMonths = getRecentMonths(12);
@@ -241,6 +236,25 @@ export default function AdminDashboard() {
 
     loadAdminData();
   }, []);
+
+  const toggleCashHistory = async () => {
+    if (cashHistoryOpen) { setCashHistoryOpen(false); return; }
+    setCashHistoryOpen(true);
+    setCashHistoryLoading(true);
+    setCashHistoryError('');
+    try {
+      const response = await fetch('/api/admin/cash-history', {
+        cache: 'no-store', credentials: 'same-origin',
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || 'No se pudo cargar el historial.');
+      setCashHistory(Array.isArray(payload.registers) ? payload.registers : []);
+    } catch (error: any) {
+      setCashHistoryError(error?.message || 'No se pudo cargar el historial.');
+    } finally {
+      setCashHistoryLoading(false);
+    }
+  };
 
   const handleLogout = async () => {
     await fetch('/api/auth', { method: 'DELETE' });
@@ -702,6 +716,9 @@ const handleAddBarber = async () => {
 
   const auditedTipsTotal = auditedTips.reduce((sum, t) => sum + Number(t.amount), 0);
   const auditedExpensesTotal = auditedExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
+  const auditedOldRows = [...auditedAppointments, ...auditedManualCharges].filter(
+    item => item.barberEarningsSnapshot == null || item.businessEarningsSnapshot == null
+  ).length;
 
   const auditedBarbersBreakdown = safeBarbers
     .filter((b) => auditBarberId === 'todos' || b.id === auditBarberId)
@@ -1036,6 +1053,52 @@ const handleAddBarber = async () => {
                 </div>
               </div>
 
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-bold">Cierres anteriores</h3>
+                    <p className="text-xs text-zinc-400">Cada caja se guarda por separado. Un cierre no reinicia las ganancias acumuladas del negocio.</p>
+                  </div>
+                  <button type="button" onClick={toggleCashHistory}
+                    className="rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-xs font-bold hover:border-emerald-400">
+                    {cashHistoryOpen ? 'Ocultar cierres' : 'Ver cierres anteriores'}
+                  </button>
+                </div>
+                {cashHistoryOpen && (
+                  <div className="space-y-2">
+                    {cashHistoryLoading && <p className="text-xs text-zinc-400">Cargando cierres...</p>}
+                    {cashHistoryError && <p role="alert" className="text-xs text-rose-300">{cashHistoryError}</p>}
+                    {!cashHistoryLoading && !cashHistoryError && cashHistory.length === 0 &&
+                      <p className="text-xs text-zinc-400">Todavía no hay sesiones registradas.</p>}
+                    {!cashHistoryLoading && !cashHistoryError && cashHistory.map(item => {
+                      const olderClose = item.status === 'cerrada' &&
+                        Number(item.total_sales) === 0 && Number(item.final_amount) !== 0;
+                      const label = (value: string | null) => value ? new Date(value).toLocaleString('es-UY', {
+                        timeZone:'America/Montevideo',day:'2-digit',month:'2-digit',
+                        year:'numeric',hour:'2-digit',minute:'2-digit',
+                      }) : 'En curso';
+                      return <div key={item.id} className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-xs">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <strong className="text-zinc-100">{label(item.opened_at)}</strong>
+                          <span className={item.status === 'abierta'?'text-emerald-400':'text-zinc-400'}>
+                            {item.status === 'abierta'?'Abierta':'Cerrada: '+label(item.closed_at)}
+                          </span>
+                        </div>
+                        <div className="mt-2 grid grid-cols-2 gap-2 text-zinc-300 sm:grid-cols-3">
+                          <span>Facturación: <strong>${Number(item.total_sales).toLocaleString('es-UY')}</strong></span>
+                          <span>Gastos: <strong>${Number(item.total_expenses).toLocaleString('es-UY')}</strong></span>
+                          <span>Resultado registrado: <strong>${Number(item.final_amount).toLocaleString('es-UY')}</strong></span>
+                        </div>
+                        {olderClose && <p className="mt-2 text-amber-300">
+                          Cierre anterior a la nueva contabilidad: cifras pendientes de conciliación.
+                        </p>}
+                        <p className="mt-1 text-zinc-500">Resultado económico; no significa efectivo contado ni saldo del fondo común.</p>
+                      </div>;
+                    })}
+                  </div>
+                )}
+              </div>
+
               <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-4">
                 <div>
                   <h3 className="font-bold text-base flex items-center gap-2">
@@ -1220,6 +1283,7 @@ const handleAddBarber = async () => {
                   Gastos del Local
                 </h3>
 
+                <p className="text-xs text-zinc-400">Registrá aquí insumos, alquiler y otros gastos del local. No registres pagos de comisiones: ya están descontados del resultado del negocio.</p>
                 <form onSubmit={handleAddExpense} noValidate className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
                   <input
                     type="text"
@@ -1235,7 +1299,7 @@ const handleAddBarber = async () => {
                   >
                     <option value="Insumos">Insumos</option>
                     <option value="Alquiler / Servicios">Alquiler / Luz</option>
-                    <option value="Adelantos / Sueldos">Adelantos</option>
+                    {/* Los pagos de comisiones requieren liquidaciones propias. No descontarlos dos veces. */}
                     <option value="Otros">Otros</option>
                   </select>
                   <input
@@ -1382,6 +1446,11 @@ const handleAddBarber = async () => {
                   </div>
                 </div>
 
+                {auditedOldRows > 0 && (
+                  <div role="status" className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
+                    {auditedOldRows} movimientos de esta fecha son anteriores al registro de comisiones. El reparto mostrado es estimado.
+                  </div>
+                )}
                 {auditBarberId === 'todos' && auditedBarbersBreakdown.length > 0 && (
                   <div className="pt-2 space-y-2">
                     <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-400">Ingresos por barbero</h4>
