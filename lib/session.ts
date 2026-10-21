@@ -6,7 +6,7 @@ export const ADMIN_COOKIE_NAME = 'barber_admin_session';
 export const BARBER_COOKIE_NAME = 'barber_staff_session';
 
 function getSessionSecret(): string {
-  const secret = process.env.SESSION_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const secret = process.env.SESSION_SECRET;
   if (!secret || secret.length < 16) {
     throw new Error(
       'Configuración incompleta: Definí SESSION_SECRET (mínimo 16 caracteres) en las variables de entorno del servidor.'
@@ -75,7 +75,7 @@ export async function getBarberSession(): Promise<SessionPayload | null> {
 export function verifyCsrfOrigin(request: Request): boolean {
   const origin = request.headers.get('origin');
   const host = request.headers.get('host');
-  if (!origin || !host) return true;
+  if (!origin || !host) return false;
   try {
     const originHost = new URL(origin).host;
     return originHost === host;
