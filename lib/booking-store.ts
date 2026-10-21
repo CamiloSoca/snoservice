@@ -407,7 +407,11 @@ async function apiRequest(path: string, options?: RequestInit): Promise<any> {
     ...options,
   });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.error || 'No se pudo completar la operación.');
+  if (!response.ok) {
+    const error = new Error(payload.error || 'No se pudo completar la operación.') as Error & {status: number};
+    error.status = response.status;
+    throw error;
+  }
   return payload;
 }
 
