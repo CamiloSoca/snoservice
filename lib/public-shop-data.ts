@@ -155,7 +155,9 @@ export async function getPublicShopData(forceRefresh = false): Promise<PublicSho
 
   const pending = (async (): Promise<PublicShopData> => {
     const response = await fetch('/api/public/shop', {
-      credentials: 'omit',
+      // Netlify private previews need same-origin access cookies.
+      // The endpoint returns a strictly public catalog, never private session data.
+      credentials: 'same-origin',
       cache: 'no-store',
     });
     if (!response.ok) throw new Error('No se pudo consultar la informacion publica.');
