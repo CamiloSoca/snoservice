@@ -25,7 +25,6 @@ import {
   TipItem,
   ManualChargeItem,
   DEFAULT_SHOP_CONFIG,
-  DEFAULT_BARBERS,
   getBarbers,
   getShopConfig,
   unlockBarberPanelWithPin,
@@ -40,6 +39,7 @@ import {
   sortAppointmentsChronologically,
   canCompleteAppointment,
 } from '@/lib/booking-store';
+import { InitialShopSkeleton, InitialShopError } from '@/components/InitialShopState';
 
 const MONTH_NAMES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -81,7 +81,8 @@ function BarberPortalContent() {
 
   const [mounted, setMounted] = useState(false);
   const [shopConfig, setShopConfig] = useState<ShopConfig>(DEFAULT_SHOP_CONFIG);
-  const [barbers, setBarbers] = useState<BarberItem[]>(DEFAULT_BARBERS);
+  const [barbers, setBarbers] = useState<BarberItem[]>([]);
+  const [initialLoad, setInitialLoad] = useState<'loading' | 'ready' | 'error'>('loading');
 
   const [selectedBarberId, setSelectedBarberId] = useState<string>('');
   const [pin, setPin] = useState<string>('');
@@ -120,8 +121,10 @@ function BarberPortalContent() {
             setSelectedBarberId(found.id);
           }
         }
+        setInitialLoad('ready');
       } catch (err) {
         console.error('Error inicializando portal de barberos:', err);
+        setInitialLoad('error');
       }
     }
     init();
@@ -241,8 +244,11 @@ function BarberPortalContent() {
     }
   };
 
-  if (!mounted) {
-    return <div className="min-h-screen bg-zinc-950 text-zinc-100" />;
+  if (!mounted || initialLoad === 'loading') {
+    return <InitialShopSkeleton label="Cargando perfiles de barberos..." />;
+  }
+  if (initialLoad === 'error') {
+    return <InitialShopError label="No se pudieron cargar los perfiles de barberos. Intentá de nuevo." />;
   }
 
   const selectedBarberObj = barbers.find((b) => b.id === selectedBarberId);
