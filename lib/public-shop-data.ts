@@ -22,6 +22,7 @@ export function invalidatePublicShopData(): void {
 }
 
 export async function getPublicShopData(forceRefresh = false): Promise<PublicShopData> {
+  if (forceRefresh) invalidatePublicShopData();
   if (!forceRefresh && cachedShop && Date.now() - cachedAt < CACHE_TTL_MS) {
     return cachedShop;
   }
@@ -31,7 +32,7 @@ export async function getPublicShopData(forceRefresh = false): Promise<PublicSho
   const requestGeneration = generation;
   const request = (async (): Promise<PublicShopData> => {
     const response = await fetch('/api/public/shop', {
-      credentials: 'same-origin',
+      credentials: 'omit',
     });
     if (!response.ok) throw new Error('No se pudo cargar la información del local.');
     const payload: PublicShopData = await response.json();
