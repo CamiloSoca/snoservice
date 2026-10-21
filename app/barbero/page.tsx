@@ -29,6 +29,7 @@ import {
   getBarbers,
   getShopConfig,
   unlockBarberPanelWithPin,
+  getBarberDashboardSnapshot,
   updateAppointmentStatus,
   getTips,
   createTip,
@@ -91,6 +92,7 @@ function BarberPortalContent() {
   const [barberCharges, setBarberCharges] = useState<ManualChargeItem[]>([]);
   const [commissionRate, setCommissionRate] = useState<number>(50);
   const [loading, setLoading] = useState<boolean>(false);
+  const [panelLoading, setPanelLoading] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
 
   const [newTipAmount, setNewTipAmount] = useState<string>('');
@@ -136,23 +138,27 @@ function BarberPortalContent() {
       setLoading(true);
       setErrorMsg('');
       const res = await unlockBarberPanelWithPin(selectedBarberId, pin.trim());
-      const [myTips, myCharges, cashResponse] = await Promise.all([
-        getTips(selectedBarberId),
-        getManualCharges(selectedBarberId),
-        fetch('/api/cash/status', {cache: 'no-store'}),
-      ]);
-      if (!cashResponse.ok) throw new Error('No se pudo verificar el estado de la caja.');
-      const cashData = await cashResponse.json();
-      setCashOpen(cashData.open === true);
+      // Autenticación terminada: abrir el panel sin esperar todas las finanzas.
       setCommissionRate(res.commissionRate);
-      setBarberAppointments(sortAppointmentsChronologically(res.appointments));
-      setBarberTips(Array.isArray(myTips) ? myTips : []);
-      setBarberCharges(Array.isArray(myCharges) ? myCharges : []);
       setIsUnlocked(true);
+      setPin('');
+      setLoading(false);
+      setPanelLoading(true);
+
+      // Una única API privada trae los turnos, movimientos y caja en paralelo.
+      const snapshot = await getBarberDashboardSnapshot();
+      setCashOpen(snapshot.cashOpen);
+      setCommissionRate(snapshot.commissionRate);
+      setBarberAppointments(sortAppointmentsChronologically(snapshot.appointments));
+      setBarberTips(snapshot.tips);
+      setBarberCharges(snapshot.manualCharges);
     } catch (err: any) {
-      setErrorMsg(err?.message || 'PIN incorrecto.');
+      // Ante una lectura incompleta no mostrar cifras vacías como reales.
+      setIsUnlocked(false);
+      setErrorMsg(err?.message || 'No se pudo ingresar al panel.');
     } finally {
       setLoading(false);
+      setPanelLoading(false);
     }
   };
 
@@ -403,6 +409,10 @@ function BarberPortalContent() {
                 {loading ? 'Verificando...' : 'Ingresar a mi Panel'}
               </button>
             </form>
+          </div>
+        ) : panelLoading ? (
+          <div role="status" className="p-6 rounded-2xl border border-zinc-800 bg-zinc-900 text-sm text-zinc-300 text-center">
+            PIN validado. Cargando tus turnos, movimientos y caja...
           </div>
         ) : (
           <div className="space-y-6">
