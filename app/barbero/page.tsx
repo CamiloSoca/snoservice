@@ -85,6 +85,7 @@ function BarberPortalContent() {
   const [selectedBarberId, setSelectedBarberId] = useState<string>('');
   const [pin, setPin] = useState<string>('');
   const [isUnlocked, setIsUnlocked] = useState<boolean>(false);
+  const [cashOpen, setCashOpen] = useState<boolean>(false);
   const [barberAppointments, setBarberAppointments] = useState<AppointmentItem[]>([]);
   const [barberTips, setBarberTips] = useState<TipItem[]>([]);
   const [barberCharges, setBarberCharges] = useState<ManualChargeItem[]>([]);
@@ -134,11 +135,15 @@ function BarberPortalContent() {
     try {
       setLoading(true);
       setErrorMsg('');
-      const [res, myTips, myCharges] = await Promise.all([
-        unlockBarberPanelWithPin(selectedBarberId, pin.trim()),
+      const res = await unlockBarberPanelWithPin(selectedBarberId, pin.trim());
+      const [myTips, myCharges, cashResponse] = await Promise.all([
         getTips(selectedBarberId),
         getManualCharges(selectedBarberId),
+        fetch('/api/cash/status', {cache: 'no-store'}),
       ]);
+      if (!cashResponse.ok) throw new Error('No se pudo verificar el estado de la caja.');
+      const cashData = await cashResponse.json();
+      setCashOpen(cashData.open === true);
       setCommissionRate(res.commissionRate);
       setBarberAppointments(sortAppointmentsChronologically(res.appointments));
       setBarberTips(Array.isArray(myTips) ? myTips : []);
@@ -326,7 +331,7 @@ function BarberPortalContent() {
               </div>
               <h2 className="text-xl font-extrabold tracking-tight">Acceso Barbero</h2>
               <p className="text-xs text-zinc-400">
-                Seleccioná tu tarjeta e ingresá tu PIN de 4 dígitos para ver tus turnos, comisiones y propinas.
+                Seleccioná tu tarjeta e ingresá tu PIN de 4 a 6 dígitos para ver tus turnos, comisiones y propinas.
               </p>
             </div>
 
@@ -381,10 +386,11 @@ function BarberPortalContent() {
                 <label className="block text-xs font-medium text-zinc-400 mb-1.5">PIN de Acceso</label>
                 <input
                   type="password"
-                  maxLength={4}
-                  placeholder="••••"
+                  inputMode="numeric"
+                  maxLength={6}
+                  placeholder="PIN de 4 a 6 dígitos"
                   value={pin}
-                  onChange={(e) => setPin(e.target.value)}
+                  onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
                   className="w-full px-3.5 py-3 rounded-xl bg-zinc-950 border border-zinc-800 text-center font-mono text-lg tracking-widest outline-none text-zinc-100"
                 />
               </div>
@@ -400,6 +406,11 @@ function BarberPortalContent() {
           </div>
         ) : (
           <div className="space-y-6">
+            {!cashOpen && (
+              <div role="status" className="p-3.5 rounded-xl border border-amber-500/30 bg-amber-500/10 text-sm text-amber-300">
+                Caja cerrada: podés consultar tus turnos e historial, pero no registrar ni eliminar cobros o propinas, ni completar turnos. Al abrir una nueva caja, volvé a ingresar para actualizar el estado.
+              </div>
+            )}
             {errorMsg && (
               <div className="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-semibold flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
@@ -523,7 +534,7 @@ function BarberPortalContent() {
                 />
                 <button
                   type="submit"
-                  disabled={savingCharge}
+                  disabled={savingCharge || !cashOpen}
                   className="sm:col-span-2 py-2.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-extrabold text-xs cursor-pointer flex items-center justify-center gap-1 touch-manipulation"
                 >
                   <Plus className="w-4 h-4" />
@@ -547,7 +558,8 @@ function BarberPortalContent() {
                         <button
                           type="button"
                           onClick={() => handleDeleteMyCharge(chg.id)}
-                          className="p-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-rose-400 cursor-pointer"
+                          disabled={!cashOpen}
+                          className="p-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-rose-400 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -583,7 +595,7 @@ function BarberPortalContent() {
                 />
                 <button
                   type="submit"
-                  disabled={savingTip}
+                  disabled={savingTip || !cashOpen}
                   className="sm:col-span-2 py-2.5 px-4 rounded-xl bg-amber-400 hover:bg-amber-300 text-zinc-950 font-extrabold text-xs cursor-pointer flex items-center justify-center gap-1 touch-manipulation"
                 >
                   <Plus className="w-4 h-4" />
@@ -607,7 +619,8 @@ function BarberPortalContent() {
                         <button
                           type="button"
                           onClick={() => handleDeleteMyTip(tp.id)}
-                          className="p-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-rose-400 cursor-pointer"
+                          disabled={!cashOpen}
+                          className="p-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-rose-400 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -675,6 +688,7 @@ function BarberPortalContent() {
                               }
                               handleStatusChange(apt.id, 'completado');
                             }}
+                            disabled={!cashOpen}
                             className="px-3.5 py-2 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-bold flex items-center gap-1 cursor-pointer"
                           >
                             <CheckCircle2 className="w-3.5 h-3.5" />

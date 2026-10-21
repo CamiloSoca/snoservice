@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseServer, SHOP_UUID } from '@/lib/supabase-server';
 import { requireAdminSession, verifyCsrfOrigin } from '@/lib/session';
+import { requireOpenCash } from '@/lib/cash-guard';
 import {
   generateUUID,
   isValidUUID,
@@ -28,6 +29,24 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const resource = searchParams.get('resource');
     const supabase = getSupabaseServer();
+
+    if (resource === 'services') {
+      const {data, error} = await supabase.from('services')
+        .select('id,name,price,duration_minutes,description,image_url,active')
+        .eq('shop_id', SHOP_UUID);
+      if (error) return NextResponse.json({error: 'No se pudieron cargar los servicios'}, {status: 500});
+      return NextResponse.json({data: data || []});
+    }
+
+    if (resource === 'cash_registers') {
+      const {data, error} = await supabase.from('cash_registers')
+        .select('id,status,closed_at,opened_at')
+        .eq('shop_id', SHOP_UUID)
+        .order('opened_at', {ascending: false})
+        .limit(1);
+      if (error) return NextResponse.json({error: 'No se pudo consultar caja'}, {status: 500});
+      return NextResponse.json({data: data || []});
+    }
 
     if (resource === 'barbers') {
       const { data, error } = await supabase
@@ -83,6 +102,85 @@ export async function POST(request: Request) {
     const supabase = getSupabaseServer();
 
     switch (operation) {
+      case 'UNBLOCK_BARBER_PIN': {
+        const barberId = String(body.barberId || '');
+        if (!isValidUUID(barberId)) {
+          return NextResponse.json({error: 'ID de barbero inválido.'}, {status: 400});
+        }
+
+        // No confiar en un ID enviado por el navegador: validar pertenencia al negocio.
+        const {data: barber, error: barberError} = await supabase
+          .from('barbers').select('id').eq('id', barberId)
+          .eq('shop_id', SHOP_UUID).maybeSingle();
+        if (barberError) return NextResponse.json({error: 'Error verificando el barbero.'}, {status: 500});
+        if (!barber) return NextResponse.json({error: 'Barbero no encontrado.'}, {status: 404});
+
+        const {error} = await supabase.from('audit_logs').delete()
+          .eq('shop_id', SHOP_UUID)
+          .eq('action', 'PIN_FAILED')
+          .eq('details', barberId);
+        if (error) return NextResponse.json({error: 'No se pudo desbloquear el PIN.'}, {status: 500});
+        return NextResponse.json({ok: true});
+      }
+      case 'OPEN_CASH': {
+        const total = Number(body.initialAmount);
+        if (!Number.isFinite(total) || total < 0) {
+          return NextResponse.json({error: 'Monto inicial inválido.'}, {status: 400});
+        }
+        const {data: openRows, error: lookupError} = await supabase.from('cash_registers')
+          .select('id')
+          .eq('shop_id', SHOP_UUID)
+          .eq('status', 'abierta')
+          .limit(1);
+        if (lookupError) {
+          return NextResponse.json({error: 'No se pudo verificar el estado de caja.'}, {status: 500});
+        }
+        if (openRows?.length) {
+          return NextResponse.json({error: 'Ya existe una caja abierta para este negocio.'}, {status: 409});
+        }
+
+        // La verificación anterior mejora UX; el índice único parcial en PostgreSQL
+        // es la protección real contra dos aperturas simultáneas.
+        const {error} = await supabase.from('cash_registers').insert({
+          shop_id: SHOP_UUID, initial_amount: total,
+          total_sales: total, status: 'abierta',
+        });
+        if (error?.code === '23505') {
+          return NextResponse.json({error: 'Ya existe una caja abierta para este negocio.'}, {status: 409});
+        }
+        if (error) return NextResponse.json({error: 'No se pudo abrir caja.'}, {status: 500});
+        return NextResponse.json({ok: true});
+      }
+      case 'CLOSE_CASH': {
+        const amount = Number(body.finalAmount);
+        if (!Number.isFinite(amount)) return NextResponse.json({error: 'Monto inválido.'}, {status: 400});
+
+        const {data: openRows, error: lookupError} = await supabase.from('cash_registers')
+          .select('id')
+          .eq('shop_id', SHOP_UUID)
+          .eq('status', 'abierta')
+          .order('opened_at', {ascending: false})
+          .limit(2);
+        if (lookupError) {
+          return NextResponse.json({error: 'No se pudo verificar la caja abierta.'}, {status: 500});
+        }
+        if (!openRows?.length) {
+          return NextResponse.json({error: 'No existe una caja abierta para cerrar.'}, {status: 409});
+        }
+        if (openRows.length !== 1) {
+          return NextResponse.json({error: 'Hay varias cajas abiertas; se requiere revisión antes de cerrar.'}, {status: 409});
+        }
+
+        const {data, error} = await supabase.from('cash_registers')
+          .update({closed_at: new Date().toISOString(), final_amount: amount, status: 'cerrada'})
+          .eq('id', openRows[0].id)
+          .eq('shop_id', SHOP_UUID)
+          .eq('status', 'abierta')
+          .select('id');
+        if (error) return NextResponse.json({error: 'No se pudo cerrar la caja.'}, {status: 500});
+        if (data?.length !== 1) return NextResponse.json({error: 'La caja ya estaba cerrada o cambió de estado.'}, {status: 409});
+        return NextResponse.json({ok: true});
+      }
       case 'SAVE_BARBERS': {
         const items = Array.isArray(body.barbers) ? body.barbers : [];
         for (const b of items) {
@@ -103,7 +201,13 @@ export async function POST(request: Request) {
               .replace(/\s+/g, '-');
 
           const commissionRate = Math.min(100, Math.max(0, Number(b.commissionRate ?? 50)));
-          const pin = String(b.pin || '1234').trim().slice(0, 4) || '1234';
+          const pin = String(b.pin ?? '').trim();
+          if (!/^\d{4,6}$/.test(pin)) {
+            return NextResponse.json(
+              {error: 'El PIN debe tener de 4 a 6 dígitos numéricos.'},
+              {status: 400}
+            );
+          }
           const serviceIds = Array.isArray(b.serviceIds)
             ? b.serviceIds.filter((sid: string) => isValidUUID(sid))
             : [];
@@ -251,6 +355,19 @@ export async function POST(request: Request) {
         if (!isValidUUID(id) || !['confirmado', 'completado', 'cancelado'].includes(status)) {
           return NextResponse.json({ error: 'Datos de turno inválidos.' }, { status: 400 });
         }
+        const {data: current, error: lookupError} = await supabase
+          .from('appointments')
+          .select('status')
+          .eq('id', id)
+          .eq('shop_id', SHOP_UUID)
+          .maybeSingle();
+        if (lookupError) return NextResponse.json({error: 'No se pudo consultar el turno.'}, {status: 500});
+        if (!current) return NextResponse.json({error: 'Turno inexistente.'}, {status: 404});
+        if (status !== current.status && (status === 'completado' || current.status === 'completado')) {
+          const cashDenied = await requireOpenCash();
+          if (cashDenied) return cashDenied;
+        }
+
         const { error } = await supabase
           .from('appointments')
           .update({ status })
@@ -273,12 +390,15 @@ export async function POST(request: Request) {
           String(exp.date || new Date().toISOString().split('T')[0])
         ).slice(0, 20);
 
-        if (!description || isNaN(amount) || amount <= 0) {
+        if (!description || !Number.isFinite(amount) || amount <= 0) {
           return NextResponse.json(
             { error: 'Descripción y monto mayor a 0 son obligatorios.' },
             { status: 400 }
           );
         }
+
+        const cashDenied = await requireOpenCash();
+        if (cashDenied) return cashDenied;
 
         const { error } = await supabase.from('expenses').insert([
           {
@@ -301,6 +421,9 @@ export async function POST(request: Request) {
         if (!isValidUUID(id)) {
           return NextResponse.json({ error: 'ID de gasto inválido.' }, { status: 400 });
         }
+        const cashDenied = await requireOpenCash();
+        if (cashDenied) return cashDenied;
+
         const { error } = await supabase
           .from('expenses')
           .delete()

@@ -378,215 +378,174 @@ export function isSlotAvailable(params: {
     const aptDuration = Number(apt.durationMinutes || matchedServiceDur) || 60;
     const aptEnd = aptStart + aptDuration;
 
-    if (candidateStart >= aptStart && candidateStart < aptEnd) {
+    if (candidateStart < aptEnd && candidateEnd > aptStart) {
       return false;
-    }
-
-    if (candidateStart < aptStart && candidateEnd > aptStart) {
-      if (duration > 90) {
-        return false;
-      }
-      const overlapMinutes = candidateEnd - aptStart;
-      if (overlapMinutes > 30 && aptStart - candidateStart < 30) {
-        return false;
-      }
     }
   }
 
   return true;
 }
 
+
+async function apiRequest(path: string, options?: RequestInit): Promise<any> {
+  const response = await fetch(path, {
+    credentials: 'same-origin',
+    ...options,
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || 'No se pudo completar la operación.');
+  return payload;
+}
+
+function jsonRequest(method: string, data: unknown): RequestInit {
+  return {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  };
+}
+
+function mapService(d: any): ServiceItem {
+  return {
+    id: d.id,
+    name: d.name,
+    price: Number(d.price) || 0,
+    durationMinutes: Number(d.duration_minutes) || 60,
+    description: d.description || '',
+    imageUrl: d.image_url || '',
+    active: d.active ?? true,
+  };
+}
+
+function mapBarber(d: any): BarberItem {
+  return {
+    id: d.id,
+    slug: d.slug || '',
+    name: d.name,
+    role: d.role || 'Barbero',
+    bio: d.bio || '',
+    specialties: d.specialties || [],
+    serviceIds: d.service_ids || [],
+    isOwner: d.is_owner ?? false,
+    active: d.active ?? true,
+    commissionRate: Number(d.commission_rate ?? 0),
+    pin: d.pin || '',
+  };
+}
+
+function mapAppointment(d: any): AppointmentItem {
+  const srv = Array.isArray(d.services) ? d.services[0] : d.services;
+  const brb = Array.isArray(d.barbers) ? d.barbers[0] : d.barbers;
+  return {
+    id: d.id, code: d.code || '',
+    serviceId: d.service_id, serviceName: srv?.name || 'Servicio',
+    servicePrice: Number(srv?.price ?? d.price_snapshot ?? 0),
+    priceSnapshot: Number(d.price_snapshot ?? 0),
+    durationMinutes: Number(d.duration_minutes ?? srv?.duration_minutes ?? 60),
+    barberId: d.barber_id, barberName: brb?.name || 'Barbero',
+    dateString: d.date_string, timeSlot: d.time_slot,
+    clientName: d.client_name || '', clientPhone: d.client_phone || '',
+    clientEmail: d.client_email || '', clientNotes: d.client_notes || '',
+    status: d.status || 'confirmado', createdAt: d.created_at,
+  };
+}
+
 export async function getShopConfig(forceRefresh = false): Promise<ShopConfig> {
-  if (!supabase) return cachedShopConfig;
-  try {
-    const { data } = await supabase.from('shops').select('*').eq('id', SHOP_UUID).maybeSingle();
-    if (!data) return cachedShopConfig;
-    const config: ShopConfig = {
-      id: data.id,
-      name: data.name || DEFAULT_SHOP_CONFIG.name,
-      phone: data.phone || DEFAULT_SHOP_CONFIG.phone,
-      address: data.address || DEFAULT_SHOP_CONFIG.address,
-      city: data.city || DEFAULT_SHOP_CONFIG.city,
-      logoUrl: data.logo_url || '',
-      backgroundImageUrl: data.background_image_url || '',
-      coverImageUrl: data.cover_image_url || '',
-      schedule: data.schedule || DEFAULT_SHOP_CONFIG.schedule,
-    };
-    cachedShopConfig = config;
-    return config;
-  } catch {
-    return cachedShopConfig;
-  }
+  if (!supabase) throw new Error('Falta la configuración pública de Supabase.');
+  const { data, error } = await supabase
+    .from('shops')
+    .select('id,name,phone,address,city,logo_url,background_image_url,cover_image_url,schedule')
+    .eq('id', SHOP_UUID)
+    .maybeSingle();
+  if (error) throw new Error('No se pudo cargar la información del local.');
+  if (!data) return cachedShopConfig;
+  const config: ShopConfig = {
+    id: data.id,
+    name: data.name || DEFAULT_SHOP_CONFIG.name,
+    phone: data.phone || DEFAULT_SHOP_CONFIG.phone,
+    address: data.address || DEFAULT_SHOP_CONFIG.address,
+    city: data.city || DEFAULT_SHOP_CONFIG.city,
+    logoUrl: data.logo_url || '',
+    backgroundImageUrl: data.background_image_url || '',
+    coverImageUrl: data.cover_image_url || '',
+    schedule: data.schedule || DEFAULT_SHOP_CONFIG.schedule,
+  };
+  cachedShopConfig = config;
+  return config;
 }
 
 export async function saveShopConfig(cfg: ShopConfig): Promise<void> {
+  await apiRequest('/api/admin', jsonRequest('POST', {operation: 'SAVE_SHOP_CONFIG', config: cfg}));
   cachedShopConfig = cfg;
-  if (!supabase) return;
-  await supabase.from('shops').upsert({
-    id: SHOP_UUID,
-    name: cfg.name,
-    phone: cfg.phone,
-    address: cfg.address,
-    city: cfg.city,
-    logo_url: cfg.logoUrl,
-    background_image_url: cfg.backgroundImageUrl,
-    cover_image_url: cfg.coverImageUrl,
-    schedule: cfg.schedule,
-  });
 }
 
 export async function getServices(forceRefresh = false): Promise<ServiceItem[]> {
-  if (!supabase) return cachedServices;
-  try {
-    const { data } = await supabase.from('services').select('*').eq('shop_id', SHOP_UUID);
-    if (!data || data.length === 0) return cachedServices;
-    const mapped: ServiceItem[] = data.map((d) => ({
-      id: d.id,
-      name: d.name,
-      price: Number(d.price) || 0,
-      durationMinutes: Number(d.duration_minutes) || 60,
-      description: d.description || `${d.duration_minutes || 60} min`,
-      imageUrl: d.image_url || '',
-      active: d.active ?? true,
-    }));
-    cachedServices = mapped;
-    return mapped;
-  } catch {
-    return cachedServices;
-  }
+  if (!supabase) throw new Error('Falta la configuración pública de Supabase.');
+  const { data, error } = await supabase
+    .from('services')
+    .select('id,name,price,duration_minutes,description,image_url,active')
+    .eq('shop_id', SHOP_UUID)
+    .eq('active', true);
+  if (error) throw new Error('No se pudieron cargar los servicios.');
+  const items = (data || []).map(mapService);
+  cachedServices = items;
+  return items;
+}
+
+export async function getAdminServices(forceRefresh = false): Promise<ServiceItem[]> {
+  const { data } = await apiRequest('/api/admin?resource=services');
+  const items = (data || []).map(mapService);
+  cachedServices = items;
+  return items;
 }
 
 export async function saveServices(services: ServiceItem[]): Promise<void> {
+  await apiRequest('/api/admin', jsonRequest('POST', {operation: 'SAVE_SERVICES', services}));
   cachedServices = services;
-  if (!supabase) return;
-  for (const s of services) {
-    await supabase.from('services').upsert({
-      id: s.id,
-      shop_id: SHOP_UUID,
-      name: s.name,
-      price: s.price,
-      duration_minutes: s.durationMinutes,
-      description: s.description,
-      image_url: s.imageUrl,
-      active: s.active ?? true,
-    });
-  }
 }
 
 export async function deleteServiceFromDb(id: string): Promise<void> {
-  if (!supabase) return;
-  await supabase.from('services').delete().eq('id', id).eq('shop_id', SHOP_UUID);
+  await apiRequest('/api/admin', jsonRequest('POST', {operation: 'DELETE_SERVICE', id}));
 }
 
 export async function getBarbers(forceRefresh = false): Promise<BarberItem[]> {
-  if (!supabase) return cachedBarbers;
-  try {
-    const { data } = await supabase.from('barbers').select('*').eq('shop_id', SHOP_UUID);
-    if (!data || data.length === 0) return cachedBarbers;
-    const mapped: BarberItem[] = data.map((d) => ({
-      id: d.id,
-      slug: d.slug || '',
-      name: d.name,
-      role: d.role || 'Barbero',
-      bio: d.bio || '',
-      specialties: d.specialties || [],
-      serviceIds: d.service_ids || [],
-      isOwner: d.is_owner ?? false,
-      active: d.active ?? true,
-      commissionRate: Number(d.commission_rate) || 50,
-      pin: d.pin || '1234',
-    }));
-    cachedBarbers = mapped;
-    return mapped;
-  } catch {
-    return cachedBarbers;
-  }
+  if (!supabase) throw new Error('Falta la configuración pública de Supabase.');
+  // Nunca consultar PIN o comisiones desde el navegador público.
+  const { data, error } = await supabase
+    .from('barbers')
+    .select('id,slug,name,role,bio,specialties,service_ids,active')
+    .eq('shop_id', SHOP_UUID)
+    .eq('active', true);
+  if (error) throw new Error('No se pudieron cargar los barberos.');
+  const items = (data || []).map(mapBarber);
+  cachedBarbers = items;
+  return items;
 }
 
 export async function getAdminBarbers(forceRefresh = false): Promise<BarberItem[]> {
-  return getBarbers(forceRefresh);
+  const { data } = await apiRequest('/api/admin?resource=barbers');
+  const items = (data || []).map(mapBarber);
+  cachedBarbers = items;
+  return items;
 }
 
 export async function saveBarbers(barbers: BarberItem[]): Promise<void> {
+  await apiRequest('/api/admin', jsonRequest('POST', {operation: 'SAVE_BARBERS', barbers}));
   cachedBarbers = barbers;
-  if (!supabase) return;
-  
-  for (const b of barbers) {
-    // Enviamos estrictamente los campos básicos que sabemos que existen en la tabla
-    const payload: Record<string, any> = {
-      id: b.id,
-      shop_id: SHOP_UUID,
-      name: b.name,
-      commission_rate: Number(b.commissionRate) || 50,
-      pin: String(b.pin || '1234'),
-    };
-
-    // Agregamos de forma segura solo si existen en tu base de datos
-    if (b.role) payload.role = b.role;
-    if (b.specialties) payload.specialties = b.specialties;
-    if (b.serviceIds) payload.service_ids = b.serviceIds;
-    if (b.active !== undefined) payload.active = b.active;
-
-    const { error } = await supabase.from('barbers').upsert(payload);
-    if (error) {
-      console.error(`Error de Supabase al guardar barbero ${b.name}:`, error.message);
-      throw new Error(`Error al guardar barbero: ${error.message}`);
-    }
-  }
 }
 
 export async function deleteBarberFromDb(id: string): Promise<void> {
-  if (!supabase) return;
-  await supabase.from('barbers').delete().eq('id', id).eq('shop_id', SHOP_UUID);
+  await apiRequest('/api/admin', jsonRequest('POST', {operation: 'DELETE_BARBER', id}));
 }
 
 export async function getAppointments(forceRefresh = false): Promise<AppointmentItem[]> {
-  if (!supabase) return [];
-  try {
-    const { data } = await supabase
-      .from('appointments')
-      .select(`
-        id, code, service_id, barber_id, date_string, time_slot,
-        duration_minutes, client_name, client_phone, client_email, client_notes,
-        status, price_snapshot, created_at,
-        services:service_id (name, price),
-        barbers:barber_id (name)
-      `)
-      .eq('shop_id', SHOP_UUID)
-      .order('created_at', { ascending: false });
-
-    if (!data) return [];
-    return data.map((d: any) => {
-      const srv = Array.isArray(d.services) ? d.services[0] : d.services;
-      const brb = Array.isArray(d.barbers) ? d.barbers[0] : d.barbers;
-      return {
-        id: d.id,
-        code: d.code || '',
-        serviceId: d.service_id,
-        serviceName: srv?.name || 'Servicio',
-        servicePrice: Number(srv?.price ?? d.price_snapshot) || 0,
-        priceSnapshot: Number(d.price_snapshot ?? srv?.price) || 0,
-        durationMinutes: Number(d.duration_minutes) || 60,
-        barberId: d.barber_id,
-        barberName: brb?.name || 'Barbero',
-        dateString: d.date_string,
-        timeSlot: d.time_slot,
-        clientName: d.client_name,
-        clientPhone: d.client_phone,
-        clientEmail: d.client_email || '',
-        clientNotes: d.client_notes || '',
-        status: d.status || 'confirmado',
-        createdAt: d.created_at,
-      };
-    });
-  } catch {
-    return [];
-  }
+  const { data } = await apiRequest('/api/admin?resource=appointments');
+  return (data || []).map(mapAppointment);
 }
 
 export async function getPublicBookedSlots(forceRefresh = false): Promise<AppointmentItem[]> {
-  const apts = await getAppointments(forceRefresh);
-  return apts.filter((a) => a.status !== 'cancelado');
+  const { appointments } = await apiRequest('/api/public/booking', {cache: 'no-store'});
+  return (appointments || []) as AppointmentItem[];
 }
 
 export async function createAppointment(item: {
@@ -604,98 +563,32 @@ export async function createAppointment(item: {
   clientEmail?: string;
   clientNotes?: string;
 }): Promise<AppointmentItem> {
-  if (!supabase) throw new Error('Sin conexión con Supabase');
-  const code = Math.random().toString(36).substring(2, 6).toUpperCase();
-  const finalPrice = Number(item.priceSnapshot ?? item.servicePrice) || 0;
-  const finalDuration = Number(item.durationMinutes) || 60;
-
-  const { data, error } = await supabase
-    .from('appointments')
-    .insert([
-      {
-        shop_id: SHOP_UUID,
-        code,
-        service_id: item.serviceId,
-        barber_id: item.barberId,
-        date_string: item.dateString,
-        time_slot: item.timeSlot,
-        client_name: item.clientName,
-        client_phone: item.clientPhone,
-        client_email: item.clientEmail || '',
-        client_notes: item.clientNotes || '',
-        price_snapshot: finalPrice,
-        duration_minutes: finalDuration,
-        status: 'confirmado',
-      },
-    ])
-    .select()
-    .single();
-
-  if (error) throw new Error(error.message);
-
-  return {
-    id: data.id,
-    code: data.code || code,
-    serviceId: data.service_id,
-    serviceName: item.serviceName || 'Servicio',
-    servicePrice: finalPrice,
-    priceSnapshot: finalPrice,
-    durationMinutes: finalDuration,
-    barberId: data.barber_id,
-    barberName: item.barberName || 'Barbero',
-    dateString: data.date_string,
-    timeSlot: data.time_slot,
-    clientName: data.client_name,
-    clientPhone: data.client_phone,
-    clientEmail: data.client_email || item.clientEmail || '',
-    clientNotes: data.client_notes || '',
-    status: data.status || 'confirmado',
-    createdAt: data.created_at,
-  };
+  const { appointment } = await apiRequest('/api/public/booking', jsonRequest('POST', item));
+  return appointment as AppointmentItem;
 }
 
 export async function updateAppointmentStatus(
   id: string,
   status: AppointmentItem['status']
 ): Promise<AppointmentItem[]> {
-  if (!supabase) return [];
-
-  if (status === 'completado') {
-    const { data: existing } = await supabase
-      .from('appointments')
-      .select('date_string')
-      .eq('id', id)
-      .maybeSingle();
-
-    if (existing?.date_string && !canCompleteAppointment(existing.date_string)) {
-      throw new Error('No podés completar un turno que corresponde a una fecha futura.');
-    }
+  await apiRequest('/api/barber', jsonRequest('PATCH', { id, status }));
+  const admin = await fetch('/api/admin?resource=appointments', {credentials: 'same-origin', cache: 'no-store'});
+  if (admin.ok) {
+    const payload = await admin.json();
+    return (payload.data || []).map(mapAppointment);
   }
-
-  await supabase.from('appointments').update({ status }).eq('id', id);
-  return getAppointments(true);
+  if (admin.status !== 401) throw new Error('No se pudo recargar la agenda.');
+  const { appointments } = await apiRequest('/api/barber', {cache: 'no-store'});
+  return appointments || [];
 }
 
 export async function getExpenses(): Promise<ExpenseItem[]> {
-  if (!supabase) return [];
-  try {
-    const { data } = await supabase
-      .from('expenses')
-      .select('*')
-      .eq('shop_id', SHOP_UUID)
-      .order('created_at', { ascending: false });
-    if (!data) return [];
-    return data.map((d) => ({
-      id: d.id,
-      description: d.description,
-      amount: Number(d.amount) || 0,
-      category: d.category || 'Otros',
-      date: d.date || new Date().toISOString().split('T')[0],
-      createdAt: d.created_at,
-    }));
-  } catch {
-    return [];
-  }
+  const { data } = await apiRequest('/api/admin?resource=expenses');
+  return (data || []).map((d: any) => ({
+    id: d.id, description: d.description, amount: Number(d.amount) || 0,
+    category: d.category || 'Otros', date: d.expense_date || '',
+    createdAt: d.created_at,
+  }));
 }
 
 export async function createExpense(item: {
@@ -704,48 +597,30 @@ export async function createExpense(item: {
   category: ExpenseCategory;
   date: string;
 }): Promise<ExpenseItem[]> {
-  if (!supabase) return [];
-  await supabase.from('expenses').insert([
-    {
-      shop_id: SHOP_UUID,
-      description: item.description,
-      amount: item.amount,
-      category: item.category,
-      date: item.date,
-    },
-  ]);
+  await apiRequest('/api/admin', jsonRequest('POST', {operation: 'CREATE_EXPENSE', expense: item}));
   return getExpenses();
 }
 
 export async function deleteExpense(id: string): Promise<ExpenseItem[]> {
-  if (!supabase) return [];
-  await supabase.from('expenses').delete().eq('id', id).eq('shop_id', SHOP_UUID);
+  await apiRequest('/api/admin', jsonRequest('POST', {operation: 'DELETE_EXPENSE', id}));
   return getExpenses();
 }
 
+function mapFinancialEntry(d: any): TipItem {
+  return {
+    id: d.id, barberId: d.barber_id,
+    barberName: d.barbers?.name || 'Barbero',
+    amount: Number(d.amount) || 0,
+    note: d.note || '', dateString: d.date_string || '',
+    createdAt: d.created_at,
+  };
+}
+
 export async function getTips(barberId?: string): Promise<TipItem[]> {
-  if (!supabase) return [];
-  try {
-    let query = supabase
-      .from('tips')
-      .select('*, barbers (name)')
-      .eq('shop_id', SHOP_UUID)
-      .order('created_at', { ascending: false });
-    if (barberId) query = query.eq('barber_id', barberId);
-    const { data } = await query;
-    if (!data) return [];
-    return data.map((d: any) => ({
-      id: d.id,
-      barberId: d.barber_id,
-      barberName: d.barbers?.name || 'Barbero',
-      amount: Number(d.amount) || 0,
-      note: d.note || '',
-      dateString: d.date_string || new Date().toLocaleDateString(),
-      createdAt: d.created_at,
-    }));
-  } catch {
-    return [];
-  }
+  const query = new URLSearchParams({resource: 'tips'});
+  if (barberId) query.set('barberId', barberId);
+  const { data } = await apiRequest('/api/finance?' + query.toString(), {cache: 'no-store'});
+  return (data || []).map(mapFinancialEntry);
 }
 
 export async function createTip(item: {
@@ -753,48 +628,20 @@ export async function createTip(item: {
   amount: number;
   note?: string;
 }): Promise<TipItem[]> {
-  if (!supabase) return [];
-  await supabase.from('tips').insert([
-    {
-      shop_id: SHOP_UUID,
-      barber_id: item.barberId,
-      amount: item.amount,
-      note: item.note || '',
-      date_string: new Date().toLocaleDateString('es-UY', { day: 'numeric', month: 'short' }),
-    },
-  ]);
+  await apiRequest('/api/finance', jsonRequest('POST', {resource: 'tips', item}));
   return getTips();
 }
 
 export async function deleteTip(id: string): Promise<TipItem[]> {
-  if (!supabase) return [];
-  await supabase.from('tips').delete().eq('id', id).eq('shop_id', SHOP_UUID);
+  await apiRequest('/api/finance', jsonRequest('DELETE', {resource: 'tips', id}));
   return getTips();
 }
 
 export async function getManualCharges(barberId?: string): Promise<ManualChargeItem[]> {
-  if (!supabase) return [];
-  try {
-    let query = supabase
-      .from('manual_charges')
-      .select('*, barbers (name)')
-      .eq('shop_id', SHOP_UUID)
-      .order('created_at', { ascending: false });
-    if (barberId) query = query.eq('barber_id', barberId);
-    const { data } = await query;
-    if (!data) return [];
-    return data.map((d: any) => ({
-      id: d.id,
-      barberId: d.barber_id,
-      barberName: d.barbers?.name || 'Barbero',
-      amount: Number(d.amount) || 0,
-      note: d.note || '',
-      dateString: d.date_string || new Date().toLocaleDateString(),
-      createdAt: d.created_at,
-    }));
-  } catch {
-    return [];
-  }
+  const query = new URLSearchParams({resource: 'manual_charges'});
+  if (barberId) query.set('barberId', barberId);
+  const { data } = await apiRequest('/api/finance?' + query.toString(), {cache: 'no-store'});
+  return (data || []).map(mapFinancialEntry);
 }
 
 export async function createManualCharge(item: {
@@ -802,39 +649,20 @@ export async function createManualCharge(item: {
   amount: number;
   note?: string;
 }): Promise<ManualChargeItem[]> {
-  if (!supabase) return [];
-  await supabase.from('manual_charges').insert([
-    {
-      shop_id: SHOP_UUID,
-      barber_id: item.barberId,
-      amount: item.amount,
-      note: item.note || '',
-      date_string: new Date().toLocaleDateString('es-UY', { day: 'numeric', month: 'short' }),
-    },
-  ]);
+  await apiRequest('/api/finance', jsonRequest('POST', {resource: 'manual_charges', item}));
   return getManualCharges();
 }
 
 export async function deleteManualCharge(id: string): Promise<ManualChargeItem[]> {
-  if (!supabase) return [];
-  await supabase.from('manual_charges').delete().eq('id', id).eq('shop_id', SHOP_UUID);
+  await apiRequest('/api/finance', jsonRequest('DELETE', {resource: 'manual_charges', id}));
   return getManualCharges();
 }
 
 export async function unlockBarberPanelWithPin(barberId: string, pin: string) {
-  if (!supabase) throw new Error('Sin conexión con la base de datos.');
-  const { data: barber, error } = await supabase
-    .from('barbers')
-    .select('id, name, commission_rate, pin')
-    .eq('id', barberId)
-    .eq('shop_id', SHOP_UUID)
-    .maybeSingle();
-  if (error || !barber) throw new Error('Barbero no encontrado.');
-  if (String(barber.pin).trim() !== String(pin).trim()) throw new Error('PIN incorrecto.');
-  const apts = await getAppointments();
+  const result = await apiRequest('/api/barber', jsonRequest('POST', {barberId, pin}));
   return {
-    commissionRate: Number(barber.commission_rate) || 50,
-    appointments: apts.filter((a) => a.barberId === barberId),
+    commissionRate: Number(result.commissionRate) || 50,
+    appointments: (result.appointments || []) as AppointmentItem[],
   };
 }
 

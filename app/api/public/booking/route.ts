@@ -1,3 +1,5 @@
+import nodemailer from 'nodemailer';
+import { randomBytes } from 'crypto';
 // app/api/public/booking/route.ts
 import { NextResponse } from 'next/server';
 import { getSupabaseServer, SHOP_UUID, SHOP_PREFIX } from '@/lib/supabase-server';
@@ -16,7 +18,7 @@ export async function GET() {
 
     const { data, error } = await supabase
       .from('appointments')
-      .select('id, barber_id, service_id, date_string, time_slot, duration_minutes, status, created_at, client_email, client_name, client_phone')
+      .select('id, barber_id, service_id, date_string, time_slot, duration_minutes, status')
       .eq('shop_id', SHOP_UUID)
       .neq('status', 'cancelado')
       .order('created_at', { ascending: false });
@@ -41,12 +43,12 @@ export async function GET() {
       barberName: '',
       dateString: apt.date_string,
       timeSlot: apt.time_slot,
-      clientName: apt.client_name || '',
-      clientPhone: apt.client_phone || '',
-      clientEmail: apt.client_email || '', // 👈 Incluido obligatoriamente
+      clientName: '',
+      clientPhone: '',
+      clientEmail: '',
       clientNotes: '',
       status: apt.status || 'confirmado',
-      createdAt: apt.created_at,
+      createdAt: '',
     }));
 
     return NextResponse.json({ appointments: sanitizedSlots });
@@ -68,7 +70,7 @@ export async function POST(request: Request) {
     }
 
     const cleanName = sanitizeInput(String(clientName || '')).slice(0, 80);
-    const cleanPhone = sanitizeInput(String(clientPhone || '098509376')).slice(0, 25);
+    const cleanPhone = sanitizeInput(String(clientPhone || '')).slice(0, 25);
     const cleanEmail = sanitizeInput(String(clientEmail || '')).slice(0, 100).toLowerCase();
     const cleanNotes = sanitizeInput(String(clientNotes || '')).slice(0, 300);
     const cleanDate = sanitizeInput(String(dateString || '')).slice(0, 30);
@@ -188,7 +190,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const randomCode = `${SHOP_PREFIX}-` + Math.floor(1000 + Math.random() * 9000);
+    const randomCode = `${SHOP_PREFIX}-` + randomBytes(8).toString('hex').toUpperCase();
 
     const insertPayload: Record<string, any> = {
       shop_id: SHOP_UUID,
@@ -238,6 +240,30 @@ export async function POST(request: Request) {
       status: 'confirmado',
       createdAt: inserted.created_at || new Date().toISOString(),
     };
+
+    if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+      try {
+        const transporter = nodemailer.createTransport({
+          host: process.env.SMTP_HOST || 'smtp.zoho.com',
+          port: Number(process.env.SMTP_PORT) || 465,
+          secure: true,
+          auth: {user: process.env.SMTP_USER, pass: process.env.SMTP_PASS},
+        });
+        const safe = (value: unknown) => String(value || '').replace(/[&<>"']/g, (c) =>
+          ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c] || c));
+        await transporter.sendMail({
+          from: process.env.SMTP_USER,
+          to: cleanEmail,
+          subject: 'Confirmación de turno - 13-Cut',
+          html: '<h2>Reserva confirmada</h2><p>Hola ' + safe(cleanName) +
+            '</p><p>Servicio: ' + safe(serviceRow.name) + '</p><p>Barbero: ' +
+            safe(barberRow.name) + '</p><p>Fecha: ' + safe(cleanDate) +
+            '</p><p>Hora: ' + safe(cleanTime) + '</p><p>Código: ' + safe(confirmed.code) + '</p>',
+        });
+      } catch (mailError) {
+        console.error('No se pudo enviar la confirmación de la reserva', mailError);
+      }
+    }
 
     return NextResponse.json({ appointment: confirmed }, { status: 201 });
   } catch (err: any) {

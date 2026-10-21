@@ -35,7 +35,6 @@ import {
   Coins,
   BarChart3,
 } from 'lucide-react';
-import { createClient } from '@supabase/supabase-js';
 import {
   ServiceItem,
   BarberItem,
@@ -49,6 +48,7 @@ import {
   SHOP_UUID,
   generateUUID,
   getServices,
+  getAdminServices,
   saveServices,
   deleteServiceFromDb,
   getAdminBarbers,
@@ -72,10 +72,6 @@ import {
   canCompleteAppointment,
   DayOption,
 } from '@/lib/booking-store';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null;
 
 type PeriodFilter = 'hoy' | 'semana' | 'mes';
 
@@ -154,7 +150,7 @@ export default function AdminDashboard() {
   const [savingBarberId, setSavingBarberId] = useState<string | null>(null);
   const [adminError, setAdminError] = useState<string>('');
 
-  const [cashStatus, setCashStatus] = useState<'abierta' | 'cerrada'>('abierta');
+  const [cashStatus, setCashStatus] = useState<'abierta' | 'cerrada'>('cerrada');
   const [lastClosedDate, setLastClosedDate] = useState<string>('');
   const [blockedBarbers, setBlockedBarbers] = useState<Record<string, boolean>>({});
 
@@ -174,11 +170,14 @@ export default function AdminDashboard() {
 
   const [newBarberName, setNewBarberName] = useState('');
   const [newBarberCommission, setNewBarberCommission] = useState('50');
-  const [newBarberPin, setNewBarberPin] = useState('1234');
+  const [newBarberPin, setNewBarberPin] = useState('');
+  const [barberPinDrafts, setBarberPinDrafts] = useState<Record<string, string>>({});
 
   const [expenseDesc, setExpenseDesc] = useState('');
   const [expenseAmount, setExpenseAmount] = useState('');
   const [expenseCategory, setExpenseCategory] = useState<ExpenseCategory>('Insumos');
+  const [expenseFeedback, setExpenseFeedback] = useState<{kind: 'error' | 'success'; message: string} | null>(null);
+  const [savingExpense, setSavingExpense] = useState(false);
 
   const [tipBarberId, setTipBarberId] = useState<string>('');
   const [tipAmount, setTipAmount] = useState<string>('');
@@ -203,7 +202,7 @@ export default function AdminDashboard() {
         setAdminError('');
         const [apts, srvs, brbs, exps, tps, charges, cfg] = await Promise.all([
           getAppointments(),
-          getServices(true),
+          getAdminServices(true),
           getAdminBarbers(),
           getExpenses(),
           getTips(),
@@ -224,21 +223,17 @@ export default function AdminDashboard() {
           setChargeBarberId(freshBarbers[0].id);
         }
 
-        if (supabase) {
-          const { data: cashData } = await supabase
-            .from('cash_registers')
-            .select('status, closed_at')
-            .eq('shop_id', SHOP_UUID)
-            .order('opened_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-          
-          if (cashData) {
-            setCashStatus(cashData.status || 'abierta');
-            if (cashData.closed_at) {
-              setLastClosedDate(cashData.closed_at.split('T')[0]);
-            }
-          }
+        const cashResponse = await fetch('/api/admin?resource=cash_registers');
+        if (!cashResponse.ok) throw new Error('No se pudo cargar la caja.');
+        const {data: cashRows} = await cashResponse.json();
+        const cashData = cashRows?.[0];
+        if (cashData) {
+          setCashStatus(cashData.status === 'abierta' ? 'abierta' : 'cerrada');
+          if (cashData.closed_at) setLastClosedDate(cashData.closed_at.split('T')[0]);
+        } else {
+          // Sin registros, la caja no está abierta.
+          setCashStatus('cerrada');
+          setLastClosedDate('');
         }
 
         setAppointments(sortAppointmentsChronologically(Array.isArray(apts) ? apts : []));
@@ -277,13 +272,17 @@ export default function AdminDashboard() {
 
   const handleUnblockBarberPin = async (barberId: string, barberName: string) => {
     try {
-      if (!supabase) throw new Error('Sin conexión con la base de datos.');
-
-      const { error } = await supabase.rpc('admin_unblock_barber_pin', {
-        p_barber_id: barberId,
+      // Solo la API administrativa, con cookie firmada, puede desbloquear un PIN.
+      const response = await fetch('/api/admin', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({operation: 'UNBLOCK_BARBER_PIN', barberId}),
       });
-
-      if (error) throw new Error(error.message);
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.ok) {
+        throw new Error(result.error || 'No se pudo desbloquear el PIN.');
+      }
 
       localStorage.removeItem(`pin_lock_${barberId}`);
       localStorage.removeItem(`pin_attempts_${barberId}`);
@@ -365,7 +364,11 @@ export default function AdminDashboard() {
 const handleAddBarber = async () => {
     if (!newBarberName.trim()) return;
     const rate = Math.min(100, Math.max(0, Number(newBarberCommission) || 50));
-    const cleanPin = newBarberPin.trim().slice(0, 4) || '1234';
+    const cleanPin = newBarberPin.trim();
+    if (!/^\d{4,6}$/.test(cleanPin) || cleanPin === '1234') {
+      setAdminError('Definí un PIN de 4 a 6 dígitos, distinto de 1234.');
+      return;
+    }
     const slug = newBarberName
       .trim()
       .toLowerCase()
@@ -409,7 +412,7 @@ const handleAddBarber = async () => {
       checkBarberLocks(finalBarbers);
       setNewBarberName('');
       setNewBarberCommission('50');
-      setNewBarberPin('1234');
+      setNewBarberPin('');
       
       alert(`¡Barbero ${newItem.name} agregado con éxito!`);
     } catch (err: any) {
@@ -431,7 +434,7 @@ const handleAddBarber = async () => {
         const rate = Math.min(100, Math.max(0, Number(value) || 0));
         return { ...b, commissionRate: rate, isOwner: rate === 100 };
       }
-      return { ...b, pin: String(value).slice(0, 4) };
+      return { ...b, pin: String(value).trim() };
     });
     setBarbers(updated);
     try {
@@ -441,6 +444,29 @@ const handleAddBarber = async () => {
       setBarbers(previous);
       setAdminError(err?.message || 'Error al actualizar los datos del barbero.');
     }
+  };
+
+  const handleBarberPinBlur = (id: string, currentPin: string) => {
+    const candidate = barberPinDrafts[id];
+    if (candidate === undefined) return;
+    if (candidate === currentPin) {
+      setBarberPinDrafts((prev) => {
+        const next = {...prev};
+        delete next[id];
+        return next;
+      });
+      return;
+    }
+    if (!/^\d{4,6}$/.test(candidate) || candidate === '1234') {
+      setAdminError('El PIN debe tener de 4 a 6 dígitos y no puede ser 1234.');
+      return; // Mantener el borrador visible, sin guardar un PIN incompleto.
+    }
+    void handleUpdateBarberField(id, 'pin', candidate);
+    setBarberPinDrafts((prev) => {
+      const next = {...prev};
+      delete next[id];
+      return next;
+    });
   };
 
   const handleToggleBarberService = (barberId: string, serviceId: string) => {
@@ -483,20 +509,34 @@ const handleAddBarber = async () => {
 
   const handleAddExpense = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!expenseDesc.trim() || !expenseAmount || Number(expenseAmount) <= 0) return;
+    if (savingExpense) return;
+
+    setExpenseFeedback(null);
+    const description = expenseDesc.trim();
+    const amount = Number(expenseAmount);
+
+    if (!description || !expenseAmount.trim() || !Number.isFinite(amount) || amount <= 0) {
+      setExpenseFeedback({kind: 'error', message: 'Ingresá una descripción y un monto mayor a $0.'});
+      return;
+    }
+
+    setSavingExpense(true);
     try {
       setAdminError('');
       const updated = await createExpense({
-        description: expenseDesc.trim(),
-        amount: Number(expenseAmount),
+        description,
+        amount,
         category: expenseCategory,
         date: new Date().toISOString().split('T')[0],
       });
       setExpenses(Array.isArray(updated) ? updated : []);
       setExpenseDesc('');
       setExpenseAmount('');
+      setExpenseFeedback({kind: 'success', message: 'Gasto registrado correctamente.'});
     } catch (err: any) {
-      setAdminError(err?.message || 'Error al registrar el gasto.');
+      setExpenseFeedback({kind: 'error', message: err?.message || 'No se pudo registrar el gasto.'});
+    } finally {
+      setSavingExpense(false);
     }
   };
 
@@ -927,6 +967,11 @@ const handleAddBarber = async () => {
 
           {activeTab === 'caja' && (
             <div className="space-y-6">
+              {cashStatus !== 'abierta' && (
+                <div role="status" className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
+                  La caja está cerrada. Podés consultar el historial, pero no agregar ni borrar gastos, propinas o cobros manuales hasta abrir la próxima caja.
+                </div>
+              )}
               <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-6 space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div>
@@ -946,13 +991,15 @@ const handleAddBarber = async () => {
                       <button
                         type="button"
                         onClick={async () => {
-                          if (!supabase) return;
-                          await supabase.from('cash_registers').insert([{
-                            shop_id: SHOP_UUID,
-                            initial_amount: grossRevenueTotal,
-                            total_sales: grossRevenueTotal,
-                            status: 'abierta'
-                          }]);
+                          const res = await fetch('/api/admin', {
+                            method: 'POST', headers: {'Content-Type':'application/json'},
+                            body: JSON.stringify({operation:'OPEN_CASH', initialAmount:grossRevenueTotal}),
+                          });
+                          if (!res.ok) {
+                            const payload = await res.json().catch(() => ({}));
+                            alert(payload.error || 'No se pudo abrir la caja.');
+                            return;
+                          }
                           setCashStatus('abierta');
                           alert('¡Caja abierta con éxito!');
                         }}
@@ -966,13 +1013,16 @@ const handleAddBarber = async () => {
                       <button
                         type="button"
                         onClick={async () => {
-                          if (!supabase) return;
                           const todayIso = new Date().toISOString();
-                          await supabase.from('cash_registers').update({
-                            closed_at: todayIso,
-                            final_amount: ownerFinalNetPocket,
-                            status: 'cerrada'
-                          }).eq('shop_id', SHOP_UUID).eq('status', 'abierta');
+                          const res = await fetch('/api/admin', {
+                            method: 'POST', headers: {'Content-Type':'application/json'},
+                            body: JSON.stringify({operation:'CLOSE_CASH', finalAmount:ownerFinalNetPocket}),
+                          });
+                          if (!res.ok) {
+                            const payload = await res.json().catch(() => ({}));
+                            alert(payload.error || 'No se pudo cerrar la caja.');
+                            return;
+                          }
                           setCashStatus('cerrada');
                           setLastClosedDate(todayIso.split('T')[0]);
                           alert(`¡Caja cerrada correctamente! Total neto consolidado: $${ownerFinalNetPocket}`);
@@ -1116,7 +1166,8 @@ const handleAddBarber = async () => {
 
                   <button
                     type="submit"
-                    className="sm:col-span-2 py-2.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs cursor-pointer flex items-center justify-center gap-1 touch-manipulation"
+                    disabled={cashStatus !== 'abierta'}
+                    className="sm:col-span-2 py-2.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs cursor-pointer flex items-center justify-center gap-1 touch-manipulation disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <Plus className="w-4 h-4" />
                     <span>Registrar</span>
@@ -1152,7 +1203,8 @@ const handleAddBarber = async () => {
                             <button
                               type="button"
                               onClick={() => handleRemoveChargeAdmin(chg.id)}
-                              className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-rose-400 cursor-pointer"
+                              disabled={cashStatus !== 'abierta'}
+                              className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-rose-400 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -1201,7 +1253,8 @@ const handleAddBarber = async () => {
 
                   <button
                     type="submit"
-                    className="sm:col-span-2 py-2.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs cursor-pointer flex items-center justify-center gap-1 touch-manipulation"
+                    disabled={cashStatus !== 'abierta'}
+                    className="sm:col-span-2 py-2.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs cursor-pointer flex items-center justify-center gap-1 touch-manipulation disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <Plus className="w-4 h-4" />
                     <span>Sumar</span>
@@ -1239,7 +1292,8 @@ const handleAddBarber = async () => {
                             <button
                               type="button"
                               onClick={() => handleRemoveTipAdmin(tp.id)}
-                              className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-rose-400 cursor-pointer"
+                              disabled={cashStatus !== 'abierta'}
+                              className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-rose-400 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -1257,7 +1311,7 @@ const handleAddBarber = async () => {
                   Gastos del Local
                 </h3>
 
-                <form onSubmit={handleAddExpense} className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+                <form onSubmit={handleAddExpense} noValidate className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
                   <input
                     type="text"
                     placeholder="Descripción del gasto..."
@@ -1278,18 +1332,31 @@ const handleAddBarber = async () => {
                   <input
                     type="number"
                     placeholder="Monto $"
+                    min="0.01"
+                    step="0.01"
                     value={expenseAmount}
                     onChange={(e) => setExpenseAmount(e.target.value)}
                     className="sm:col-span-2 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
                   />
                   <button
                     type="submit"
-                    className="sm:col-span-2 py-2.5 px-4 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-bold text-xs cursor-pointer flex items-center justify-center gap-1 touch-manipulation"
+                    disabled={savingExpense || cashStatus !== 'abierta'}
+                    className="sm:col-span-2 py-2.5 px-4 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-bold text-xs cursor-pointer flex items-center justify-center gap-1 touch-manipulation disabled:opacity-50 disabled:cursor-wait"
                   >
                     <Plus className="w-4 h-4" />
-                    <span>Agregar</span>
+                    <span>{savingExpense ? 'Guardando...' : 'Agregar'}</span>
                   </button>
                 </form>
+                {expenseFeedback && (
+                  <p
+                    role={expenseFeedback.kind === 'error' ? 'alert' : 'status'}
+                    className={expenseFeedback.kind === 'error'
+                      ? 'text-xs text-rose-400'
+                      : 'text-xs text-emerald-400'}
+                  >
+                    {expenseFeedback.message}
+                  </p>
+                )}
 
                 <div className="space-y-2">
                   {filteredExpenses.map((exp) => (
@@ -1309,7 +1376,8 @@ const handleAddBarber = async () => {
                         <button
                           type="button"
                           onClick={() => handleRemoveExpense(exp.id)}
-                          className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-rose-400 cursor-pointer"
+                          disabled={cashStatus !== 'abierta'}
+                          className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-rose-400 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -1581,6 +1649,7 @@ const handleAddBarber = async () => {
                               }
                               handleStatusChange(apt.id, 'completado');
                             }}
+                            disabled={cashStatus !== 'abierta'}
                             className="px-3 py-2 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-bold flex items-center gap-1 cursor-pointer"
                           >
                             <CheckCircle2 className="w-3.5 h-3.5" />
@@ -1665,6 +1734,7 @@ const handleAddBarber = async () => {
                             }
                             handleStatusChange(apt.id, 'completado');
                           }}
+                          disabled={cashStatus !== 'abierta'}
                           className="px-3 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 text-xs font-semibold flex items-center space-x-1 cursor-pointer"
                         >
                           <CheckCircle2 className="w-3.5 h-3.5" />
@@ -1719,9 +1789,11 @@ const handleAddBarber = async () => {
                     <KeyRound className="w-3.5 h-3.5 text-zinc-500 mr-1.5 shrink-0" />
                     <input
                       type="text"
-                      maxLength={4}
+                      inputMode="numeric"
+                      maxLength={6}
+                      placeholder="PIN de 4 a 6 dígitos"
                       value={newBarberPin}
-                      onChange={(e) => setNewBarberPin(e.target.value)}
+                      onChange={(e) => setNewBarberPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
                       className="w-full bg-transparent text-base sm:text-sm outline-none"
                     />
                   </div>
@@ -1789,10 +1861,21 @@ const handleAddBarber = async () => {
                             <span className="text-xs text-zinc-400">PIN:</span>
                             <input
                               type="text"
-                              maxLength={4}
-                              value={brb.pin}
-                              onChange={(e) => handleUpdateBarberField(brb.id, 'pin', e.target.value)}
-                              className="w-12 bg-transparent font-mono font-bold text-zinc-100 outline-none text-sm"
+                              inputMode="numeric"
+                              maxLength={6}
+                              value={barberPinDrafts[brb.id] ?? brb.pin}
+                              onChange={(e) => setBarberPinDrafts((prev) => ({
+                                ...prev,
+                                [brb.id]: e.target.value.replace(/\D/g, '').slice(0, 6),
+                              }))}
+                              onBlur={() => handleBarberPinBlur(brb.id, brb.pin)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  e.currentTarget.blur();
+                                }
+                              }}
+                              className="w-20 bg-transparent font-mono font-bold text-zinc-100 outline-none text-sm"
                             />
                           </div>
 
