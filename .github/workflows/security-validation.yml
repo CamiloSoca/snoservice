@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - security/pre-launch
+      - staging
   pull_request:
     branches:
       - main
