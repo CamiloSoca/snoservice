@@ -101,6 +101,26 @@ export async function POST(request: Request) {
     const supabase = getSupabaseServer();
 
     switch (operation) {
+      case 'UNBLOCK_BARBER_PIN': {
+        const barberId = String(body.barberId || '');
+        if (!isValidUUID(barberId)) {
+          return NextResponse.json({error: 'ID de barbero inválido.'}, {status: 400});
+        }
+
+        // No confiar en un ID enviado por el navegador: validar pertenencia al negocio.
+        const {data: barber, error: barberError} = await supabase
+          .from('barbers').select('id').eq('id', barberId)
+          .eq('shop_id', SHOP_UUID).maybeSingle();
+        if (barberError) return NextResponse.json({error: 'Error verificando el barbero.'}, {status: 500});
+        if (!barber) return NextResponse.json({error: 'Barbero no encontrado.'}, {status: 404});
+
+        const {error} = await supabase.from('audit_logs').delete()
+          .eq('shop_id', SHOP_UUID)
+          .eq('action', 'PIN_FAILED')
+          .eq('details', barberId);
+        if (error) return NextResponse.json({error: 'No se pudo desbloquear el PIN.'}, {status: 500});
+        return NextResponse.json({ok: true});
+      }
       case 'OPEN_CASH': {
         const total = Number(body.initialAmount);
         if (!Number.isFinite(total) || total < 0) return NextResponse.json({error: 'Monto inválido'}, {status: 400});
