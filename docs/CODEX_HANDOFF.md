@@ -39,7 +39,7 @@ Los scripts en `security/production/` son **borradores no ejecutados ni ensayado
 - `node tests/integration-auth-readonly.mjs`: aprobado contra localhost/staging tras corregir una aserción de forma; administrador/barbero, aislamiento por barbero, ausencia de PIN en JSON. Un primer intento tuvo `EACCES` de red del sandbox y se volvió a ejecutar con autorización.
 - `tests/staging-rollback.sql`: **13/13** transaccionales aprobadas tras el guard y **antes** de instalar la validación de INSERT. Su fixture histórico ahora puede ser rechazado por el nuevo trigger; no afirmar que esta suite volvió a pasar después.
 - `tests/staging-booking-rollback.sql`: **13/13** aprobadas tras el trigger corregido, dentro de transacción revertida.
-- `npx tsc --noEmit`: aprobado. `npm run build`: aprobado con Next.js 16.4; advirtió sobre la convención obsoleta `middleware`. La última compilación fue antes del ajuste pequeño en `lib/crypto-server.ts` y antes de este handoff; repetirla en la próxima sesión.
+- `npx tsc --noEmit`: aprobado. `npm run build`: **aprobado nuevamente después del commit `57af599`**, con Next.js 16.4 y el ajuste de `lib/crypto-server.ts`; advirtió sobre la convención obsoleta `middleware`.
 - `npm run lint`: **falló** con 61 errores y 22 advertencias del código propio después de excluir `.agents/**` (antes había 99/24). Pendiente corregirlos sin desactivar reglas importantes.
 - `git diff --check`: aprobado antes de este documento.
 - No se ejecutó flujo HTTP válido con escritura, prueba de dos conexiones concurrentes, Playwright, cierre de caja aislado, ensayo de migración en clon ni carga agresiva.
@@ -69,7 +69,7 @@ Hay una referencia anterior a otros cambios de 495/756 ms (admin) y 514/790 ms (
 2. PIN de barberos en texto claro en la base; autenticación administrativa basada en contraseña de entorno y limitación de tasa no distribuida. Requiere diseño y migración de seguridad probada.
 3. Ausencia de ensayo de migración de producción en clon, copia/recuperación comprobada y prueba E2E de escritura/concurrencia. Producción carece de exclusión de solapamientos. Los scripts de producción pueden necesitar correcciones.
 4. Falta confirmar dueño y configurar ID del local en Vercel producción. Valores secretos de Vercel no verificables desde esta inspección; revisión segura posterior obligatoria.
-5. Lint fuente fallido. Build debe repetirse después del último ajuste de `lib/crypto-server.ts`.
+5. Lint fuente fallido. La compilación final sí pasó; el aviso de `middleware` queda pendiente.
 6. No hay prueba integral de cierres concurrentes ni registro de movimientos con caja cerrada en un entorno aislado equivalente. Consultar `docs/KNOWN_RISKS.md` para más detalle.
 
 ## Archivos para revisar al retomar
@@ -81,4 +81,4 @@ Hay una referencia anterior a otros cambios de 495/756 ms (admin) y 514/790 ms (
 
 ## Primera tarea de la próxima sesión
 
-Confirmar `git status` y commit local, leer este handoff y `docs/RELEASE_READINESS.md`; repetir `npm run build` y `npm run lint` tras el último ajuste. Después atacar el bloqueo más grave con **un entorno aislado**: ensayo de los SQL de producción en clon/backup verificado y prueba de reservas concurrentes. Antes de cualquier escritura confirmar el proyecto destino y la reversibilidad; jamás aplicar los borradores a producción ni hacer push/despliegue sin autorización. No repetir las pruebas de staging ya documentadas salvo que cambie el código o SQL relevante.
+Confirmar `git status` y los commits locales, leer este handoff y `docs/RELEASE_READINESS.md`; resolver `npm run lint`. Después atacar el bloqueo más grave con **un entorno aislado**: ensayo de los SQL de producción en clon/backup verificado y prueba de reservas concurrentes. Antes de cualquier escritura confirmar el proyecto destino y la reversibilidad; jamás aplicar los borradores a producción ni hacer push/despliegue sin autorización. No repetir las pruebas de staging ya documentadas salvo que cambie el código o SQL relevante.
