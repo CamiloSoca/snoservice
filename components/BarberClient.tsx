@@ -25,10 +25,8 @@ import {
   unlockBarberPanelWithPin,
   getBarberDashboardSnapshot,
   updateAppointmentStatus,
-  getTips,
   createTip,
   deleteTip,
-  getManualCharges,
   createManualCharge,
   deleteManualCharge,
   sortAppointmentsChronologically,
@@ -162,12 +160,11 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
     try {
       setSavingTip(true);
       setErrorMsg('');
-      await createTip({
+      const updatedTips = await createTip({
         barberId: selectedBarberId,
         amount: Number(newTipAmount),
         note: newTipNote.trim(),
       });
-      const updatedTips = await getTips(selectedBarberId);
       setBarberTips(Array.isArray(updatedTips) ? updatedTips : []);
       setNewTipAmount('');
       setNewTipNote('');
@@ -181,8 +178,7 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
   const handleDeleteMyTip = async (tipId: string) => {
     try {
       setErrorMsg('');
-      await deleteTip(tipId);
-      const updatedTips = await getTips(selectedBarberId);
+      const updatedTips = await deleteTip(tipId);
       setBarberTips(Array.isArray(updatedTips) ? updatedTips : []);
     } catch (err: any) {
       setErrorMsg(err?.message || 'No se pudo borrar la propina.');
@@ -195,12 +191,11 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
     try {
       setSavingCharge(true);
       setErrorMsg('');
-      await createManualCharge({
+      const updatedCharges = await createManualCharge({
         barberId: selectedBarberId,
         amount: Number(newChargeAmount),
         note: newChargeNote.trim() || 'Corte extra sin turno',
       });
-      const updatedCharges = await getManualCharges(selectedBarberId);
       setBarberCharges(Array.isArray(updatedCharges) ? updatedCharges : []);
       setNewChargeAmount('');
       setNewChargeNote('');
@@ -214,8 +209,7 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
   const handleDeleteMyCharge = async (chargeId: string) => {
     try {
       setErrorMsg('');
-      await deleteManualCharge(chargeId);
-      const updatedCharges = await getManualCharges(selectedBarberId);
+      const updatedCharges = await deleteManualCharge(chargeId);
       setBarberCharges(Array.isArray(updatedCharges) ? updatedCharges : []);
     } catch (err: any) {
       setErrorMsg(err?.message || 'No se pudo borrar el cobro.');
