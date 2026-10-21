@@ -30,7 +30,6 @@ import {
   getBarbers,
   getPublicBookedSlots,
   getShopConfig,
-  getCachedInitialData,
   createAppointment,
   buildRealOpenDays,
   getSlotsForDayOfWeek,
@@ -38,6 +37,7 @@ import {
   timeToMinutes,
   minutesToTime,
 } from '@/lib/booking-store';
+import { InitialShopSkeleton, InitialShopError } from '@/components/InitialShopState';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -87,31 +87,21 @@ function AgendarContent() {
   const searchParams = useSearchParams();
   const barberoParam = searchParams.get('barbero');
 
-  const initialCache = getCachedInitialData();
-
   const [activeTab, setActiveTab] = useState<'reservar' | 'cancelar'>('reservar');
   const [step, setStep] = useState<number>(1);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [preselectedFromUrl, setPreselectedFromUrl] = useState<boolean>(false);
 
-  const [shopConfig, setShopConfig] = useState<ShopConfig>(initialCache.shopConfig);
-  const [services, setServices] = useState<ServiceItem[]>(
-    initialCache.services.filter((s) => s.active !== false)
-  );
-  const [barbers, setBarbers] = useState<BarberItem[]>(
-    initialCache.barbers.filter((b) => b.active !== false)
-  );
+  const [shopConfig, setShopConfig] = useState<ShopConfig>(DEFAULT_SHOP_CONFIG);
+  const [initialLoad, setInitialLoad] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [services, setServices] = useState<ServiceItem[]>([]);
+  const [barbers, setBarbers] = useState<BarberItem[]>([]);
   const [appointments, setAppointments] = useState<AppointmentItem[]>([]);
-  const [days, setDays] = useState<DayOption[]>(() =>
-    buildRealOpenDays(30, initialCache.shopConfig.schedule)
-  );
+  const [days, setDays] = useState<DayOption[]>([]);
 
   const [selectedService, setSelectedService] = useState<ServiceItem | null>(null);
   const [selectedBarber, setSelectedBarber] = useState<BarberItem | null>(null);
-  const [selectedDate, setSelectedDate] = useState<string>(() => {
-    const initialDays = buildRealOpenDays(30, initialCache.shopConfig.schedule);
-    return initialDays.length > 0 ? initialDays[0].dateString : '';
-  });
+  const [selectedDate, setSelectedDate] = useState<string>('');
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
 
   const [clientName, setClientName] = useState<string>('');
@@ -154,14 +144,12 @@ function AgendarContent() {
 
         setSelectedService((prev) => {
           if (!prev) return null;
-          return (
-            activeServices.find(
-              (s) => s.id === prev.id || s.name.trim().toLowerCase() === prev.name.trim().toLowerCase()
-            ) || prev
-          );
+          return activeServices.find((s) => s.id === prev.id) || null;
         });
+        setInitialLoad('ready');
       } catch (err) {
         console.error('Error cargando agenda:', err);
+        setInitialLoad('error');
       }
     }
 
@@ -501,6 +489,13 @@ function AgendarContent() {
   };
 
   const logoImage = shopConfig.logoUrl || DEFAULT_SHOP_CONFIG.logoUrl;
+
+  if (initialLoad === 'loading') {
+    return <InitialShopSkeleton label="Cargando servicios y horarios disponibles..." />;
+  }
+  if (initialLoad === 'error') {
+    return <InitialShopError label="No se pudo consultar la disponibilidad. Intentá de nuevo para evitar reservar un horario incorrecto." />;
+  }
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 pb-28 lg:pb-12">

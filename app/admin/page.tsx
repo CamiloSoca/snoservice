@@ -66,6 +66,7 @@ import {
   canCompleteAppointment,
   DayOption,
 } from '@/lib/booking-store';
+import { InitialShopSkeleton, InitialShopError } from '@/components/InitialShopState';
 
 type PeriodFilter = 'hoy' | 'semana' | 'mes';
 
@@ -143,6 +144,7 @@ export default function AdminDashboard() {
   const [savedBanner, setSavedBanner] = useState(false);
   const [savingBarberId, setSavingBarberId] = useState<string | null>(null);
   const [adminError, setAdminError] = useState<string>('');
+  const [initialLoad, setInitialLoad] = useState<'loading' | 'ready' | 'error'>('loading');
 
   const [cashStatus, setCashStatus] = useState<'abierta' | 'cerrada'>('cerrada');
   const [lastClosedDate, setLastClosedDate] = useState<string>('');
@@ -219,9 +221,11 @@ export default function AdminDashboard() {
         setShopConfig(freshConfig);
 
         checkBarberLocks(freshBarbers);
+        setInitialLoad('ready');
       } catch (err: any) {
         console.error('Error cargando panel de admin:', err);
         setAdminError(err?.message || 'Error al cargar los datos del panel administrativo.');
+        setInitialLoad('error');
       }
     }
 
@@ -765,6 +769,13 @@ const handleAddBarber = async () => {
 
   const todayStr = new Date().toISOString().split('T')[0];
   const isTodayClosed = cashStatus === 'cerrada' && lastClosedDate === todayStr;
+
+  if (initialLoad === 'loading') {
+    return <InitialShopSkeleton label="Cargando agenda, barberos y caja..." />;
+  }
+  if (initialLoad === 'error') {
+    return <InitialShopError label="No se pudieron cargar los datos del administrador. Intentá de nuevo." />;
+  }
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 pb-28 sm:pb-16 relative">
