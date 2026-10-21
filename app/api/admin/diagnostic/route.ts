@@ -2,8 +2,6 @@ import { NextResponse } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase-server';
 import { requireAdminSession } from '@/lib/session';
 
-export const dynamic = 'force-dynamic';
-
 function compactError(error: unknown) {
   if (!error || typeof error !== 'object') return { code: null, roleHint: null };
   const e = error as { code?: string; hint?: string };
