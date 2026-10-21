@@ -123,21 +123,61 @@ export async function POST(request: Request) {
       }
       case 'OPEN_CASH': {
         const total = Number(body.initialAmount);
-        if (!Number.isFinite(total) || total < 0) return NextResponse.json({error: 'Monto inválido'}, {status: 400});
+        if (!Number.isFinite(total) || total < 0) {
+          return NextResponse.json({error: 'Monto inicial inválido.'}, {status: 400});
+        }
+        const {data: openRows, error: lookupError} = await supabase.from('cash_registers')
+          .select('id')
+          .eq('shop_id', SHOP_UUID)
+          .eq('status', 'abierta')
+          .limit(1);
+        if (lookupError) {
+          return NextResponse.json({error: 'No se pudo verificar el estado de caja.'}, {status: 500});
+        }
+        if (openRows?.length) {
+          return NextResponse.json({error: 'Ya existe una caja abierta para este negocio.'}, {status: 409});
+        }
+
+        // La verificación anterior mejora UX; el índice único parcial en PostgreSQL
+        // es la protección real contra dos aperturas simultáneas.
         const {error} = await supabase.from('cash_registers').insert({
           shop_id: SHOP_UUID, initial_amount: total,
           total_sales: total, status: 'abierta',
         });
-        if (error) return NextResponse.json({error: 'No se pudo abrir caja'}, {status: 500});
+        if (error?.code === '23505') {
+          return NextResponse.json({error: 'Ya existe una caja abierta para este negocio.'}, {status: 409});
+        }
+        if (error) return NextResponse.json({error: 'No se pudo abrir caja.'}, {status: 500});
         return NextResponse.json({ok: true});
       }
       case 'CLOSE_CASH': {
         const amount = Number(body.finalAmount);
-        if (!Number.isFinite(amount)) return NextResponse.json({error: 'Monto inválido'}, {status: 400});
+        if (!Number.isFinite(amount)) return NextResponse.json({error: 'Monto inválido.'}, {status: 400});
+
+        const {data: openRows, error: lookupError} = await supabase.from('cash_registers')
+          .select('id')
+          .eq('shop_id', SHOP_UUID)
+          .eq('status', 'abierta')
+          .order('opened_at', {ascending: false})
+          .limit(2);
+        if (lookupError) {
+          return NextResponse.json({error: 'No se pudo verificar la caja abierta.'}, {status: 500});
+        }
+        if (!openRows?.length) {
+          return NextResponse.json({error: 'No existe una caja abierta para cerrar.'}, {status: 409});
+        }
+        if (openRows.length !== 1) {
+          return NextResponse.json({error: 'Hay varias cajas abiertas; se requiere revisión antes de cerrar.'}, {status: 409});
+        }
+
         const {data, error} = await supabase.from('cash_registers')
           .update({closed_at: new Date().toISOString(), final_amount: amount, status: 'cerrada'})
-          .eq('shop_id', SHOP_UUID).eq('status', 'abierta').select('id');
-        if (error || !data?.length) return NextResponse.json({error: 'No se pudo cerrar caja'}, {status: 400});
+          .eq('id', openRows[0].id)
+          .eq('shop_id', SHOP_UUID)
+          .eq('status', 'abierta')
+          .select('id');
+        if (error) return NextResponse.json({error: 'No se pudo cerrar la caja.'}, {status: 500});
+        if (data?.length !== 1) return NextResponse.json({error: 'La caja ya estaba cerrada o cambió de estado.'}, {status: 409});
         return NextResponse.json({ok: true});
       }
       case 'SAVE_BARBERS': {
