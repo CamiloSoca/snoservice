@@ -1,0 +1,33 @@
+name: Security branch validation
+
+on:
+  push:
+    branches:
+      - security/pre-launch
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: test-placeholder-not-real
+      SESSION_SECRET: security-ci-only-placeholder-not-production-secret-64-characters
+      SUPABASE_SERVICE_ROLE_KEY: test-placeholder-not-real
+      ADMIN_USER: ci-admin
+      ADMIN_PASS: ci-password-placeholder
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
