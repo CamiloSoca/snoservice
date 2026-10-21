@@ -24,6 +24,7 @@ import {
   ManualChargeItem,
   unlockBarberPanelWithPin,
   getBarberDashboardSnapshot,
+  getMontevideoDateKey,
   updateAppointmentStatus,
   createTip,
   deleteTip,
@@ -87,6 +88,7 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
   const [barberTips, setBarberTips] = useState<TipItem[]>([]);
   const [barberCharges, setBarberCharges] = useState<ManualChargeItem[]>([]);
   const [commissionRate, setCommissionRate] = useState<number>(50);
+  const [isOwner, setIsOwner] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [panelLoading, setPanelLoading] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
@@ -129,6 +131,7 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
       const snapshot = await getBarberDashboardSnapshot();
       setCashOpen(snapshot.cashOpen);
       setCommissionRate(snapshot.commissionRate);
+      setIsOwner(snapshot.isOwner);
       setBarberAppointments(sortAppointmentsChronologically(snapshot.appointments));
       setBarberTips(snapshot.tips);
       setBarberCharges(snapshot.manualCharges);
@@ -219,7 +222,7 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
   const selectedBarberObj = barbers.find((b) => b.id === selectedBarberId);
 
   const completedAppointments = barberAppointments.filter(
-    (a) => a.status === 'completado' && isWithinSelectedMonth(a.createdAt, selectedMonth)
+    (a) => a.status === 'completado' && isWithinSelectedMonth(a.completedAt || a.createdAt, selectedMonth)
   );
 
   const monthlyTips = barberTips.filter((t) =>
@@ -238,13 +241,15 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
   const grossFromCharges = monthlyCharges.reduce((sum, c) => sum + Number(c.amount), 0);
   const totalGrossMonthly = grossFromAppointments + grossFromCharges;
 
-  const totalEarned = Math.round((totalGrossMonthly * commissionRate) / 100);
+  const totalEarned = completedAppointments.reduce((sum, a) => sum + splitBusinessRevenue(Number(a.priceSnapshot ?? a.servicePrice), {commissionRate, isOwner}, a).barber, 0) +
+    monthlyCharges.reduce((sum, c) => sum + splitBusinessRevenue(Number(c.amount), {commissionRate, isOwner}, c).barber, 0);
+  const totalToBusiness = totalGrossMonthly - totalEarned;
   const totalTipsAmount = monthlyTips.reduce((sum, t) => sum + Number(t.amount), 0);
 
   const dailyAppointments = barberAppointments.filter((a) => {
     if (a.status !== 'completado') return false;
     if (auditDate) {
-      const aDate = (a.createdAt || '').split('T')[0];
+      const aDate = getMontevideoDateKey(a.completedAt || a.createdAt);
       if (aDate !== auditDate) return false;
     }
     return true;
@@ -252,7 +257,7 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
 
   const dailyCharges = barberCharges.filter((c) => {
     if (auditDate) {
-      const cDate = (c.createdAt || '').split('T')[0];
+      const cDate = getMontevideoDateKey(c.createdAt);
       if (cDate !== auditDate) return false;
     }
     return true;
@@ -260,7 +265,7 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
 
   const dailyTips = barberTips.filter((t) => {
     if (auditDate) {
-      const tDate = (t.createdAt || '').split('T')[0];
+      const tDate = getMontevideoDateKey(t.createdAt);
       if (tDate !== auditDate) return false;
     }
     return true;
@@ -270,7 +275,8 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
     dailyAppointments.reduce((sum, a) => sum + Number(a.priceSnapshot ?? a.servicePrice), 0) +
     dailyCharges.reduce((sum, c) => sum + Number(c.amount), 0);
 
-  const dailyCommission = Math.round((dailyGross * commissionRate) / 100);
+  const dailyCommission = dailyAppointments.reduce((sum, a) => sum + splitBusinessRevenue(Number(a.priceSnapshot ?? a.servicePrice), {commissionRate, isOwner}, a).barber, 0) +
+    dailyCharges.reduce((sum, c) => sum + splitBusinessRevenue(Number(c.amount), {commissionRate, isOwner}, c).barber, 0);
   const dailyTipsTotal = dailyTips.reduce((sum, t) => sum + Number(t.amount), 0);
 
   return (
@@ -413,7 +419,7 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
                 </div>
                 <div>
                   <h2 className="text-lg font-extrabold">{selectedBarberObj?.name}</h2>
-                  <p className="text-xs text-zinc-400">Comisión configurada: {commissionRate}%</p>
+                  <p className="text-xs text-zinc-400">{isOwner ? 'Propietario: todos tus cortes ingresan al fondo común, sin comisión individual' : `Comisión configurada: ${commissionRate}%`}</p>
                 </div>
               </div>
 
@@ -475,8 +481,9 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
               </div>
 
               <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-1">
-                <span className="text-xs text-emerald-400 font-bold">Mis Comisiones (Mes)</span>
+                <span className="text-xs text-emerald-400 font-bold">{isOwner ? 'Mis Comisiones (Mes): dueño' : 'Mis Comisiones (Mes)'}</span>
                 <p className="text-3xl font-extrabold text-emerald-400">${totalEarned}</p>
+                {isOwner && <p className="text-xs text-zinc-400">Aporte al fondo común este mes: ${totalToBusiness}</p>}
               </div>
 
               <div className="bg-zinc-900/90 border border-emerald-500/30 rounded-2xl p-5 space-y-1">
