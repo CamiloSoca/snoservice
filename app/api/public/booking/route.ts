@@ -227,9 +227,17 @@ export async function POST(request: Request) {
       .select('id,code,created_at')
       .single();
 
-    if (insertErr || !inserted) {
+    if (insertErr?.code === '23505' || insertErr?.code === '23P01') {
+      // La restricción SQL es la última defensa contra reservas simultáneas.
       return NextResponse.json(
-        { error: `No se pudo guardar el turno: ${insertErr?.message || 'Error interno'}` },
+        {error: 'Este horario acaba de ocuparse. Elegí otro horario.'},
+        {status: 409}
+      );
+    }
+    if (insertErr || !inserted) {
+      console.error('No se pudo insertar el turno:', insertErr?.code);
+      return NextResponse.json(
+        { error: 'No se pudo guardar el turno. Intentá nuevamente.' },
         { status: 400 }
       );
     }
