@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useSyncExternalStore } from 'react';
+import { usePathname } from 'next/navigation';
 import { InitialShopError, InitialShopSkeleton } from '@/components/InitialShopState';
 import type { PublicShopData } from '@/lib/public-shop-data';
 import {
@@ -16,7 +17,11 @@ type LoadingVariant = 'home' | 'booking' | 'barber';
 // Kept inside app/layout.tsx. Unlike a page component, this effect and the
 // shared store survive client-side navigation. Only public data is persisted.
 export function PublicShopProvider({children}: {children: React.ReactNode}) {
+  const pathname = usePathname();
   useEffect(() => {
+    // La zona privada no necesita consultas publicas extras para autenticarse
+    // ni al cargar su informacion financiera.
+    if (!(pathname === '/' || pathname.startsWith('/agendar') || pathname.startsWith('/barbero'))) return;
     let stopped = false;
     const refreshIfNeeded = () => {
       if (stopped || document.visibilityState === 'hidden' || !publicShopNeedsRefresh()) return;
@@ -33,7 +38,7 @@ export function PublicShopProvider({children}: {children: React.ReactNode}) {
       window.removeEventListener('focus', refreshIfNeeded);
       document.removeEventListener('visibilitychange', refreshIfNeeded);
     };
-  }, []);
+  }, [pathname]);
 
   return <>{children}</>;
 }
