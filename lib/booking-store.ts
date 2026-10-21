@@ -642,8 +642,18 @@ export async function getAdminDashboardSnapshot(): Promise<AdminDashboardSnapsho
 }
 
 export async function getPublicBookedSlots(forceRefresh = false): Promise<AppointmentItem[]> {
-  const { appointments } = await apiRequest('/api/public/booking', {cache: 'no-store'});
-  return (appointments || []) as AppointmentItem[];
+  const {appointments} = await apiRequest('/api/public/booking', {cache: 'no-store'});
+  // El servidor devuelve sólo estos cinco campos públicos. Restaurar en
+  // memoria el modelo necesario para la lógica existente de solapamientos.
+  type BookedSlot = Pick<AppointmentItem, 'barberId' | 'dateString' |
+    'timeSlot' | 'durationMinutes' | 'status'>;
+  return ((appointments || []) as BookedSlot[]).map((slot) => ({
+    id: '', code: '', serviceId: '', serviceName: '', servicePrice: 0,
+    priceSnapshot: 0, durationMinutes: Number(slot.durationMinutes) || 60,
+    barberId: slot.barberId, barberName: '', dateString: slot.dateString,
+    timeSlot: slot.timeSlot, status: slot.status, createdAt: '',
+    clientName: '', clientPhone: '', clientEmail: '', clientNotes: '',
+  }));
 }
 
 export async function createAppointment(item: {
