@@ -1,7 +1,7 @@
 // app/barbero/barbero.tsx
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -19,8 +19,6 @@ import {
   BarChart3,
 } from 'lucide-react';
 import {
-  BarberItem,
-  ShopConfig,
   AppointmentItem,
   TipItem,
   ManualChargeItem,
@@ -77,8 +75,11 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
   const [selectedMonth, setSelectedMonth] = useState<string>(availableMonths[0].value);
   const [auditDate, setAuditDate] = useState<string>(new Date().toISOString().split('T')[0]);
 
-  const [shopConfig] = useState<ShopConfig>(initialShop.shopConfig);
-  const [barbers] = useState<BarberItem[]>(() => initialShop.barbers.filter(b => b.active !== false));
+  const shopConfig = initialShop.shopConfig;
+  const barbers = useMemo(
+    () => initialShop.barbers.filter(b => b.active !== false),
+    [initialShop.barbers],
+  );
 
   const [selectedBarberId, setSelectedBarberId] = useState<string>('');
   const [pin, setPin] = useState<string>('');

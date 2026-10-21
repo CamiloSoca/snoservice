@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import BottomNav from "@/components/BottomNav";
+import { PublicShopProvider } from "@/components/PublicShopProvider";
 
 const jakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
@@ -56,8 +57,10 @@ export default function RootLayout({
       <body
         className={`${jakarta.className} antialiased bg-zinc-950 text-zinc-100 min-h-screen overflow-y-auto overflow-x-clip pb-24 sm:pb-0 selection:bg-emerald-500/30 selection:text-emerald-200`}
       >
-        {children}
-        <BottomNav />
+        <PublicShopProvider>
+          {children}
+          <BottomNav />
+        </PublicShopProvider>
       </body>
     </html>
   );
