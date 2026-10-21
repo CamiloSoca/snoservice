@@ -26,10 +26,7 @@ import {
   ShopConfig,
   DayOption,
   DEFAULT_SHOP_CONFIG,
-  getServices,
-  getBarbers,
   getPublicBookedSlots,
-  getShopConfig,
   createAppointment,
   buildRealOpenDays,
   getSlotsForDayOfWeek,
@@ -38,6 +35,7 @@ import {
   minutesToTime,
 } from '@/lib/booking-store';
 import { InitialShopSkeleton, InitialShopError } from '@/components/InitialShopState';
+import { getPublicShopData } from '@/lib/public-shop-data';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -120,12 +118,11 @@ function AgendarContent() {
   useEffect(() => {
     async function loadData() {
       try {
-        const [config, srvs, brbs, publicSlots] = await Promise.all([
-          getShopConfig(),
-          getServices(),
-          getBarbers(),
+        const [publicShop, publicSlots] = await Promise.all([
+          getPublicShopData(),
           getPublicBookedSlots(),
         ]);
+        const {shopConfig: config, services: srvs, barbers: brbs} = publicShop;
 
         const activeServices = srvs.filter((s) => s.active !== false);
         const activeBarbers = brbs.filter((b) => b.active !== false);
@@ -491,7 +488,7 @@ function AgendarContent() {
   const logoImage = shopConfig.logoUrl || DEFAULT_SHOP_CONFIG.logoUrl;
 
   if (initialLoad === 'loading') {
-    return <InitialShopSkeleton label="Cargando servicios y horarios disponibles..." />;
+    return <InitialShopSkeleton variant="booking" label="Buscando servicios y horarios disponibles..." />;
   }
   if (initialLoad === 'error') {
     return <InitialShopError label="No se pudo consultar la disponibilidad. Intentá de nuevo para evitar reservar un horario incorrecto." />;
