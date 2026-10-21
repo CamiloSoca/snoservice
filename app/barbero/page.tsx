@@ -37,7 +37,7 @@ import {
   sortAppointmentsChronologically,
   canCompleteAppointment,
 } from '@/lib/booking-store';
-import { InitialShopSkeleton, InitialShopError } from '@/components/InitialShopState';
+import { InitialShopSkeleton, InitialShopError, PanelLoading } from '@/components/InitialShopState';
 import { getPublicShopData } from '@/lib/public-shop-data';
 
 const MONTH_NAMES = [
@@ -416,9 +416,7 @@ function BarberPortalContent() {
             </form>
           </div>
         ) : panelLoading ? (
-          <div role="status" className="p-6 rounded-2xl border border-zinc-800 bg-zinc-900 text-sm text-zinc-300 text-center">
-            PIN validado. Cargando tus turnos, movimientos y caja...
-          </div>
+          <PanelLoading label="PIN validado. Preparando tus turnos y finanzas..." />
         ) : (
           <div className="space-y-6">
             {!cashOpen && (
