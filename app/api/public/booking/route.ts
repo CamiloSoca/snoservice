@@ -16,7 +16,7 @@ export async function GET() {
 
     const { data, error } = await supabase
       .from('appointments')
-      .select('id, barber_id, service_id, date_string, time_slot, duration_minutes, status, created_at, client_email, client_name, client_phone')
+      .select('id, barber_id, service_id, date_string, time_slot, duration_minutes, status')
       .eq('shop_id', SHOP_UUID)
       .neq('status', 'cancelado')
       .order('created_at', { ascending: false });
@@ -41,12 +41,12 @@ export async function GET() {
       barberName: '',
       dateString: apt.date_string,
       timeSlot: apt.time_slot,
-      clientName: apt.client_name || '',
-      clientPhone: apt.client_phone || '',
-      clientEmail: apt.client_email || '', // 👈 Incluido obligatoriamente
+      clientName: '',
+      clientPhone: '',
+      clientEmail: '',
       clientNotes: '',
       status: apt.status || 'confirmado',
-      createdAt: apt.created_at,
+      createdAt: '',
     }));
 
     return NextResponse.json({ appointments: sanitizedSlots });
@@ -68,7 +68,7 @@ export async function POST(request: Request) {
     }
 
     const cleanName = sanitizeInput(String(clientName || '')).slice(0, 80);
-    const cleanPhone = sanitizeInput(String(clientPhone || '098509376')).slice(0, 25);
+    const cleanPhone = sanitizeInput(String(clientPhone || '')).slice(0, 25);
     const cleanEmail = sanitizeInput(String(clientEmail || '')).slice(0, 100).toLowerCase();
     const cleanNotes = sanitizeInput(String(clientNotes || '')).slice(0, 300);
     const cleanDate = sanitizeInput(String(dateString || '')).slice(0, 30);
