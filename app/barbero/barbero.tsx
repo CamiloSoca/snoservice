@@ -265,8 +265,10 @@ function BarberPageContent() {
   };
 
   const handleStatusChange = async (id: string, status: AppointmentItem['status']) => {
-    const updated = await updateAppointmentStatus(id, status);
-    setAppointments(updated);
+    await updateAppointmentStatus(id, status);
+    setAppointments((current) => current.map((appointment) =>
+      appointment.id === id ? {...appointment, status} : appointment
+    ));
   };
 
   const isPanelUnlocked = currentBarber && unlockedBarberId === currentBarber.id;
