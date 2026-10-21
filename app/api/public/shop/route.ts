@@ -4,11 +4,11 @@ import { getServerPublicShopData } from '@/lib/server-public-shop';
 // Configuracion publica compartida con el primer renderizado de las paginas.
 // Una respuesta cacheada evita repetir consultas a Supabase en navegaciones.
 export async function GET() {
+  // Esta directiva debe ejecutarse FUERA del catch. Next la usa para
+  // interrumpir el prerender de la ruta y despacharla en runtime.
+  await connection();
   const startedAt = performance.now();
   try {
-    // Evitar que el handler quede prerenderizado con las credenciales
-    // de prueba durante CI: leer siempre el cache desde runtime.
-    await connection();
     const data = await getServerPublicShopData();
     return NextResponse.json(data, {
       headers: {
