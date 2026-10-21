@@ -49,6 +49,7 @@ import {
   SHOP_UUID,
   generateUUID,
   getServices,
+  getAdminServices,
   saveServices,
   deleteServiceFromDb,
   getAdminBarbers,
@@ -203,7 +204,7 @@ export default function AdminDashboard() {
         setAdminError('');
         const [apts, srvs, brbs, exps, tps, charges, cfg] = await Promise.all([
           getAppointments(),
-          getServices(true),
+          getAdminServices(true),
           getAdminBarbers(),
           getExpenses(),
           getTips(),
@@ -224,21 +225,13 @@ export default function AdminDashboard() {
           setChargeBarberId(freshBarbers[0].id);
         }
 
-        if (supabase) {
-          const { data: cashData } = await supabase
-            .from('cash_registers')
-            .select('status, closed_at')
-            .eq('shop_id', SHOP_UUID)
-            .order('opened_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-          
-          if (cashData) {
-            setCashStatus(cashData.status || 'abierta');
-            if (cashData.closed_at) {
-              setLastClosedDate(cashData.closed_at.split('T')[0]);
-            }
-          }
+        const cashResponse = await fetch('/api/admin?resource=cash_registers');
+        if (!cashResponse.ok) throw new Error('No se pudo cargar la caja.');
+        const {data: cashRows} = await cashResponse.json();
+        const cashData = cashRows?.[0];
+        if (cashData) {
+          setCashStatus(cashData.status || 'abierta');
+          if (cashData.closed_at) setLastClosedDate(cashData.closed_at.split('T')[0]);
         }
 
         setAppointments(sortAppointmentsChronologically(Array.isArray(apts) ? apts : []));
@@ -946,13 +939,11 @@ const handleAddBarber = async () => {
                       <button
                         type="button"
                         onClick={async () => {
-                          if (!supabase) return;
-                          await supabase.from('cash_registers').insert([{
-                            shop_id: SHOP_UUID,
-                            initial_amount: grossRevenueTotal,
-                            total_sales: grossRevenueTotal,
-                            status: 'abierta'
-                          }]);
+                          const res = await fetch('/api/admin', {
+                            method: 'POST', headers: {'Content-Type':'application/json'},
+                            body: JSON.stringify({operation:'OPEN_CASH', initialAmount:grossRevenueTotal}),
+                          });
+                          if (!res.ok) {alert('No se pudo abrir la caja.'); return;}
                           setCashStatus('abierta');
                           alert('¡Caja abierta con éxito!');
                         }}
@@ -966,13 +957,12 @@ const handleAddBarber = async () => {
                       <button
                         type="button"
                         onClick={async () => {
-                          if (!supabase) return;
                           const todayIso = new Date().toISOString();
-                          await supabase.from('cash_registers').update({
-                            closed_at: todayIso,
-                            final_amount: ownerFinalNetPocket,
-                            status: 'cerrada'
-                          }).eq('shop_id', SHOP_UUID).eq('status', 'abierta');
+                          const res = await fetch('/api/admin', {
+                            method: 'POST', headers: {'Content-Type':'application/json'},
+                            body: JSON.stringify({operation:'CLOSE_CASH', finalAmount:ownerFinalNetPocket}),
+                          });
+                          if (!res.ok) {alert('No se pudo cerrar la caja.'); return;}
                           setCashStatus('cerrada');
                           setLastClosedDate(todayIso.split('T')[0]);
                           alert(`¡Caja cerrada correctamente! Total neto consolidado: $${ownerFinalNetPocket}`);
