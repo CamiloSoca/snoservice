@@ -68,6 +68,7 @@ import {
   DayOption,
 } from '@/lib/booking-store';
 import { InitialShopSkeleton, InitialShopError } from '@/components/InitialShopState';
+import { splitBusinessRevenue } from '@/lib/financial-allocations';
 
 type PeriodFilter = 'hoy' | 'semana' | 'mes';
 
@@ -168,6 +169,7 @@ export default function AdminDashboard() {
 
   const [newBarberName, setNewBarberName] = useState('');
   const [newBarberCommission, setNewBarberCommission] = useState('50');
+  const [newBarberIsOwner, setNewBarberIsOwner] = useState(false);
   const [newBarberPin, setNewBarberPin] = useState('');
   const [barberPinDrafts, setBarberPinDrafts] = useState<Record<string, string>>({});
 
@@ -373,7 +375,7 @@ const handleAddBarber = async () => {
       bio: '',
       specialties: ['Fade', 'Corte Clásico'],
       serviceIds: services.map((s) => s.id),
-      isOwner: rate === 100,
+      isOwner: newBarberIsOwner,
       active: true,
       commissionRate: rate,
       pin: cleanPin,
@@ -401,6 +403,7 @@ const handleAddBarber = async () => {
       checkBarberLocks(finalBarbers);
       setNewBarberName('');
       setNewBarberCommission('50');
+      setNewBarberIsOwner(false);
       setNewBarberPin('');
       
       alert(`¡Barbero ${newItem.name} agregado con éxito!`);
@@ -413,16 +416,17 @@ const handleAddBarber = async () => {
 
   const handleUpdateBarberField = async (
     id: string,
-    field: 'commissionRate' | 'pin',
-    value: number | string
+    field: 'commissionRate' | 'pin' | 'isOwner',
+    value: number | string | boolean
   ) => {
     const previous = barbers;
     const updated = barbers.map((b) => {
       if (b.id !== id) return b;
       if (field === 'commissionRate') {
         const rate = Math.min(100, Math.max(0, Number(value) || 0));
-        return { ...b, commissionRate: rate, isOwner: rate === 100 };
+        return { ...b, commissionRate: rate };
       }
+      if (field === 'isOwner') return { ...b, isOwner: value === true };
       return { ...b, pin: String(value).trim() };
     });
     setBarbers(updated);
@@ -627,8 +631,7 @@ const handleAddBarber = async () => {
 
   const filteredAppointments = safeAppointments.filter((apt) => {
     if (apt.status !== 'completado') return false;
-    if (period === 'hoy' && cashStatus === 'cerrada') return false;
-    return isWithinPeriod(apt.createdAt, period, selectedMonth);
+    return isWithinPeriod(apt.completedAt || apt.createdAt, period, selectedMonth);
   });
 
   const filteredExpenses = safeExpenses.filter((exp) =>
@@ -640,14 +643,13 @@ const handleAddBarber = async () => {
   );
 
   const filteredManualCharges = safeManualCharges.filter((c) => {
-    if (period === 'hoy' && cashStatus === 'cerrada') return false;
     return isWithinPeriod(c.createdAt, period, selectedMonth);
   });
 
   const auditedAppointments = safeAppointments.filter((apt) => {
     if (apt.status !== 'completado') return false;
     if (auditDate) {
-      const aptDate = (apt.createdAt || '').split('T')[0];
+      const aptDate = getMontevideoDateKey(apt.completedAt || apt.createdAt);
       if (aptDate !== auditDate) return false;
     }
     if (auditBarberId !== 'todos' && apt.barberId !== auditBarberId) return false;
@@ -656,7 +658,7 @@ const handleAddBarber = async () => {
 
   const auditedManualCharges = safeManualCharges.filter((c) => {
     if (auditDate) {
-      const cDate = (c.createdAt || '').split('T')[0];
+      const cDate = getMontevideoDateKey(c.createdAt);
       if (cDate !== auditDate) return false;
     }
     if (auditBarberId !== 'todos' && c.barberId !== auditBarberId) return false;
@@ -665,7 +667,7 @@ const handleAddBarber = async () => {
 
   const auditedTips = safeTips.filter((t) => {
     if (auditDate) {
-      const tDate = (t.createdAt || '').split('T')[0];
+      const tDate = getMontevideoDateKey(t.createdAt);
       if (tDate !== auditDate) return false;
     }
     if (auditBarberId !== 'todos' && t.barberId !== auditBarberId) return false;
@@ -674,7 +676,7 @@ const handleAddBarber = async () => {
 
   const auditedExpenses = safeExpenses.filter((e) => {
     if (auditDate) {
-      const eDate = (e.createdAt || e.date || '').split('T')[0];
+      const eDate = (e.createdAt ? getMontevideoDateKey(e.createdAt) : e.date);
       if (eDate !== auditDate) return false;
     }
     return true;
@@ -697,7 +699,8 @@ const handleAddBarber = async () => {
       const cutsGen = brbApts.reduce((sum, a) => sum + Number(a.priceSnapshot ?? a.servicePrice), 0);
       const manualGen = brbCharges.reduce((sum, c) => sum + Number(c.amount), 0);
       const totalGen = cutsGen + manualGen;
-      const commissionEarned = Math.round((totalGen * barber.commissionRate) / 100);
+      const commissionEarned = brbApts.reduce((sum, a) => sum + splitBusinessRevenue(Number(a.priceSnapshot ?? a.servicePrice), barber, a).barber, 0) +
+        brbCharges.reduce((sum, c) => sum + splitBusinessRevenue(Number(c.amount), barber, c).barber, 0);
       const tipsEarned = brbTips.reduce((sum, t) => sum + Number(t.amount), 0);
 
       return {
@@ -731,8 +734,12 @@ const handleAddBarber = async () => {
 
     const grossGenerated = grossFromAppointments + barberManualChargesTotal;
 
-    const barberTakeHome = Math.round((grossGenerated * barber.commissionRate) / 100);
-    const leftForOwner = grossGenerated - barberTakeHome;
+    const allocated = [
+      ...barberApts.map(a => splitBusinessRevenue(Number(a.priceSnapshot ?? a.servicePrice), barber, a)),
+      ...filteredManualCharges.filter(c => c.barberId === barber.id).map(c => splitBusinessRevenue(Number(c.amount), barber, c)),
+    ];
+    const barberTakeHome = allocated.reduce((sum, row) => sum + row.barber, 0);
+    const leftForOwner = allocated.reduce((sum, row) => sum + row.business, 0);
 
     const barberTipsTotal = filteredTips
       .filter((t) => t.barberId === barber.id)
@@ -753,14 +760,8 @@ const handleAddBarber = async () => {
   const totalManualChargesAll = filteredManualCharges.reduce((sum, c) => sum + Number(c.amount), 0);
   const grossRevenueTotal = totalGrossAppointments + totalManualChargesAll;
 
-  const ownerOwnCutsRevenue = barberFinancials
-    .filter((b) => b.barber.isOwner || b.barber.commissionRate === 100)
-    .reduce((sum, b) => sum + b.barberTakeHome, 0);
-  const staffCommissionsToPay = barberFinancials
-    .filter((b) => !b.barber.isOwner && b.barber.commissionRate < 100)
-    .reduce((sum, b) => sum + b.barberTakeHome, 0);
-  const ownerShareFromStaff = barberFinancials.reduce((sum, b) => sum + b.leftForOwner, 0);
-  const ownerTotalGrossIncome = ownerOwnCutsRevenue + ownerShareFromStaff;
+  const staffCommissionsToPay = barberFinancials.reduce((sum, b) => sum + b.barberTakeHome, 0);
+  const ownerTotalGrossIncome = barberFinancials.reduce((sum, b) => sum + b.leftForOwner, 0);
   const totalExpensesAmount = filteredExpenses.reduce((sum, exp) => sum + Number(exp.amount), 0);
   const ownerFinalNetPocket = ownerTotalGrossIncome - totalExpensesAmount;
 
@@ -1130,7 +1131,7 @@ const handleAddBarber = async () => {
                             <span>{item.barber.name}</span>
                             <span className="text-emerald-400">${item.totalGen}</span>
                           </div>
-                          <p className="text-zinc-400">{item.cutsCount} cortes • Comisión ({item.barber.commissionRate}%): <strong className="text-zinc-200">${item.commissionEarned}</strong></p>
+                          <p className="text-zinc-400">{item.cutsCount} cortes • {item.barber.isOwner ? 'Dueño: 100% al fondo común' : 'Comisiones'}: <strong className="text-zinc-200">${item.commissionEarned}</strong></p>
                           {item.tipsEarned > 0 && <p className="text-amber-400 font-medium">Propinas: +${item.tipsEarned}</p>}
                         </div>
                       ))}
@@ -1456,7 +1457,7 @@ const handleAddBarber = async () => {
 
                 <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 space-y-1">
                   <div className="flex items-center justify-between text-xs text-zinc-400">
-                    <span>Pago a Barberos</span>
+                    <span>Comisiones generadas</span>
                     <Users className="w-4 h-4 text-amber-400" />
                   </div>
                   <p className="text-2xl font-extrabold text-amber-400">-${staffCommissionsToPay}</p>
@@ -1465,11 +1466,11 @@ const handleAddBarber = async () => {
 
                 <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 space-y-1">
                   <div className="flex items-center justify-between text-xs text-zinc-300 font-semibold">
-                    <span>Total Bruto Negocio</span>
+                    <span>Fondo común antes de gastos</span>
                     <Crown className="w-4 h-4 text-emerald-400" />
                   </div>
                   <p className="text-2xl font-extrabold text-emerald-400">${ownerTotalGrossIncome}</p>
-                  <p className="text-[11px] text-zinc-400">Propietario + retención</p>
+                  <p className="text-[11px] text-zinc-400">Ingresos del local menos comisiones, antes de gastos</p>
                 </div>
 
                 <div
@@ -1480,7 +1481,7 @@ const handleAddBarber = async () => {
                   }`}
                 >
                   <div className="flex items-center justify-between text-xs font-bold text-emerald-300">
-                    <span>Neto en Bolsillo</span>
+                    <span>Resultado fondo común</span>
                     <DollarSign className="w-4 h-4 text-emerald-400" />
                   </div>
                   <p
@@ -1499,7 +1500,7 @@ const handleAddBarber = async () => {
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
                   {barberFinancials.map((item) => {
-                    const isOwner = item.barber.isOwner || item.barber.commissionRate === 100;
+                    const isOwner = item.barber.isOwner === true;
                     const totalBarberPocket = item.barberTakeHome + item.barberTipsTotal;
 
                     return (
@@ -1515,7 +1516,7 @@ const handleAddBarber = async () => {
                             <div>
                               <h4 className="font-bold text-sm">{item.barber.name}</h4>
                               <span className="text-[11px] text-zinc-400">
-                                Comisión: <strong>{item.barber.commissionRate}%</strong>
+                                {isOwner ? 'Propietario: 100% al fondo común' : <>Comisión: <strong>{item.barber.commissionRate}%</strong></>}
                               </span>
                             </div>
                           </div>
@@ -1550,8 +1551,8 @@ const handleAddBarber = async () => {
                           </div>
 
                           <div className="flex justify-between pt-1 text-emerald-400 font-bold">
-                            <span>Para local:</span>
-                            <span>+${isOwner ? item.barberTakeHome : item.leftForOwner}</span>
+                            <span>Al fondo común:</span>
+                            <span>+${item.leftForOwner}</span>
                           </div>
                         </div>
                       </div>
@@ -1817,6 +1818,10 @@ const handleAddBarber = async () => {
                     Sumar
                   </button>
                 </div>
+                <label className="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
+                  <input type="checkbox" checked={newBarberIsOwner} onChange={(e) => setNewBarberIsOwner(e.target.checked)} className="accent-emerald-500 size-4" />
+                  Es propietario: 100% de sus cortes al fondo común (sin comisión)
+                </label>
               </div>
 
               <div className="grid grid-cols-1 gap-4">
@@ -1848,18 +1853,23 @@ const handleAddBarber = async () => {
                                 <ExternalLink className="w-3 h-3" />
                               </Link>
                             </div>
-                            <p className="text-xs text-zinc-400">Barbero</p>
+                            <p className="text-xs text-zinc-400">{brb.isOwner ? 'Propietario · fondo común' : 'Barbero · comisión'}</p>
                           </div>
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2.5">
+                          <label className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-zinc-800 bg-zinc-950 text-xs text-zinc-300 cursor-pointer">
+                            <input type="checkbox" className="size-4 accent-emerald-500" checked={brb.isOwner === true} onChange={(e) => handleUpdateBarberField(brb.id, 'isOwner', e.target.checked)} />
+                            Propietario
+                          </label>
                           <div className="flex items-center space-x-1.5 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-1.5">
-                            <span className="text-xs text-zinc-400">Comisión:</span>
+                            <span className="text-xs text-zinc-400">{brb.isOwner ? 'Comisión no aplica:' : 'Comisión:'}</span>
                             <input
                               type="number"
                               min={0}
                               max={100}
                               value={brb.commissionRate}
+                              disabled={brb.isOwner === true}
                               onChange={(e) =>
                                 handleUpdateBarberField(brb.id, 'commissionRate', e.target.value)
                               }
