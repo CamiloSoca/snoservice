@@ -25,27 +25,32 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
 
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 12_000);
     try {
       const res = await fetch('/api/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: username.trim(), password }),
+        cache: 'no-store',
+        signal: controller.signal,
       });
-
       const data = await res.json();
 
       if (!res.ok || !data.ok) {
         setError(data.error || 'Usuario o contraseña incorrectos.');
-        setLoading(false);
         return;
       }
 
-      // Un login cambia el estado de autenticación en el servidor. Hacer
-      // una navegación real garantiza que Next no reutilice una respuesta
-      // /admin prefetched cuando todavía no existía la cookie.
+      // La cookie acaba de cambiar. Una navegacion real evita reutilizar
+      // el prefetch de /admin hecho antes de iniciar sesion.
       window.location.replace('/admin');
     } catch {
-      setError('No se pudo conectar con el servidor.');
+      setError(controller.signal.aborted
+        ? 'El acceso demoró demasiado. Volvé a intentar; no hace falta cerrar la aplicación.'
+        : 'No se pudo conectar con el servidor.');
+    } finally {
+      window.clearTimeout(timeout);
       setLoading(false);
     }
   };
