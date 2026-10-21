@@ -170,7 +170,8 @@ export default function AdminDashboard() {
 
   const [newBarberName, setNewBarberName] = useState('');
   const [newBarberCommission, setNewBarberCommission] = useState('50');
-  const [newBarberPin, setNewBarberPin] = useState('1234');
+  const [newBarberPin, setNewBarberPin] = useState('');
+  const [barberPinDrafts, setBarberPinDrafts] = useState<Record<string, string>>({});
 
   const [expenseDesc, setExpenseDesc] = useState('');
   const [expenseAmount, setExpenseAmount] = useState('');
@@ -357,7 +358,11 @@ export default function AdminDashboard() {
 const handleAddBarber = async () => {
     if (!newBarberName.trim()) return;
     const rate = Math.min(100, Math.max(0, Number(newBarberCommission) || 50));
-    const cleanPin = newBarberPin.trim().slice(0, 4) || '1234';
+    const cleanPin = newBarberPin.trim();
+    if (!/^\d{4,6}$/.test(cleanPin) || cleanPin === '1234') {
+      setAdminError('Definí un PIN de 4 a 6 dígitos, distinto de 1234.');
+      return;
+    }
     const slug = newBarberName
       .trim()
       .toLowerCase()
@@ -401,7 +406,7 @@ const handleAddBarber = async () => {
       checkBarberLocks(finalBarbers);
       setNewBarberName('');
       setNewBarberCommission('50');
-      setNewBarberPin('1234');
+      setNewBarberPin('');
       
       alert(`¡Barbero ${newItem.name} agregado con éxito!`);
     } catch (err: any) {
@@ -423,7 +428,7 @@ const handleAddBarber = async () => {
         const rate = Math.min(100, Math.max(0, Number(value) || 0));
         return { ...b, commissionRate: rate, isOwner: rate === 100 };
       }
-      return { ...b, pin: String(value).slice(0, 4) };
+      return { ...b, pin: String(value).trim() };
     });
     setBarbers(updated);
     try {
@@ -433,6 +438,29 @@ const handleAddBarber = async () => {
       setBarbers(previous);
       setAdminError(err?.message || 'Error al actualizar los datos del barbero.');
     }
+  };
+
+  const handleBarberPinBlur = (id: string, currentPin: string) => {
+    const candidate = barberPinDrafts[id];
+    if (candidate === undefined) return;
+    if (candidate === currentPin) {
+      setBarberPinDrafts((prev) => {
+        const next = {...prev};
+        delete next[id];
+        return next;
+      });
+      return;
+    }
+    if (!/^\d{4,6}$/.test(candidate) || candidate === '1234') {
+      setAdminError('El PIN debe tener de 4 a 6 dígitos y no puede ser 1234.');
+      return; // Mantener el borrador visible, sin guardar un PIN incompleto.
+    }
+    void handleUpdateBarberField(id, 'pin', candidate);
+    setBarberPinDrafts((prev) => {
+      const next = {...prev};
+      delete next[id];
+      return next;
+    });
   };
 
   const handleToggleBarberService = (barberId: string, serviceId: string) => {
@@ -1708,9 +1736,11 @@ const handleAddBarber = async () => {
                     <KeyRound className="w-3.5 h-3.5 text-zinc-500 mr-1.5 shrink-0" />
                     <input
                       type="text"
-                      maxLength={4}
+                      inputMode="numeric"
+                      maxLength={6}
+                      placeholder="PIN de 4 a 6 dígitos"
                       value={newBarberPin}
-                      onChange={(e) => setNewBarberPin(e.target.value)}
+                      onChange={(e) => setNewBarberPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
                       className="w-full bg-transparent text-base sm:text-sm outline-none"
                     />
                   </div>
@@ -1778,10 +1808,21 @@ const handleAddBarber = async () => {
                             <span className="text-xs text-zinc-400">PIN:</span>
                             <input
                               type="text"
-                              maxLength={4}
-                              value={brb.pin}
-                              onChange={(e) => handleUpdateBarberField(brb.id, 'pin', e.target.value)}
-                              className="w-12 bg-transparent font-mono font-bold text-zinc-100 outline-none text-sm"
+                              inputMode="numeric"
+                              maxLength={6}
+                              value={barberPinDrafts[brb.id] ?? brb.pin}
+                              onChange={(e) => setBarberPinDrafts((prev) => ({
+                                ...prev,
+                                [brb.id]: e.target.value.replace(/\D/g, '').slice(0, 6),
+                              }))}
+                              onBlur={() => handleBarberPinBlur(brb.id, brb.pin)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  e.currentTarget.blur();
+                                }
+                              }}
+                              className="w-20 bg-transparent font-mono font-bold text-zinc-100 outline-none text-sm"
                             />
                           </div>
 
