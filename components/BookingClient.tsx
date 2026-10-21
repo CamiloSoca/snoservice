@@ -1,7 +1,7 @@
 // app/agendar/page.tsx
 'use client';
 
-import { useState, useRef, useEffect, Suspense } from 'react';
+import { useState, useRef, useEffect, useMemo, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -18,12 +18,10 @@ import {
   Hash,
   UserCheck,
 } from 'lucide-react';
-import { createClient } from '@supabase/supabase-js';
 import {
   ServiceItem,
   BarberItem,
   AppointmentItem,
-  ShopConfig,
   DayOption,
   DEFAULT_SHOP_CONFIG,
   getPublicBookedSlots,
@@ -36,10 +34,6 @@ import {
 } from '@/lib/booking-store';
 import { InitialShopSkeleton } from '@/components/InitialShopState';
 import type { PublicShopData } from '@/lib/public-shop-data';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-const supabase = supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null;
 
 const BOOKING_COOLDOWN_MS = 60 * 1000;
 const BOOKING_STORAGE_KEY = '13cut_last_booking_ts';
@@ -90,12 +84,23 @@ function AgendarContent({initialShop}: {initialShop: PublicShopData}) {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [preselectedFromUrl, setPreselectedFromUrl] = useState<boolean>(false);
 
-  const [shopConfig] = useState<ShopConfig>(initialShop.shopConfig);
-  const [services] = useState<ServiceItem[]>(() => initialShop.services.filter(s => s.active !== false));
-  const [barbers] = useState<BarberItem[]>(() => initialShop.barbers.filter(b => b.active !== false));
+  // Se actualiza solo cuando cambia el snapshot publico compartido.
+  // No se vuelve a consultar Supabase al navegar entre secciones.
+  const shopConfig = initialShop.shopConfig;
+  const services = useMemo(
+    () => initialShop.services.filter(s => s.active !== false),
+    [initialShop.services],
+  );
+  const barbers = useMemo(
+    () => initialShop.barbers.filter(b => b.active !== false),
+    [initialShop.barbers],
+  );
+  const days = useMemo(
+    () => buildRealOpenDays(30, shopConfig.schedule),
+    [shopConfig.schedule],
+  );
   const [appointments, setAppointments] = useState<AppointmentItem[]>([]);
   const [availabilityState, setAvailabilityState] = useState<'loading' | 'ready' | 'error'>('loading');
-  const [days] = useState<DayOption[]>(() => buildRealOpenDays(30, initialShop.shopConfig.schedule));
 
   const [selectedService, setSelectedService] = useState<ServiceItem | null>(null);
   const [selectedBarber, setSelectedBarber] = useState<BarberItem | null>(null);
@@ -103,6 +108,16 @@ function AgendarContent({initialShop}: {initialShop: PublicShopData}) {
     buildRealOpenDays(30, initialShop.shopConfig.schedule)[0]?.dateString || ''
   );
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
+
+  // Si cambia un precio, un profesional o los dias de atencion mientras
+  // esta abierta la agenda, reconciliar las selecciones sin mostrar objetos viejos.
+  useEffect(() => {
+    setSelectedService(prev => prev ? services.find(s => s.id === prev.id) || null : null);
+    setSelectedBarber(prev => prev ? barbers.find(b => b.id === prev.id) || null : null);
+    setSelectedDate(prev =>
+      days.some(day => day.dateString === prev) ? prev : days[0]?.dateString || ''
+    );
+  }, [services, barbers, days]);
 
   const [clientName, setClientName] = useState<string>('');
   const [clientEmail, setClientEmail] = useState<string>('');
