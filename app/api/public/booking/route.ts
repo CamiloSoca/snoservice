@@ -1,3 +1,4 @@
+import { randomBytes } from 'crypto';
 // app/api/public/booking/route.ts
 import { NextResponse } from 'next/server';
 import { getSupabaseServer, SHOP_UUID, SHOP_PREFIX } from '@/lib/supabase-server';
@@ -188,7 +189,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const randomCode = `${SHOP_PREFIX}-` + Math.floor(1000 + Math.random() * 9000);
+    const randomCode = `${SHOP_PREFIX}-` + randomBytes(8).toString('hex').toUpperCase();
 
     const insertPayload: Record<string, any> = {
       shop_id: SHOP_UUID,
