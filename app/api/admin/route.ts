@@ -160,7 +160,13 @@ export async function POST(request: Request) {
               .replace(/\s+/g, '-');
 
           const commissionRate = Math.min(100, Math.max(0, Number(b.commissionRate ?? 50)));
-          const pin = String(b.pin || '1234').trim().slice(0, 4) || '1234';
+          const pin = String(b.pin ?? '').trim();
+          if (!/^\d{4,6}$/.test(pin)) {
+            return NextResponse.json(
+              {error: 'El PIN debe tener de 4 a 6 dígitos numéricos.'},
+              {status: 400}
+            );
+          }
           const serviceIds = Array.isArray(b.serviceIds)
             ? b.serviceIds.filter((sid: string) => isValidUUID(sid))
             : [];
