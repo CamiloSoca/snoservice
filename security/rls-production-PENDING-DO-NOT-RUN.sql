@@ -25,9 +25,15 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'ABORTAR: hay multiples cajas abiertas para el mismo negocio';
   END IF;
-END $$;
+END $;
 
-DO $$
+-- Proteccion transaccional ante dos aperturas concurrentes de caja.
+-- IF NOT EXISTS: la restriccion ya aplicada no se duplica.
+CREATE UNIQUE INDEX IF NOT EXISTS cash_registers_one_open_per_shop
+  ON public.cash_registers (shop_id)
+  WHERE status = 'abierta';
+
+DO $
 DECLARE
   t text;
   c record;
