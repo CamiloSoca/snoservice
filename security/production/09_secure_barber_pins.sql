@@ -22,7 +22,7 @@ UPDATE public.barbers SET pin=extensions.crypt(pin,extensions.gen_salt('bf',10))
  WHERE pin ~ '^[0-9]{4,6}$';
 DO $check$
 BEGIN
- IF EXISTS (SELECT 1 FROM public.barbers WHERE pin !~ '^\\$2[abxy]\\$[0-9]{2}\\$[./A-Za-z0-9]{53}$') THEN
+ IF EXISTS (SELECT 1 FROM public.barbers WHERE length(pin)<>60 OR left(pin,3) NOT IN ('$2a','$2b','$2x','$2y')) THEN
    RAISE EXCEPTION 'Existen PIN con formato inesperado. No se aplicó el cambio.';
  END IF;
 END $check$;
