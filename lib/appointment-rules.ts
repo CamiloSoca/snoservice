@@ -43,6 +43,24 @@ export function slotsOverlap(firstTime: string, firstDuration: number,
   return first < second + secondDuration && second < first + firstDuration;
 }
 
+// Reglas de agenda real: servicios cortos (hasta 90 min) pueden compartir
+// como máximo 30 minutos. Servicios largos (>90 min) no se solapan nunca.
+// Un mismo horario de inicio nunca puede asignarse dos veces al mismo barbero.
+export function bookingIntervalsConflict(
+  firstTime: string, firstDuration: number, secondTime: string, secondDuration: number,
+): boolean {
+  const first = minutes(firstTime);
+  const second = minutes(secondTime);
+  if (first === null || second === null ||
+      !Number.isFinite(firstDuration) || !Number.isFinite(secondDuration) ||
+      firstDuration <= 0 || secondDuration <= 0) return true;
+  if (first === second) return true;
+  const sharedMinutes = Math.max(0, Math.min(first + firstDuration, second + secondDuration)
+    - Math.max(first, second));
+  if (sharedMinutes === 0) return false;
+  return firstDuration > 90 || secondDuration > 90 || sharedMinutes > 30;
+}
+
 export function businessDayOptions(now = new Date(), count = 30) {
   const firstDay = dayNumber(now);
   return Array.from({length: count}, (_, offset) => {

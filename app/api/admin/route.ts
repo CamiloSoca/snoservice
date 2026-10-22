@@ -200,27 +200,23 @@ export async function POST(request: Request) {
           });
         }
         if (payloads.length) {
-          const {data: existing, error: ownershipError} = await supabase.from('barbers')
-            .select('id,shop_id,pin').in('id', payloads.map(item => item.id));
-          if (ownershipError) return NextResponse.json({error: 'No se pudo verificar la pertenencia de los barberos.'}, {status: 503});
-          if (existing?.some(row => row.shop_id !== SHOP_UUID)) {
-            return NextResponse.json({error: 'Un barbero pertenece a otro negocio.'}, {status: 403});
-          }
-          const existingPins = new Map((existing || []).map(row => [row.id, row.pin]));
-          for (const item of payloads) {
-            if (!item.pin) item.pin = existingPins.get(item.id) || '';
-            const validNewPin = /^\d{4,6}$/.test(item.pin) && item.pin !== '1234';
-            const existingStoredHash = /^\$2[abxy]\$\d{2}\$[./A-Za-z0-9]{53}$/.test(item.pin)
-              && existingPins.get(item.id) === item.pin;
-            if (!validNewPin && !existingStoredHash) {
-              return NextResponse.json({error: 'Definí un PIN válido para cada barbero nuevo.'}, {status: 400});
-            }
-          }
-          const {error} = await supabase.from('barbers')
-            .upsert(payloads, {onConflict: 'id'});
+          // Una sola transacción en PostgreSQL. No volvemos a enviar el hash
+          // de un PIN existente como si fuese un PIN nuevo: el trigger lo rechaza.
+          // Sólo se modifica el PIN cuando el administrador ingresa otro.
+          const {error} = await supabase.rpc('save_barbers_secure', {
+            p_shop_id: SHOP_UUID,
+            p_entries: payloads,
+          });
           if (error) {
-            console.error('Error guardando barberos en lote:', error.code);
-            return NextResponse.json({error: 'No se pudieron guardar los barberos.'}, {status: 400});
+            console.error('Error guardando barberos:', error.code);
+            if (error.code === '23514') {
+              return NextResponse.json({
+                error: 'Revisá los servicios asignados y el PIN de los barberos. No se guardaron cambios.',
+              }, {status: 400});
+            }
+            return NextResponse.json({
+              error: 'No se pudieron guardar los barberos. No se aplicaron cambios.',
+            }, {status: 503});
           }
         }
         return NextResponse.json({ok: true});

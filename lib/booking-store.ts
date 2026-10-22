@@ -1,7 +1,7 @@
 // lib/booking-store.ts
 import { createClient } from '@supabase/supabase-js';
 import { invalidatePublicShopData } from '@/lib/public-shop-data';
-import {businessDayOptions, slotsOverlap} from '@/lib/appointment-rules';
+import {businessDayOptions, bookingIntervalsConflict} from '@/lib/appointment-rules';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -316,7 +316,7 @@ export function isSlotAvailable(params: {
 
     const matchedDuration = allServices?.find((s) => s.id === apt.serviceId)?.durationMinutes;
     const aptDuration = Math.max(15, Number(apt.durationMinutes || matchedDuration) || 60);
-    if (slotsOverlap(candidateTime, duration, apt.timeSlot, aptDuration)) return false;
+    if (bookingIntervalsConflict(candidateTime, duration, apt.timeSlot, aptDuration)) return false;
   }
 
   return true;
