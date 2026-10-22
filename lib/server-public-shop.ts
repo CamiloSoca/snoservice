@@ -19,7 +19,7 @@ type ServiceRow = {
 type BarberRow = {
   id: string; slug?: string | null; name: string; role?: string | null;
   bio?: string | null; specialties?: string[] | null;
-  service_ids?: string[] | null; active: boolean;
+  service_ids?: string[] | null; image_url?: string | null; active: boolean;
 };
 
 function toPublicShopData(
@@ -54,6 +54,7 @@ function toPublicShopData(
       bio: barber.bio || '',
       specialties: barber.specialties || [],
       serviceIds: barber.service_ids || [],
+      imageUrl: barber.image_url || '',
       active: barber.active,
       isOwner: false,
       commissionRate: 0,
@@ -92,7 +93,7 @@ export async function getServerPublicShopData(): Promise<PublicShopData> {
       .select('id,name,price,duration_minutes,description,image_url,active')
       .eq('shop_id', SHOP_UUID).eq('active', true),
     db.from('barbers')
-      .select('id,slug,name,role,bio,specialties,service_ids,active')
+      .select('id,slug,name,role,bio,specialties,service_ids,active,image_url')
       .eq('shop_id', SHOP_UUID).eq('active', true),
   ]);
   if (shopResult.error || !shopResult.data || servicesResult.error || barbersResult.error) {
