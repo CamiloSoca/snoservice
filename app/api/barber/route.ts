@@ -24,47 +24,32 @@ export async function POST(request: Request) {
     }
 
     const supabase = getSupabaseServer();
-    // Consultas independientes: comprobar perfil y límites de PIN a la vez.
-    // Conservamos el mismo bloqueo y la auditoría de intentos fallidos.
-    const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
-    const [barberLookup, attemptsLookup] = await Promise.all([
+    // La comprobación y el bloqueo por intentos se ejecutan atómicamente
+    // en PostgreSQL. Nunca traer PIN (ni su hash) al servidor Next.js.
+    const [barberLookup, verification] = await Promise.all([
       supabase.from('barbers')
-        .select('id,name,pin,commission_rate,active')
+        .select('id,name,commission_rate,active')
         .eq('id', barberId)
         .eq('shop_id', SHOP_UUID)
         .maybeSingle(),
-      supabase.from('audit_logs')
-        .select('id', {count: 'exact', head: true})
-        .eq('shop_id', SHOP_UUID)
-        .eq('action', 'PIN_FAILED')
-        .eq('details', barberId)
-        .gte('created_at', cutoff),
+      supabase.rpc('verify_barber_pin_login', {
+        p_shop_id: SHOP_UUID,
+        p_barber_id: barberId,
+        p_pin: pin.trim(),
+      }),
     ]);
     const {data: barber, error} = barberLookup;
     if (error || !barber || !barber.active) {
-      return NextResponse.json({error: 'Barbero no encontrado.'}, {status: 404});
+      return NextResponse.json({error: 'Credenciales inválidas.'}, {status: 401});
     }
-    if (attemptsLookup.error) {
-      return NextResponse.json({error: 'No se pudo verificar el límite de intentos.'}, {status: 503});
+    if (verification.error) {
+      return NextResponse.json({error: 'No se pudo validar el acceso.'}, {status: 503});
     }
-    if ((attemptsLookup.count ?? 0) >= 5) {
+    if (verification.data === 'blocked') {
       return NextResponse.json({error: 'Demasiados intentos. Intentá nuevamente en 15 minutos.'}, {status: 429});
     }
-
-    const expectedPin = String(barber.pin || '').trim();
-    if (!expectedPin || expectedPin === '1234') {
-      return NextResponse.json({error: 'El barbero debe configurar un PIN nuevo.'}, {status: 403});
-    }
-    if (pin.trim() !== expectedPin) {
-      const {error: logError} = await supabase.from('audit_logs').insert({
-        shop_id: SHOP_UUID,
-        action: 'PIN_FAILED',
-        details: barberId,
-      });
-      if (logError) {
-        return NextResponse.json({error: 'No se pudo verificar el PIN de forma segura.'}, {status: 503});
-      }
-      return NextResponse.json({error: 'PIN incorrecto.'}, {status: 401});
+    if (verification.data !== 'ok') {
+      return NextResponse.json({error: 'Credenciales inválidas.'}, {status: 401});
     }
 
     const token = signSessionToken({
