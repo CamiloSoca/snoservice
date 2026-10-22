@@ -55,6 +55,7 @@ import {
   saveBarbers,
   deleteBarberFromDb,
   updateAppointmentStatus,
+  getExpenses,
   createExpense,
   deleteExpense,
   createTip,
