@@ -522,6 +522,15 @@ export function getMontevideoDateKey(value: Date | string = new Date()): string 
   return `${read('year')}-${read('month')}-${read('day')}`;
 }
 
+// Una consulta de una columna detecta cambios de reservas sin cargar finanzas.
+export async function getAgendaRevision(): Promise<number> {
+  const {revision} = await apiRequest('/api/agenda-revision', {cache: 'no-store'});
+  if (!Number.isSafeInteger(revision) || revision < 0) {
+    throw new Error('La señal de actualización de agenda no es válida.');
+  }
+  return revision;
+}
+
 export async function getAdminDashboardSnapshot(): Promise<AdminDashboardSnapshot> {
   // Los datos de caja, turnos y gastos no se cachean. Si una consulta queda
   // pendiente por red o Supabase, no mantener el panel cargando indefinidamente.
