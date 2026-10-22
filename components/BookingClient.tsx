@@ -232,8 +232,9 @@ function AgendarContent({initialShop}: {initialShop: PublicShopData}) {
 
   const checkSlotBooked = (barberId: string, dateStr: string, timeSlot: string): boolean => {
     const duration = selectedService?.durationMinutes || 60;
-    // El hueco debe alcanzar para TODO el servicio: hasta el turno siguiente
-    // y también antes del cierre del local (no solo la hora de inicio).
+    // Política del local: hasta 30 min de tolerancia solo ANTES de una
+    // reserva posterior, nunca después; cortes 18:30 pueden acabar 19:30.
+    // El servidor y PostgreSQL vuelven a validar las mismas reglas.
     if (validateBookingTime({
       dateString: dateStr,
       timeSlot,
