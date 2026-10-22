@@ -420,56 +420,56 @@ export async function POST(request: Request) {
         const exp = body.expense || {};
         const description = sanitizeInput(String(exp.description || '')).slice(0, 150);
         const amount = Number(exp.amount);
-        const category = VALID_EXPENSE_CATEGORIES.includes(exp.category)
-          ? exp.category
-          : 'Insumos';
-        const expenseDate = sanitizeInput(
-          String(exp.date || new Date().toISOString().split('T')[0])
-        ).slice(0, 20);
-
-        if (!description || !Number.isFinite(amount) || amount <= 0) {
-          return NextResponse.json(
-            { error: 'Descripción y monto mayor a 0 son obligatorios.' },
-            { status: 400 }
-          );
+        const category = VALID_EXPENSE_CATEGORIES.includes(exp.category) ? exp.category : 'Insumos';
+        const expenseDate = sanitizeInput(String(exp.date || getMontevideoDateKey())).slice(0,20);
+        const requestId = String(body.requestId || '');
+        if (!isValidUUID(requestId)) {
+          return NextResponse.json({error: 'Identificador de gasto inválido.'}, {status: 400});
         }
-
+        if (!description || !Number.isFinite(amount) || amount <= 0) {
+          return NextResponse.json({error: 'Descripción y monto mayor a 0 son obligatorios.'}, {status: 400});
+        }
         const cashDenied = await requireOpenCash();
         if (cashDenied) return cashDenied;
 
-        const { error } = await supabase.from('expenses').insert([
-          {
-            shop_id: SHOP_UUID,
-            description,
-            amount,
-            category,
-            expense_date: expenseDate,
-          },
-        ]);
+        const {data: inserted, error} = await supabase.from('expenses').insert({
+          id: requestId, shop_id: SHOP_UUID, description, amount, category, expense_date: expenseDate,
+        }).select('id,description,amount,category,expense_date,created_at').single();
 
-        if (error) {
-          return NextResponse.json({ error: error.message }, { status: 400 });
+        if (error?.code === '23505') {
+          // Si el usuario reintenta por mala conexión, devolver el movimiento previo.
+          const {data: previous, error: previousError} = await supabase.from('expenses')
+            .select('id,description,amount,category,expense_date,created_at')
+            .eq('shop_id', SHOP_UUID).eq('id', requestId).maybeSingle();
+          if (!previousError && previous && previous.description === description &&
+              Number(previous.amount) === amount && previous.category === category &&
+              previous.expense_date === expenseDate) {
+            return NextResponse.json({ok: true, expense: previous, repeated: true});
+          }
+          return NextResponse.json({error: 'El identificador ya pertenece a otro gasto.'}, {status: 409});
         }
-        return NextResponse.json({ ok: true });
+
+        if (error || !inserted) {
+          console.error('Error creando gasto:', error?.code);
+          return NextResponse.json({error: 'No se pudo registrar el gasto.'}, {status: 500});
+        }
+        return NextResponse.json({ok: true, expense: inserted});
       }
 
       case 'DELETE_EXPENSE': {
         const id = String(body.id || '');
-        if (!isValidUUID(id)) {
-          return NextResponse.json({ error: 'ID de gasto inválido.' }, { status: 400 });
-        }
+        if (!isValidUUID(id)) return NextResponse.json({error: 'ID de gasto inválido.'}, {status: 400});
         const cashDenied = await requireOpenCash();
         if (cashDenied) return cashDenied;
 
-        const { error } = await supabase
-          .from('expenses')
-          .delete()
-          .eq('id', id)
-          .eq('shop_id', SHOP_UUID);
+        const {data: deleted, error} = await supabase.from('expenses')
+          .delete().eq('id', id).eq('shop_id', SHOP_UUID).select('id');
         if (error) {
-          return NextResponse.json({ error: error.message }, { status: 400 });
+          console.error('Error eliminando gasto:', error.code);
+          return NextResponse.json({error: 'No se pudo eliminar el gasto.'}, {status: 400});
         }
-        return NextResponse.json({ ok: true });
+        if (!deleted?.length) return NextResponse.json({error: 'El gasto ya no existe.'}, {status: 404});
+        return NextResponse.json({ok: true, deletedId: id});
       }
 
       default:
