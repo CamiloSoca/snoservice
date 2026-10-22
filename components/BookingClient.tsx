@@ -34,6 +34,7 @@ import {
 } from '@/lib/booking-store';
 import { InitialShopSkeleton } from '@/components/InitialShopState';
 import type { PublicShopData } from '@/lib/public-shop-data';
+import {businessDayOptions} from '@/lib/appointment-rules';
 
 const BOOKING_COOLDOWN_MS = 60 * 1000;
 const BOOKING_STORAGE_KEY = '13cut_last_booking_ts';
@@ -63,7 +64,7 @@ function isSlotPastForSelectedDay(dayObj: DayOption | undefined, timeSlot: strin
   }
 
   const currentTotalMins = currentHour * 60 + currentMinute;
-  const isToday = dayObj.dateString.includes(String(currentDay));
+  const isToday = dayObj.dateString === businessDayOptions(now, 1)[0]?.dateString;
   if (!isToday) return false;
 
   const slotMinutes = timeToMinutes(timeSlot);
@@ -119,7 +120,9 @@ function AgendarContent({initialShop}: {initialShop: PublicShopData}) {
     );
   }, [services, barbers, days]);
 
+  // SNOSERVICE_PHONE_V1: cada reserva utiliza el celular del cliente.
   const [clientName, setClientName] = useState<string>('');
+  const [clientPhone, setClientPhone] = useState<string>('');
   const [clientEmail, setClientEmail] = useState<string>('');
   const [formError, setFormError] = useState<string>('');
   const [confirmedAppointment, setConfirmedAppointment] = useState<AppointmentItem | null>(null);
@@ -280,7 +283,7 @@ function AgendarContent({initialShop}: {initialShop: PublicShopData}) {
         && !checkSlotBooked(selectedBarber.id, selectedDate, selectedTime);
     }
     if (step === 4) {
-      return !isSubmitting && clientName.trim().length >= 3 && isValidEmail(clientEmail);
+      return !isSubmitting && clientName.trim().length >= 3 && /^09[1-9][0-9]{6}$/.test(clientPhone.replace(/\D/g, '')) && isValidEmail(clientEmail);
     }
     return false;
   };
@@ -317,7 +320,7 @@ function AgendarContent({initialShop}: {initialShop: PublicShopData}) {
         setSelectedTime(null);
         setFormError('El horario acaba de ocuparse. Elegí otro horario.');
       } else if (step === 4 && !isSubmitting) {
-        setFormError('Ingresá tu nombre y un correo electrónico válido (ej: tu@correo.com).');
+        setFormError('Ingresá tu nombre, un celular uruguayo (09X XXX XXX) y un correo válido.');
       }
       return;
     }
@@ -368,7 +371,7 @@ function AgendarContent({initialShop}: {initialShop: PublicShopData}) {
           dateString: selectedDate,
           timeSlot: selectedTime,
           clientName: clientName.trim(),
-          clientPhone: '098509376',
+          clientPhone: clientPhone.replace(/\D/g, ''),
           clientEmail: cleanEmail,
           clientNotes: '',
         });
@@ -414,6 +417,7 @@ function AgendarContent({initialShop}: {initialShop: PublicShopData}) {
     if (days.length > 0) setSelectedDate(days[0].dateString);
     setSelectedTime(null);
     setClientName('');
+    setClientPhone('');
     setClientEmail('');
     setFormError('');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1003,6 +1007,15 @@ function AgendarContent({initialShop}: {initialShop: PublicShopData}) {
                             onChange={(e) => setClientName(e.target.value)}
                             className="w-full px-4 py-3.5 rounded-xl border text-base outline-none bg-zinc-950 border-zinc-800 text-zinc-100 focus:border-zinc-500"
                           />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold mb-1.5 opacity-80">Celular uruguayo *</label>
+                          <input type="tel" inputMode="tel" autoComplete="tel-national" maxLength={15}
+                            placeholder="Ej: 098 456 789" value={clientPhone}
+                            onChange={(e) => setClientPhone(e.target.value.replace(/[^\d ]/g, '').slice(0, 15))}
+                            className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3.5 text-base text-zinc-100 outline-none focus:border-emerald-500" />
+                          <p className="mt-1 text-[11px] text-zinc-500">Usamos el número para identificar tu reserva correctamente.</p>
                         </div>
 
                         <div>

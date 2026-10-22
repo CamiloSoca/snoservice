@@ -1,6 +1,7 @@
 // lib/session.ts
 import crypto from 'crypto';
 import { cookies } from 'next/headers';
+import { SHOP_UUID } from '@/lib/supabase-server';
 
 export const ADMIN_COOKIE_NAME = 'barber_admin_session';
 export const BARBER_COOKIE_NAME = 'barber_staff_session';
@@ -60,7 +61,8 @@ export async function requireAdminSession(): Promise<SessionPayload | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get(ADMIN_COOKIE_NAME)?.value;
   const payload = verifySessionToken(token);
-  if (!payload || payload.role !== 'admin') return null;
+  if (!payload || payload.role !== 'admin' || !SHOP_UUID ||
+      !payload.sub.endsWith(`:${SHOP_UUID}`)) return null;
   return payload;
 }
 

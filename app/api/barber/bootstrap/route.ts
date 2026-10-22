@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getBarberSession } from '@/lib/session';
 import { getSupabaseServer, SHOP_UUID } from '@/lib/supabase-server';
 
+let rpcUnavailableUntil = 0;
+
 // La sesión ya fue validada por el POST del PIN. Un solo viaje HTTP trae
 // turnos, movimientos y estado de caja, con consultas SQL paralelas.
 export async function GET() {
@@ -27,10 +29,13 @@ export async function GET() {
     // La cookie firmada se verificó arriba. El RPC recibe SIEMPRE el ID
     // de barbero de la sesión, no del cliente.
     const rpcStart = performance.now();
-    const {data: fastData, error: fastError} = await db.rpc(
-      'barber_bootstrap_snapshot',
-      {p_shop_id: SHOP_UUID, p_barber_id: session.sub}
-    );
+    const fastResult = Date.now() >= rpcUnavailableUntil
+      ? await db.rpc('barber_bootstrap_snapshot',
+        {p_shop_id: SHOP_UUID, p_barber_id: session.sub})
+      : null;
+    const fastData = fastResult?.data;
+    const fastError = fastResult?.error;
+    if (fastError?.code === 'PGRST202') rpcUnavailableUntil = Date.now() + 60_000;
     durations.rpc = performance.now() - rpcStart;
 
     type RowResult = {data: any; error: {code?: string} | null};
@@ -49,21 +54,21 @@ export async function GET() {
       ];
     } else {
       // Fall back to previous implementation if schema cache or RPC fails.
-      console.warn('RPC de barbero no disponible:', fastError?.code || 'invalid_response');
+      if (fastResult) console.warn('RPC de barbero no disponible:', fastError?.code || 'invalid_response');
       results = await Promise.all([
         timed('barber', db.from('barbers')
-          .select('id,name,active,commission_rate')
+          .select('id,name,active,commission_rate,is_owner')
           .eq('shop_id', SHOP_UUID).eq('id', session.sub).maybeSingle()),
         timed('appointments', db.from('appointments')
-          .select('id,code,service_id,barber_id,date_string,time_slot,duration_minutes,client_name,client_phone,client_email,client_notes,price_snapshot,status,created_at,services(name,price,duration_minutes),barbers(name)')
+          .select('id,code,service_id,barber_id,date_string,time_slot,duration_minutes,client_name,client_phone,client_email,client_notes,price_snapshot,status,created_at,completed_at,commission_rate_snapshot,barber_earnings_snapshot,business_earnings_snapshot,completed_cash_register_id,services(name,price,duration_minutes),barbers(name)')
           .eq('shop_id', SHOP_UUID).eq('barber_id', session.sub)
           .order('created_at', {ascending: false})),
         timed('tips', db.from('tips')
-          .select('id,barber_id,amount,note,date_string,created_at')
+          .select('id,barber_id,amount,note,date_string,created_at,cash_register_id')
           .eq('shop_id', SHOP_UUID).eq('barber_id', session.sub)
           .order('created_at', {ascending: false})),
         timed('charges', db.from('manual_charges')
-          .select('id,barber_id,amount,note,date_string,created_at')
+          .select('id,barber_id,amount,note,date_string,created_at,commission_rate_snapshot,barber_earnings_snapshot,business_earnings_snapshot,cash_register_id')
           .eq('shop_id', SHOP_UUID).eq('barber_id', session.sub)
           .order('created_at', {ascending: false})),
         timed('cash', db.from('cash_registers')
@@ -117,6 +122,11 @@ export async function GET() {
       clientNotes: apt.client_notes || '',
       status: apt.status || 'confirmado',
       createdAt: apt.created_at,
+      completedAt: apt.completed_at ?? null,
+      commissionRateSnapshot: apt.commission_rate_snapshot == null ? null : Number(apt.commission_rate_snapshot),
+      barberEarningsSnapshot: apt.barber_earnings_snapshot == null ? null : Number(apt.barber_earnings_snapshot),
+      businessEarningsSnapshot: apt.business_earnings_snapshot == null ? null : Number(apt.business_earnings_snapshot),
+      completedCashRegisterId: apt.completed_cash_register_id ?? null,
     }));
 
     const mapEntry = (item: {
@@ -134,6 +144,10 @@ export async function GET() {
       note: item.note || '',
       dateString: item.date_string || '',
       createdAt: item.created_at,
+      commissionRateSnapshot: (item as any).commission_rate_snapshot == null ? null : Number((item as any).commission_rate_snapshot),
+      barberEarningsSnapshot: (item as any).barber_earnings_snapshot == null ? null : Number((item as any).barber_earnings_snapshot),
+      businessEarningsSnapshot: (item as any).business_earnings_snapshot == null ? null : Number((item as any).business_earnings_snapshot),
+      cashRegisterId: (item as any).cash_register_id ?? null,
     });
 
     return NextResponse.json(
@@ -143,6 +157,7 @@ export async function GET() {
         manualCharges: (charges.data || []).map(mapEntry),
         cashOpen: cash.data?.length === 1,
         commissionRate: Number(activeBarber.commission_rate ?? 50),
+        isOwner: activeBarber.is_owner === true,
       },
       {
         headers: {

@@ -2,7 +2,6 @@
 -- No modifica ninguna tabla, turno, estado, regla de caja ni política RLS.
 -- Se llama exclusivamente desde el servidor, TRAS verificar la sesión admin.
 -- SECURITY INVOKER: NO se eleva la identidad de quien ejecute la función.
-BEGIN;
 
 CREATE OR REPLACE FUNCTION public.admin_bootstrap_snapshot(p_shop_id uuid)
 RETURNS jsonb
@@ -19,7 +18,9 @@ AS $$
         SELECT a.id, a.code, a.service_id, a.barber_id, a.date_string,
           a.time_slot, a.duration_minutes, a.status, a.created_at,
           a.client_name, a.client_phone, a.client_email, a.client_notes,
-          a.price_snapshot,
+          a.price_snapshot, a.completed_at,
+          a.commission_rate_snapshot, a.barber_earnings_snapshot,
+          a.business_earnings_snapshot, a.completed_cash_register_id,
           CASE WHEN sv.id IS NULL THEN NULL ELSE jsonb_build_object(
             'name', sv.name, 'price', sv.price,
             'duration_minutes', sv.duration_minutes
@@ -44,7 +45,9 @@ AS $$
     'barbers',
     coalesce((
       SELECT jsonb_agg(to_jsonb(b))
-      FROM public.barbers b WHERE b.shop_id = p_shop_id
+      FROM (SELECT id,slug,name,role,bio,specialties,service_ids,active,
+                   commission_rate,is_owner
+            FROM public.barbers WHERE shop_id = p_shop_id) b
     ), '[]'::jsonb),
     'expenses',
     coalesce((
@@ -60,6 +63,7 @@ AS $$
       SELECT jsonb_agg(to_jsonb(t))
       FROM (
         SELECT t.id, t.barber_id, t.amount, t.note, t.date_string, t.created_at,
+          t.cash_register_id,
           CASE WHEN b.id IS NULL THEN NULL ELSE jsonb_build_object('name', b.name)
           END AS barbers
         FROM public.tips t
@@ -73,6 +77,8 @@ AS $$
       SELECT jsonb_agg(to_jsonb(c))
       FROM (
         SELECT c.id, c.barber_id, c.amount, c.note, c.date_string, c.created_at,
+          c.commission_rate_snapshot, c.barber_earnings_snapshot,
+          c.business_earnings_snapshot, c.cash_register_id,
           CASE WHEN b.id IS NULL THEN NULL ELSE jsonb_build_object('name', b.name)
           END AS barbers
         FROM public.manual_charges c
@@ -106,4 +112,3 @@ REVOKE ALL ON FUNCTION public.admin_bootstrap_snapshot(uuid) FROM PUBLIC, anon, 
 GRANT EXECUTE ON FUNCTION public.admin_bootstrap_snapshot(uuid) TO service_role;
 
 NOTIFY pgrst, 'reload schema';
-COMMIT;

@@ -24,7 +24,9 @@ export async function GET(request: Request) {
   if (barberId && !isValidUUID(barberId)) return NextResponse.json({error: 'ID inválido'}, {status: 400});
   const session = await authorize(barberId);
   if (!session) return NextResponse.json({error: 'No autorizado'}, {status: 401});
-  let query = getSupabaseServer().from(table).select('id,barber_id,amount,note,date_string,created_at,barbers(name)').eq('shop_id', SHOP_UUID).order('created_at', {ascending: false});
+  let query = getSupabaseServer().from(table).select(table === 'manual_charges'
+    ? 'id,barber_id,amount,note,date_string,created_at,commission_rate_snapshot,barber_earnings_snapshot,business_earnings_snapshot,cash_register_id,barbers(name)'
+    : 'id,barber_id,amount,note,date_string,created_at,barbers(name)').eq('shop_id', SHOP_UUID).order('created_at', {ascending: false});
   if (session.barberId) query = query.eq('barber_id', session.barberId);
   const {data, error} = await query;
   if (error) return NextResponse.json({error: 'No se pudo consultar el registro'}, {status: 500});
@@ -38,6 +40,8 @@ export async function POST(request: Request) {
   if (!table) return NextResponse.json({error: 'Recurso inválido'}, {status: 400});
   const barberId = body.item?.barberId;
   if (!isValidUUID(barberId)) return NextResponse.json({error: 'Barbero inválido'}, {status: 400});
+  const requestId = body.item?.requestId;
+  if (!isValidUUID(requestId)) return NextResponse.json({error: 'Identificador de operación inválido'}, {status: 400});
   const session = await authorize(barberId);
   if (!session) return NextResponse.json({error: 'No autorizado'}, {status: 401});
   const amount = Number(body.item?.amount);
@@ -48,13 +52,25 @@ export async function POST(request: Request) {
   const {data: barber} = await supabase.from('barbers').select('id,active').eq('shop_id', SHOP_UUID).eq('id', barberId).maybeSingle();
   if (!barber || !barber.active) return NextResponse.json({error: 'Barbero no encontrado'}, {status: 404});
   const dateString = new Date().toLocaleDateString('es-UY', {day:'numeric', month:'short', timeZone:'America/Montevideo'});
+  const note = sanitizeInput(String(body.item?.note || '')).slice(0,300);
   const {error} = await supabase.from(table).insert({
+    id: requestId,
     shop_id: SHOP_UUID, barber_id: barberId,
-    amount, note: sanitizeInput(String(body.item?.note || '')).slice(0,300),
+    amount, note,
     date_string: dateString,
   });
+  if (error?.code === '23505') {
+    const {data: prior, error: lookupError} = await supabase.from(table)
+      .select('id,barber_id,amount,note')
+      .eq('shop_id', SHOP_UUID).eq('id', requestId).maybeSingle();
+    if (!lookupError && prior && prior.barber_id === barberId &&
+        Number(prior.amount) === amount && (prior.note || '') === note) {
+      return NextResponse.json({ok: true, id: requestId, repeated: true});
+    }
+    return NextResponse.json({error: 'El identificador ya pertenece a otro movimiento.'}, {status: 409});
+  }
   if (error) return NextResponse.json({error: 'No se pudo registrar el movimiento'}, {status: 500});
-  return NextResponse.json({ok: true});
+  return NextResponse.json({ok: true, id: requestId});
 }
 
 export async function DELETE(request: Request) {

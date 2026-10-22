@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - security/pre-launch
+      - staging
+      - ux/claridad-financiera-staging
   pull_request:
     branches:
       - main
@@ -30,5 +32,6 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+      - run: node --experimental-strip-types tests/financial-allocations.test.mjs
       - run: npm run lint
         continue-on-error: true

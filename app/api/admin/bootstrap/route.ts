@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server';
 import { requireAdminSession } from '@/lib/session';
 import { getSupabaseServer, SHOP_UUID } from '@/lib/supabase-server';
 
+// Cachea sólo la ausencia del RPC, nunca datos financieros. Un despliegue de
+// la función se detecta nuevamente a los 60 segundos sin reiniciar el servidor.
+let rpcUnavailableUntil = 0;
+
 // Una sola petición HTTP para iniciar el panel. Todas las consultas a Supabase
 // se ejecutan en paralelo, pero siempre detrás de la sesión de administrador.
 export async function GET() {
@@ -21,9 +25,12 @@ export async function GET() {
     // administrador. La función SQL usa SECURITY INVOKER y solo service_role
     // puede ejecutarla. Esta ruta verifica la sesión antes del RPC.
     const rpcStart = performance.now();
-    const {data: fastData, error: fastError} = await supabase.rpc(
-      'admin_bootstrap_snapshot', {p_shop_id: SHOP_UUID}
-    );
+    const fastResult = Date.now() >= rpcUnavailableUntil
+      ? await supabase.rpc('admin_bootstrap_snapshot', {p_shop_id: SHOP_UUID})
+      : null;
+    const fastData = fastResult?.data;
+    const fastError = fastResult?.error;
+    if (fastError?.code === 'PGRST202') rpcUnavailableUntil = Date.now() + 60_000;
     const rpcDuration = performance.now() - rpcStart;
     if (!fastError && fastData &&
       Array.isArray(fastData.appointments) &&
@@ -44,7 +51,7 @@ export async function GET() {
 
     // Mantener el fallback anterior durante el despliegue y ante una falla
     // del RPC: evita que el panel quede inaccesible por un desajuste de schema.
-    console.warn('RPC admin no disponible; usando consultas paralelas:', fastError?.code || 'invalid_response');
+    if (fastResult) console.warn('RPC admin no disponible; usando consultas paralelas:', fastError?.code || 'invalid_response');
     // Medir cada consulta por separado sin exponer datos privados.
     // Server-Timing permite detectar la tabla lenta en DevTools.
     const durations: Record<string, number> = {};
@@ -61,26 +68,26 @@ export async function GET() {
       appointments, services, barbers, expenses, tips, manualCharges, shop, cashRegisters,
     ] = await Promise.all([
       timed('appointments', supabase.from('appointments')
-        .select('id,code,service_id,barber_id,date_string,time_slot,duration_minutes,status,created_at,client_name,client_phone,client_email,client_notes,price_snapshot,services(name,price,duration_minutes),barbers(name)')
+        .select('id,code,service_id,barber_id,date_string,time_slot,duration_minutes,status,created_at,client_name,client_phone,client_email,client_notes,price_snapshot,completed_at,commission_rate_snapshot,barber_earnings_snapshot,business_earnings_snapshot,completed_cash_register_id,services(name,price,duration_minutes),barbers(name)')
         .eq('shop_id', SHOP_UUID)
         .order('created_at', {ascending: false})),
       timed('services', supabase.from('services')
         .select('id,name,price,duration_minutes,description,image_url,active')
         .eq('shop_id', SHOP_UUID)),
       timed('barbers', supabase.from('barbers')
-        // La vista admin necesita también PIN/comisión para editar barberos.
-        .select('*')
+        // El PIN almacenado nunca debe enviarse al navegador.
+        .select('id,slug,name,role,bio,specialties,service_ids,active,commission_rate,is_owner')
         .eq('shop_id', SHOP_UUID)),
       timed('expenses', supabase.from('expenses')
         .select('id,description,amount,category,expense_date,created_at')
         .eq('shop_id', SHOP_UUID)
         .order('expense_date', {ascending: false})),
       timed('tips', supabase.from('tips')
-        .select('id,barber_id,amount,note,date_string,created_at,barbers(name)')
+        .select('id,barber_id,amount,note,date_string,created_at,cash_register_id,barbers(name)')
         .eq('shop_id', SHOP_UUID)
         .order('created_at', {ascending: false})),
       timed('charges', supabase.from('manual_charges')
-        .select('id,barber_id,amount,note,date_string,created_at,barbers(name)')
+        .select('id,barber_id,amount,note,date_string,created_at,commission_rate_snapshot,barber_earnings_snapshot,business_earnings_snapshot,cash_register_id,barbers(name)')
         .eq('shop_id', SHOP_UUID)
         .order('created_at', {ascending: false})),
       timed('shop', supabase.from('shops')

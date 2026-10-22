@@ -1,7 +1,7 @@
 // app/admin/page.tsx
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -51,6 +51,7 @@ import {
   deleteServiceFromDb,
   getAdminBarbers,
   getAdminDashboardSnapshot,
+  getMontevideoDateKey,
   saveBarbers,
   deleteBarberFromDb,
   updateAppointmentStatus,
@@ -63,12 +64,23 @@ import {
   saveShopConfig,
   buildRealOpenDays,
   sortAppointmentsChronologically,
-  canCompleteAppointment,
   DayOption,
 } from '@/lib/booking-store';
+import { appointmentTimeState } from '@/lib/appointment-rules';
 import { InitialShopSkeleton, InitialShopError } from '@/components/InitialShopState';
+import { splitBusinessRevenue } from '@/lib/financial-allocations';
 
 type PeriodFilter = 'hoy' | 'semana' | 'mes';
+type CashHistoryEntry = {
+  id: string;
+  status: 'abierta' | 'cerrada';
+  opened_at: string;
+  closed_at: string | null;
+  initial_amount: number | string | null;
+  total_sales: number | string | null;
+  total_expenses: number | string | null;
+  final_amount: number | string | null;
+};
 
 const MONTH_NAMES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -95,43 +107,24 @@ function isWithinPeriod(
   period: PeriodFilter,
   selectedMonthYear: string
 ): boolean {
-  if (!isoOrDateStr) return true;
-  const target = new Date(isoOrDateStr);
-  if (isNaN(target.getTime())) return true;
-
-  const now = new Date();
-  if (period === 'hoy') {
-    return (
-      target.getFullYear() === now.getFullYear() &&
-      target.getMonth() === now.getMonth() &&
-      target.getDate() === now.getDate()
-    );
-  }
+  if (!isoOrDateStr) return false;
+  const date = new Date(isoOrDateStr);
+  if (Number.isNaN(date.getTime())) return false;
+  const dateKey = getMontevideoDateKey(date);
+  const todayKey = getMontevideoDateKey();
+  if (period === 'hoy') return dateKey === todayKey;
   if (period === 'semana') {
-    const diffDays = (now.getTime() - target.getTime()) / (1000 * 3600 * 24);
-    return diffDays <= 7 && diffDays >= -7;
+    const delta = (Date.parse(todayKey + 'T00:00:00Z') - Date.parse(dateKey + 'T00:00:00Z')) / 86400000;
+    return delta >= 0 && delta < 7;
   }
-  if (period === 'mes') {
-    const [selYear, selMonth] = selectedMonthYear.split('-').map(Number);
-    if (!selYear || !selMonth) {
-      return (
-        target.getFullYear() === now.getFullYear() &&
-        target.getMonth() === now.getMonth()
-      );
-    }
-    return (
-      target.getFullYear() === selYear &&
-      target.getMonth() + 1 === selMonth
-    );
-  }
-  return true;
+  return dateKey.slice(0, 7) === selectedMonthYear;
 }
 
 export default function AdminDashboard() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<
-    'caja' | 'facturacion' | 'agenda' | 'turnos' | 'barberos' | 'servicios' | 'marca'
-  >('caja');
+    'inicio' | 'caja' | 'facturacion' | 'agenda' | 'turnos' | 'barberos' | 'servicios' | 'marca' | 'configuracion'
+  >('inicio');
 
   const [appointments, setAppointments] = useState<AppointmentItem[]>([]);
   const [services, setServices] = useState<ServiceItem[]>([]);
@@ -149,13 +142,17 @@ export default function AdminDashboard() {
 
   const [cashStatus, setCashStatus] = useState<'abierta' | 'cerrada'>('cerrada');
   const [lastClosedDate, setLastClosedDate] = useState<string>('');
+  const [cashHistoryOpen, setCashHistoryOpen] = useState(false);
+  const [cashHistoryLoading, setCashHistoryLoading] = useState(false);
+  const [cashHistoryError, setCashHistoryError] = useState('');
+  const [cashHistory, setCashHistory] = useState<CashHistoryEntry[]>([]);
   const [blockedBarbers, setBlockedBarbers] = useState<Record<string, boolean>>({});
 
   const availableMonths = getRecentMonths(12);
-  const [period, setPeriod] = useState<PeriodFilter>('mes');
+  const [period, setPeriod] = useState<PeriodFilter>('hoy');
   const [selectedMonth, setSelectedMonth] = useState<string>(availableMonths[0].value);
 
-  const [auditDate, setAuditDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [auditDate, setAuditDate] = useState<string>(getMontevideoDateKey());
   const [auditBarberId, setAuditBarberId] = useState<string>('todos');
 
   const [adminAgendaDate, setAdminAgendaDate] = useState<string>('');
@@ -167,6 +164,7 @@ export default function AdminDashboard() {
 
   const [newBarberName, setNewBarberName] = useState('');
   const [newBarberCommission, setNewBarberCommission] = useState('50');
+  const [newBarberIsOwner, setNewBarberIsOwner] = useState(false);
   const [newBarberPin, setNewBarberPin] = useState('');
   const [barberPinDrafts, setBarberPinDrafts] = useState<Record<string, string>>({});
 
@@ -179,10 +177,14 @@ export default function AdminDashboard() {
   const [tipBarberId, setTipBarberId] = useState<string>('');
   const [tipAmount, setTipAmount] = useState<string>('');
   const [tipNote, setTipNote] = useState<string>('');
+  const [savingTip, setSavingTip] = useState(false);
+  const tipAttempt = useRef<{fingerprint: string; id: string; pending: boolean} | null>(null);
 
   const [chargeBarberId, setChargeBarberId] = useState<string>('');
   const [chargeAmount, setChargeAmount] = useState<string>('');
   const [chargeNote, setChargeNote] = useState<string>('');
+  const [savingCharge, setSavingCharge] = useState(false);
+  const chargeAttempt = useRef<{fingerprint: string; id: string; pending: boolean} | null>(null);
 
   const checkBarberLocks = (brbs: BarberItem[]) => {
     const locks: Record<string, boolean> = {};
@@ -239,6 +241,25 @@ export default function AdminDashboard() {
     loadAdminData();
   }, []);
 
+  const toggleCashHistory = async () => {
+    if (cashHistoryOpen) { setCashHistoryOpen(false); return; }
+    setCashHistoryOpen(true);
+    setCashHistoryLoading(true);
+    setCashHistoryError('');
+    try {
+      const response = await fetch('/api/admin/cash-history', {
+        cache: 'no-store', credentials: 'same-origin',
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || 'No se pudo cargar el historial.');
+      setCashHistory(Array.isArray(payload.registers) ? payload.registers : []);
+    } catch (error: any) {
+      setCashHistoryError(error?.message || 'No se pudo cargar el historial.');
+    } finally {
+      setCashHistoryLoading(false);
+    }
+  };
+
   const handleLogout = async () => {
     await fetch('/api/auth', { method: 'DELETE' });
     router.push('/login');
@@ -248,10 +269,10 @@ export default function AdminDashboard() {
   const handleStatusChange = async (id: string, status: AppointmentItem['status']) => {
     try {
       setAdminError('');
-      await updateAppointmentStatus(id, status);
+      const persisted = await updateAppointmentStatus(id, status);
       // La API confirmó el cambio: modificar solo el turno afectado.
       setAppointments((current) => current.map((appointment) =>
-        appointment.id === id ? {...appointment, status} : appointment
+        appointment.id === id ? {...appointment, ...persisted} : appointment
       ));
     } catch (err: any) {
       setAdminError(err?.message || 'No se pudo actualizar el estado del turno.');
@@ -336,6 +357,19 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleToggleServiceActive = async (id: string, active: boolean) => {
+    const previous = services;
+    const updated = services.map((service) => service.id === id ? {...service, active} : service);
+    setServices(updated);
+    try {
+      setAdminError('');
+      await saveServices(updated);
+    } catch (err: any) {
+      setServices(previous);
+      setAdminError(err?.message || 'No se pudo actualizar el servicio.');
+    }
+  };
+
   const handleDeleteService = async (id: string) => {
     const previous = services;
     const updated = services.filter((s) => s.id !== id);
@@ -372,7 +406,7 @@ const handleAddBarber = async () => {
       bio: '',
       specialties: ['Fade', 'Corte Clásico'],
       serviceIds: services.map((s) => s.id),
-      isOwner: rate === 100,
+      isOwner: newBarberIsOwner,
       active: true,
       commissionRate: rate,
       pin: cleanPin,
@@ -388,7 +422,8 @@ const handleAddBarber = async () => {
       
       // Recargamos la lista oficial de la base de datos
       const freshBarbers = await getAdminBarbers(true);
-      const finalBarbers = Array.isArray(freshBarbers) && freshBarbers.length > 0 ? freshBarbers : updated;
+      const finalBarbers = (Array.isArray(freshBarbers) && freshBarbers.length > 0 ? freshBarbers : updated)
+        .map((barber) => ({...barber, pin: ''}));
       
       setBarbers(finalBarbers);
       
@@ -400,6 +435,7 @@ const handleAddBarber = async () => {
       checkBarberLocks(finalBarbers);
       setNewBarberName('');
       setNewBarberCommission('50');
+      setNewBarberIsOwner(false);
       setNewBarberPin('');
       
       alert(`¡Barbero ${newItem.name} agregado con éxito!`);
@@ -412,19 +448,21 @@ const handleAddBarber = async () => {
 
   const handleUpdateBarberField = async (
     id: string,
-    field: 'commissionRate' | 'pin',
-    value: number | string
+    field: 'commissionRate' | 'pin' | 'isOwner' | 'active',
+    value: number | string | boolean
   ) => {
     const previous = barbers;
     const updated = barbers.map((b) => {
       if (b.id !== id) return b;
       if (field === 'commissionRate') {
         const rate = Math.min(100, Math.max(0, Number(value) || 0));
-        return { ...b, commissionRate: rate, isOwner: rate === 100 };
+        return { ...b, commissionRate: rate };
       }
+      if (field === 'isOwner') return { ...b, isOwner: value === true };
+      if (field === 'active') return { ...b, active: value === true };
       return { ...b, pin: String(value).trim() };
     });
-    setBarbers(updated);
+    setBarbers(updated.map((barber) => ({...barber, pin: ''})));
     try {
       setAdminError('');
       await saveBarbers(updated);
@@ -541,18 +579,30 @@ const handleAddBarber = async () => {
   const handleAddTipAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!tipBarberId || !tipAmount || Number(tipAmount) <= 0) return;
+    const fingerprint = JSON.stringify([tipBarberId, Number(tipAmount), tipNote.trim()]);
+    if (tipAttempt.current?.pending) return;
+    if (tipAttempt.current?.fingerprint !== fingerprint) {
+      tipAttempt.current = {fingerprint, id: generateUUID(), pending: false};
+    }
+    tipAttempt.current!.pending = true;
     try {
+      setSavingTip(true);
       setAdminError('');
       const updated = await createTip({
         barberId: tipBarberId,
         amount: Number(tipAmount),
         note: tipNote.trim() || 'Agregada por Admin',
+        requestId: tipAttempt.current!.id,
       });
       setTips(Array.isArray(updated) ? updated : []);
       setTipAmount('');
       setTipNote('');
+      tipAttempt.current = null;
     } catch (err: any) {
       setAdminError(err?.message || 'Error al registrar la propina.');
+    } finally {
+      if (tipAttempt.current) tipAttempt.current.pending = false;
+      setSavingTip(false);
     }
   };
 
@@ -569,18 +619,30 @@ const handleAddBarber = async () => {
   const handleAddChargeAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!chargeBarberId || !chargeAmount || Number(chargeAmount) <= 0) return;
+    const fingerprint = JSON.stringify([chargeBarberId, Number(chargeAmount), chargeNote.trim()]);
+    if (chargeAttempt.current?.pending) return;
+    if (chargeAttempt.current?.fingerprint !== fingerprint) {
+      chargeAttempt.current = {fingerprint, id: generateUUID(), pending: false};
+    }
+    chargeAttempt.current!.pending = true;
     try {
+      setSavingCharge(true);
       setAdminError('');
       const updated = await createManualCharge({
         barberId: chargeBarberId,
         amount: Number(chargeAmount),
         note: chargeNote.trim() || 'Cobro manual extra',
+        requestId: chargeAttempt.current!.id,
       });
       setManualCharges(Array.isArray(updated) ? updated : []);
       setChargeAmount('');
       setChargeNote('');
+      chargeAttempt.current = null;
     } catch (err: any) {
       setAdminError(err?.message || 'Error al registrar el cobro manual.');
+    } finally {
+      if (chargeAttempt.current) chargeAttempt.current.pending = false;
+      setSavingCharge(false);
     }
   };
 
@@ -626,8 +688,7 @@ const handleAddBarber = async () => {
 
   const filteredAppointments = safeAppointments.filter((apt) => {
     if (apt.status !== 'completado') return false;
-    if (period === 'hoy' && cashStatus === 'cerrada') return false;
-    return isWithinPeriod(apt.createdAt, period, selectedMonth);
+    return isWithinPeriod(apt.completedAt || apt.createdAt, period, selectedMonth);
   });
 
   const filteredExpenses = safeExpenses.filter((exp) =>
@@ -639,14 +700,13 @@ const handleAddBarber = async () => {
   );
 
   const filteredManualCharges = safeManualCharges.filter((c) => {
-    if (period === 'hoy' && cashStatus === 'cerrada') return false;
     return isWithinPeriod(c.createdAt, period, selectedMonth);
   });
 
   const auditedAppointments = safeAppointments.filter((apt) => {
     if (apt.status !== 'completado') return false;
     if (auditDate) {
-      const aptDate = (apt.createdAt || '').split('T')[0];
+      const aptDate = getMontevideoDateKey(apt.completedAt || apt.createdAt);
       if (aptDate !== auditDate) return false;
     }
     if (auditBarberId !== 'todos' && apt.barberId !== auditBarberId) return false;
@@ -655,7 +715,7 @@ const handleAddBarber = async () => {
 
   const auditedManualCharges = safeManualCharges.filter((c) => {
     if (auditDate) {
-      const cDate = (c.createdAt || '').split('T')[0];
+      const cDate = getMontevideoDateKey(c.createdAt);
       if (cDate !== auditDate) return false;
     }
     if (auditBarberId !== 'todos' && c.barberId !== auditBarberId) return false;
@@ -664,7 +724,7 @@ const handleAddBarber = async () => {
 
   const auditedTips = safeTips.filter((t) => {
     if (auditDate) {
-      const tDate = (t.createdAt || '').split('T')[0];
+      const tDate = getMontevideoDateKey(t.createdAt);
       if (tDate !== auditDate) return false;
     }
     if (auditBarberId !== 'todos' && t.barberId !== auditBarberId) return false;
@@ -673,7 +733,7 @@ const handleAddBarber = async () => {
 
   const auditedExpenses = safeExpenses.filter((e) => {
     if (auditDate) {
-      const eDate = (e.createdAt || e.date || '').split('T')[0];
+      const eDate = (e.createdAt ? getMontevideoDateKey(e.createdAt) : e.date);
       if (eDate !== auditDate) return false;
     }
     return true;
@@ -685,6 +745,9 @@ const handleAddBarber = async () => {
 
   const auditedTipsTotal = auditedTips.reduce((sum, t) => sum + Number(t.amount), 0);
   const auditedExpensesTotal = auditedExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
+  const auditedOldRows = [...auditedAppointments, ...auditedManualCharges].filter(
+    item => item.barberEarningsSnapshot == null || item.businessEarningsSnapshot == null
+  ).length;
 
   const auditedBarbersBreakdown = safeBarbers
     .filter((b) => auditBarberId === 'todos' || b.id === auditBarberId)
@@ -696,7 +759,8 @@ const handleAddBarber = async () => {
       const cutsGen = brbApts.reduce((sum, a) => sum + Number(a.priceSnapshot ?? a.servicePrice), 0);
       const manualGen = brbCharges.reduce((sum, c) => sum + Number(c.amount), 0);
       const totalGen = cutsGen + manualGen;
-      const commissionEarned = Math.round((totalGen * barber.commissionRate) / 100);
+      const commissionEarned = brbApts.reduce((sum, a) => sum + splitBusinessRevenue(Number(a.priceSnapshot ?? a.servicePrice), barber, a).barber, 0) +
+        brbCharges.reduce((sum, c) => sum + splitBusinessRevenue(Number(c.amount), barber, c).barber, 0);
       const tipsEarned = brbTips.reduce((sum, t) => sum + Number(t.amount), 0);
 
       return {
@@ -730,8 +794,12 @@ const handleAddBarber = async () => {
 
     const grossGenerated = grossFromAppointments + barberManualChargesTotal;
 
-    const barberTakeHome = Math.round((grossGenerated * barber.commissionRate) / 100);
-    const leftForOwner = grossGenerated - barberTakeHome;
+    const allocated = [
+      ...barberApts.map(a => splitBusinessRevenue(Number(a.priceSnapshot ?? a.servicePrice), barber, a)),
+      ...filteredManualCharges.filter(c => c.barberId === barber.id).map(c => splitBusinessRevenue(Number(c.amount), barber, c)),
+    ];
+    const barberTakeHome = allocated.reduce((sum, row) => sum + row.barber, 0);
+    const leftForOwner = allocated.reduce((sum, row) => sum + row.business, 0);
 
     const barberTipsTotal = filteredTips
       .filter((t) => t.barberId === barber.id)
@@ -752,16 +820,14 @@ const handleAddBarber = async () => {
   const totalManualChargesAll = filteredManualCharges.reduce((sum, c) => sum + Number(c.amount), 0);
   const grossRevenueTotal = totalGrossAppointments + totalManualChargesAll;
 
-  const ownerOwnCutsRevenue = barberFinancials
-    .filter((b) => b.barber.isOwner || b.barber.commissionRate === 100)
-    .reduce((sum, b) => sum + b.barberTakeHome, 0);
-  const staffCommissionsToPay = barberFinancials
-    .filter((b) => !b.barber.isOwner && b.barber.commissionRate < 100)
-    .reduce((sum, b) => sum + b.barberTakeHome, 0);
-  const ownerShareFromStaff = barberFinancials.reduce((sum, b) => sum + b.leftForOwner, 0);
-  const ownerTotalGrossIncome = ownerOwnCutsRevenue + ownerShareFromStaff;
+  const staffCommissionsToPay = barberFinancials.reduce((sum, b) => sum + b.barberTakeHome, 0);
+  const ownerTotalGrossIncome = barberFinancials.reduce((sum, b) => sum + b.leftForOwner, 0);
   const totalExpensesAmount = filteredExpenses.reduce((sum, exp) => sum + Number(exp.amount), 0);
   const ownerFinalNetPocket = ownerTotalGrossIncome - totalExpensesAmount;
+  // Las comisiones anteriores a la migración no tienen un reparto histórico verificable.
+  const legacyFinancialRows = [...filteredAppointments, ...filteredManualCharges].filter(
+    (item) => item.barberEarningsSnapshot == null || item.businessEarningsSnapshot == null
+  ).length;
 
   const getClientWhatsAppLink = (apt: AppointmentItem) => {
     const rawDigits = (apt.clientPhone || '098509376').replace(/\D/g, '');
@@ -777,8 +843,12 @@ const handleAddBarber = async () => {
   const bgImage = shopConfig.backgroundImageUrl || DEFAULT_SHOP_CONFIG.backgroundImageUrl;
   const logoImage = shopConfig.logoUrl || DEFAULT_SHOP_CONFIG.logoUrl;
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getMontevideoDateKey();
   const isTodayClosed = cashStatus === 'cerrada' && lastClosedDate === todayStr;
+  // El modo de pruebas se habilita únicamente cuando esta web usa la base staging.
+  // Producción mantiene el bloqueo de reapertura tras el cierre del mismo día.
+  const isStagingTest = process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://vjtwvhdiypfxgodhnjiw.supabase.co';
+  const canOpenCash = cashStatus === 'cerrada' && (!isTodayClosed || isStagingTest);
 
   if (initialLoad === 'loading') {
     return (
@@ -883,98 +953,56 @@ const handleAddBarber = async () => {
             </div>
           )}
 
-          <div className="grid grid-cols-2 sm:grid-cols-7 gap-1.5 bg-zinc-900/90 p-1.5 rounded-2xl border border-zinc-800 backdrop-blur-sm">
-            <button
-              type="button"
-              onClick={() => setActiveTab('caja')}
-              className={`py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 touch-manipulation ${
-                activeTab === 'caja'
-                  ? 'bg-zinc-100 text-zinc-950 shadow-sm'
-                  : 'text-zinc-400 hover:text-zinc-200'
-              }`}
-            >
-              <Wallet className="w-3.5 h-3.5" />
-              <span>Caja</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('facturacion')}
-              className={`py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 touch-manipulation ${
-                activeTab === 'facturacion'
-                  ? 'bg-zinc-100 text-zinc-950 shadow-sm'
-                  : 'text-zinc-400 hover:text-zinc-200'
-              }`}
-            >
-              <BarChart3 className="w-3.5 h-3.5" />
-              <span>Facturación</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('agenda')}
-              className={`py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 touch-manipulation ${
-                activeTab === 'agenda'
-                  ? 'bg-zinc-100 text-zinc-950 shadow-sm'
-                  : 'text-zinc-400 hover:text-zinc-200'
-              }`}
-            >
-              <CalendarIcon className="w-3.5 h-3.5" />
-              <span>Agenda</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('turnos')}
-              className={`py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 touch-manipulation ${
-                activeTab === 'turnos'
-                  ? 'bg-zinc-100 text-zinc-950 shadow-sm'
-                  : 'text-zinc-400 hover:text-zinc-200'
-              }`}
-            >
-              <CalendarIcon className="w-3.5 h-3.5" />
-              <span>Lista</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('barberos')}
-              className={`py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 touch-manipulation ${
-                activeTab === 'barberos'
-                  ? 'bg-zinc-100 text-zinc-950 shadow-sm'
-                  : 'text-zinc-400 hover:text-zinc-200'
-              }`}
-            >
-              <Users className="w-3.5 h-3.5" />
-              <span>Barberos</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('servicios')}
-              className={`py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 touch-manipulation ${
-                activeTab === 'servicios'
-                  ? 'bg-zinc-100 text-zinc-950 shadow-sm'
-                  : 'text-zinc-400 hover:text-zinc-200'
-              }`}
-            >
-              <Scissors className="w-3.5 h-3.5" />
-              <span>Servicios</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab('marca')}
-              className={`py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 touch-manipulation ${
-                activeTab === 'marca'
-                  ? 'bg-zinc-100 text-zinc-950 shadow-sm'
-                  : 'text-zinc-400 hover:text-zinc-200'
-              }`}
-            >
-              <Settings className="w-3.5 h-3.5" />
-              <span>Local</span>
-            </button>
+          {/* SNOSERVICE_PRESET_V1 */}
+          <div className="grid grid-cols-3 gap-2 rounded-2xl border border-zinc-800 bg-zinc-900/90 p-2 sm:grid-cols-6">
+            {([
+              {id:'inicio',label:'Inicio',icon:BarChart3},
+              {id:'agenda',label:'Agenda',icon:CalendarIcon},
+              {id:'caja',label:'Caja',icon:Wallet},
+              {id:'facturacion',label:'Informes',icon:TrendingUp},
+              {id:'barberos',label:'Equipo',icon:Users},
+              {id:'configuracion',label:'Configuración',icon:Settings},
+            ] as const).map(({id,label,icon:Icon}) => {
+              const active = activeTab===id || (id==='agenda' && activeTab==='turnos') || (id==='configuracion' && (activeTab==='servicios'||activeTab==='marca'));
+              return <button type="button" key={id} onClick={() => setActiveTab(id)}
+                className={'flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl p-2 text-[11px] font-bold sm:flex-row ' + (active?'bg-zinc-100 text-zinc-950':'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100')}>
+                <Icon className="h-4 w-4"/>{label}</button>;
+            })}
           </div>
+          {(activeTab==='agenda'||activeTab==='turnos') && <div className="flex flex-wrap gap-2 rounded-xl border border-zinc-800 bg-zinc-900 p-2">
+            <button type="button" onClick={() => setActiveTab('agenda')} className={'rounded-lg px-4 py-2 text-xs '+(activeTab==='agenda'?'bg-emerald-400 text-zinc-950':'bg-zinc-800 text-zinc-200')}>Calendario</button>
+            <button type="button" onClick={() => setActiveTab('turnos')} className={'rounded-lg px-4 py-2 text-xs '+(activeTab==='turnos'?'bg-emerald-400 text-zinc-950':'bg-zinc-800 text-zinc-200')}>Listado de reservas</button>
+          </div>}
+          {(activeTab==='configuracion'||activeTab==='servicios'||activeTab==='marca') && <div className="flex flex-wrap gap-2 rounded-xl border border-zinc-800 bg-zinc-900 p-2">
+            <button type="button" onClick={() => setActiveTab('servicios')} className={'rounded-lg px-4 py-2 text-xs '+(activeTab==='servicios'?'bg-emerald-400 text-zinc-950':'bg-zinc-800 text-zinc-200')}>Servicios y precios</button>
+            <button type="button" onClick={() => setActiveTab('marca')} className={'rounded-lg px-4 py-2 text-xs '+(activeTab==='marca'?'bg-emerald-400 text-zinc-950':'bg-zinc-800 text-zinc-200')}>Datos del local</button>
+          </div>}
+          {activeTab==='configuracion' && <div className="grid gap-3 sm:grid-cols-2">
+            <button type="button" onClick={() => setActiveTab('servicios')} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6 text-left hover:border-emerald-400"><Scissors className="mb-3 h-7 w-7 text-emerald-400"/><strong>Servicios y precios</strong><p className="mt-2 text-xs text-zinc-400">Precios, duración y disponibilidad.</p></button>
+            <button type="button" onClick={() => setActiveTab('marca')} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6 text-left hover:border-emerald-400"><Settings className="mb-3 h-7 w-7 text-emerald-400"/><strong>Datos de la barbería</strong><p className="mt-2 text-xs text-zinc-400">Horarios, contacto y marca.</p></button>
+          </div>}
+          {activeTab==='inicio' && <div className="space-y-5">
+            <div><span className="text-xs font-bold uppercase tracking-widest text-emerald-400">Control del negocio</span><h2 className="mt-1 text-2xl font-extrabold">Resumen de {shopConfig.name}</h2><p className="mt-1 text-xs text-zinc-400">Resumen {period==='hoy'?'de hoy':period==='semana'?'de la semana':'del mes seleccionado'}. El fondo común no es el efectivo de caja.</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {([{id:'hoy',label:'Hoy'},{id:'semana',label:'Semana'},{id:'mes',label:'Mes'}] as const).map(option => (
+                  <button type="button" key={option.id} onClick={() => setPeriod(option.id)}
+                    className={'rounded-lg px-3 py-2 text-xs font-bold '+(period===option.id?'bg-emerald-400 text-zinc-950':'border border-zinc-700 bg-zinc-900 text-zinc-200')}>{option.label}</button>
+                ))}
+              </div></div>
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              {([
+                {k:'Facturación',v:grossRevenueTotal,sub:'Cortes y cobros completados',color:'text-white'},
+                {k:'Comisiones generadas',v:staffCommissionsToPay,sub:'Importes del equipo',color:'text-amber-400'},
+                {k:'Gastos',v:totalExpensesAmount,sub:'Egresos del período',color:'text-white'},
+                {k:'Resultado del negocio',v:ownerFinalNetPocket,sub:'Después de gastos y comisiones. No es saldo acumulado.',color:'text-emerald-400'},
+              ] as const).map(m=><div key={m.k} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4"><p className="text-xs text-zinc-400">{m.k}</p><p className={'mt-2 text-2xl font-extrabold '+m.color}>{'$'+Number(m.v).toLocaleString('es-UY')}</p><p className="mt-2 text-[11px] text-zinc-500">{m.sub}</p></div>)}
+            </div>
+            <div className="grid gap-3 lg:grid-cols-2"><div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5"><h3 className="mb-4 font-bold">Accesos rápidos</h3><div className="flex flex-col gap-2">
+              <button type="button" onClick={() => setActiveTab('agenda')} className="rounded-xl border border-zinc-700 p-3 text-left text-sm hover:bg-zinc-800">📅 Agenda y clientes →</button>
+              <button type="button" onClick={() => setActiveTab('caja')} className="rounded-xl border border-zinc-700 p-3 text-left text-sm hover:bg-zinc-800">💳 Caja y movimientos →</button>
+              <button type="button" onClick={() => setActiveTab('facturacion')} className="rounded-xl border border-zinc-700 p-3 text-left text-sm hover:bg-zinc-800">📊 Ganancias por barbero →</button>
+            </div></div><div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5"><h3 className="mb-3 font-bold">Caja actual</h3><span className={'rounded-full px-3 py-1 text-xs font-bold '+(cashStatus==='abierta'?'bg-emerald-500/20 text-emerald-300':'bg-rose-500/20 text-rose-300')}>{cashStatus}</span><p className="mt-4 text-sm text-zinc-400">{filteredAppointments.length} turnos completados en el período consultado.</p><p className="mt-2 text-xs text-zinc-500">Las ganancias del negocio no equivalen al efectivo contado ni a retiros de propietarios.</p><button type="button" onClick={() => setActiveTab('caja')} className="mt-5 w-full rounded-xl bg-emerald-400 p-3 text-xs font-bold text-zinc-950">Ir a caja →</button></div></div>
+          </div>}
 
           {activeTab === 'caja' && (
             <div className="space-y-6">
@@ -991,20 +1019,25 @@ const handleAddBarber = async () => {
                       Estado de Caja: <span className={cashStatus === 'abierta' ? 'text-emerald-400 uppercase' : 'text-rose-400 uppercase'}>{cashStatus}</span>
                     </h3>
                     <p className="text-xs text-zinc-400 mt-1">
-                      {isTodayClosed 
-                        ? 'La caja de hoy ya fue cerrada. El sistema se abrirá automáticamente para la próxima jornada.'
-                        : 'Controlá la apertura y el cierre diario de la caja de la barbería.'}
+                      {isTodayClosed
+                        ? (isStagingTest
+                            ? 'Caja cerrada hoy. En staging podés abrir una nueva sesión de prueba; el cierre anterior queda guardado.'
+                            : 'La caja de hoy ya fue cerrada. Podrás abrir otra en la próxima jornada.')
+                        : 'Abrí y cerrá sesiones de caja. Una caja cerrada conserva sus movimientos; no retira dinero del fondo común.'}
                     </p>
                   </div>
 
                   <div className="flex items-center gap-2">
-                    {!isTodayClosed && cashStatus === 'cerrada' && (
+                    {canOpenCash && (
                       <button
                         type="button"
                         onClick={async () => {
+                          if (isTodayClosed && isStagingTest && !window.confirm(
+                            '¿Abrir una nueva caja de PRUEBA? La caja que cerraste hoy quedará guardada y esta nueva empezará desde $0.'
+                          )) return;
                           const res = await fetch('/api/admin', {
                             method: 'POST', headers: {'Content-Type':'application/json'},
-                            body: JSON.stringify({operation:'OPEN_CASH', initialAmount:grossRevenueTotal}),
+                            body: JSON.stringify({operation:'OPEN_CASH', initialAmount:0}),
                           });
                           if (!res.ok) {
                             const payload = await res.json().catch(() => ({}));
@@ -1016,7 +1049,7 @@ const handleAddBarber = async () => {
                         }}
                         className="px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs cursor-pointer"
                       >
-                        🟢 Abrir Caja
+                        {isTodayClosed && isStagingTest ? '🧪 Abrir nueva caja de prueba' : '🟢 Abrir Caja'}
                       </button>
                     )}
 
@@ -1027,113 +1060,70 @@ const handleAddBarber = async () => {
                           const todayIso = new Date().toISOString();
                           const res = await fetch('/api/admin', {
                             method: 'POST', headers: {'Content-Type':'application/json'},
-                            body: JSON.stringify({operation:'CLOSE_CASH', finalAmount:ownerFinalNetPocket}),
+                            body: JSON.stringify({operation:'CLOSE_CASH'}),
                           });
                           if (!res.ok) {
                             const payload = await res.json().catch(() => ({}));
                             alert(payload.error || 'No se pudo cerrar la caja.');
                             return;
                           }
+                          const payload = await res.json();
                           setCashStatus('cerrada');
-                          setLastClosedDate(todayIso.split('T')[0]);
-                          alert(`¡Caja cerrada correctamente! Total neto consolidado: $${ownerFinalNetPocket}`);
+                          setLastClosedDate(getMontevideoDateKey(todayIso));
+                          const closing = payload.summary;
+                          alert(`¡Caja cerrada! Facturación: ${closing.grossSales}. Comisiones: ${closing.barberCommissions}. Gastos: ${closing.expenses}. Fondo común neto: ${closing.fundNet}.`);
                         }}
                         className="px-4 py-2.5 rounded-xl bg-rose-500 hover:bg-rose-400 text-white font-bold text-xs cursor-pointer"
                       >
-                        🔴 Cerrar Caja (Corte Diario)
+                        Cerrar esta caja
                       </button>
                     )}
                   </div>
                 </div>
               </div>
 
-              <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 sm:p-6 space-y-5">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800 pb-4">
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <h3 className="font-bold text-base flex items-center gap-2">
-                      <BarChart3 className="w-5 h-5 text-emerald-400" />
-                      Auditoría Diaria por Barbero o Total
-                    </h3>
-                    <p className="text-xs text-zinc-400">Seleccioná un barbero o la vista general y elegí la fecha a consultar.</p>
+                    <h3 className="text-sm font-bold">Cierres anteriores</h3>
+                    <p className="text-xs text-zinc-400">Cada caja se guarda por separado. Un cierre no reinicia las ganancias acumuladas del negocio.</p>
                   </div>
-
-                  <input
-                    type="date"
-                    value={auditDate}
-                    onChange={(e) => setAuditDate(e.target.value)}
-                    className="px-3.5 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-xs font-bold text-emerald-400 outline-none cursor-pointer"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setAuditBarberId('todos')}
-                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex items-center space-x-2.5 ${
-                      auditBarberId === 'todos'
-                        ? 'bg-zinc-100 text-zinc-950 border-white font-bold shadow-md'
-                        : 'bg-zinc-950/80 border-zinc-800 text-zinc-300 hover:border-zinc-700'
-                    }`}
-                  >
-                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${auditBarberId === 'todos' ? 'bg-zinc-950 text-white' : 'bg-zinc-800 text-zinc-200'}`}>
-                      ⚡
-                    </div>
-                    <span className="text-xs truncate">Todos (Total)</span>
+                  <button type="button" onClick={toggleCashHistory}
+                    className="rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-xs font-bold hover:border-emerald-400">
+                    {cashHistoryOpen ? 'Ocultar cierres' : 'Ver cierres anteriores'}
                   </button>
-
-                  {safeBarbers.map((b) => {
-                    const isSelected = auditBarberId === b.id;
-                    return (
-                      <button
-                        key={b.id}
-                        type="button"
-                        onClick={() => setAuditBarberId(b.id)}
-                        className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex items-center space-x-2.5 ${
-                          isSelected
-                            ? 'bg-zinc-100 text-zinc-950 border-white font-bold shadow-md'
-                            : 'bg-zinc-950/80 border-zinc-800 text-zinc-300 hover:border-zinc-700'
-                        }`}
-                      >
-                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${isSelected ? 'bg-zinc-950 text-white' : 'bg-zinc-800 text-zinc-200'}`}>
-                          {b.name.charAt(0)}
-                        </div>
-                        <span className="text-xs truncate">{b.name}</span>
-                      </button>
-                    );
-                  })}
                 </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-                  <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 space-y-1">
-                    <span className="text-xs text-zinc-400">Facturación Generada</span>
-                    <p className="text-2xl font-extrabold text-emerald-400">${auditedGrossTotal}</p>
-                    <span className="text-[11px] text-zinc-500">{auditedAppointments.length} turnos + {auditedManualCharges.length} extras</span>
-                  </div>
-                  <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 space-y-1">
-                    <span className="text-xs text-zinc-400">Propinas Registradas</span>
-                    <p className="text-2xl font-extrabold text-amber-400">+${auditedTipsTotal}</p>
-                  </div>
-                  <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 space-y-1">
-                    <span className="text-xs text-zinc-400">Gastos del Día</span>
-                    <p className="text-2xl font-extrabold text-rose-400">-${auditedExpensesTotal}</p>
-                  </div>
-                </div>
-
-                {auditBarberId === 'todos' && auditedBarbersBreakdown.length > 0 && (
-                  <div className="pt-2 space-y-2">
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-400">Desglose por Barbero en esta fecha:</h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {auditedBarbersBreakdown.map((item) => (
-                        <div key={item.barber.id} className="bg-zinc-950/70 border border-zinc-800/80 rounded-xl p-3 space-y-1 text-xs">
-                          <div className="flex justify-between font-bold text-sm text-zinc-100">
-                            <span>{item.barber.name}</span>
-                            <span className="text-emerald-400">${item.totalGen}</span>
-                          </div>
-                          <p className="text-zinc-400">{item.cutsCount} cortes • Comisión ({item.barber.commissionRate}%): <strong className="text-zinc-200">${item.commissionEarned}</strong></p>
-                          {item.tipsEarned > 0 && <p className="text-amber-400 font-medium">Propinas: +${item.tipsEarned}</p>}
+                {cashHistoryOpen && (
+                  <div className="space-y-2">
+                    {cashHistoryLoading && <p className="text-xs text-zinc-400">Cargando cierres...</p>}
+                    {cashHistoryError && <p role="alert" className="text-xs text-rose-300">{cashHistoryError}</p>}
+                    {!cashHistoryLoading && !cashHistoryError && cashHistory.length === 0 &&
+                      <p className="text-xs text-zinc-400">Todavía no hay sesiones registradas.</p>}
+                    {!cashHistoryLoading && !cashHistoryError && cashHistory.map(item => {
+                      const olderClose = item.status === 'cerrada' &&
+                        Number(item.total_sales) === 0 && Number(item.final_amount) !== 0;
+                      const label = (value: string | null) => value ? new Date(value).toLocaleString('es-UY', {
+                        timeZone:'America/Montevideo',day:'2-digit',month:'2-digit',
+                        year:'numeric',hour:'2-digit',minute:'2-digit',
+                      }) : 'En curso';
+                      return <div key={item.id} className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-xs">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <strong className="text-zinc-100">{label(item.opened_at)}</strong>
+                          <span className={item.status === 'abierta'?'text-emerald-400':'text-zinc-400'}>
+                            {item.status === 'abierta'?'Abierta':'Cerrada: '+label(item.closed_at)}
+                          </span>
                         </div>
-                      ))}
-                    </div>
+                        <div className="mt-2 grid grid-cols-2 gap-2 text-zinc-300 sm:grid-cols-3">
+                          <span>Facturación: <strong>${Number(item.total_sales).toLocaleString('es-UY')}</strong></span>
+                          <span>Gastos: <strong>${Number(item.total_expenses).toLocaleString('es-UY')}</strong></span>
+                          <span>Resultado registrado: <strong>${Number(item.final_amount).toLocaleString('es-UY')}</strong></span>
+                        </div>
+                        {olderClose && <p className="mt-2 text-amber-300">
+                          Cierre anterior a la nueva contabilidad: cifras pendientes de conciliación.
+                        </p>}
+                        <p className="mt-1 text-zinc-500">Resultado económico; no significa efectivo contado ni saldo del fondo común.</p>
+                      </div>;
+                    })}
                   </div>
                 )}
               </div>
@@ -1177,11 +1167,11 @@ const handleAddBarber = async () => {
 
                   <button
                     type="submit"
-                    disabled={cashStatus !== 'abierta'}
+                    disabled={savingCharge || cashStatus !== 'abierta'}
                     className="sm:col-span-2 py-2.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs cursor-pointer flex items-center justify-center gap-1 touch-manipulation disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <Plus className="w-4 h-4" />
-                    <span>Registrar</span>
+                    <span>{savingCharge ? 'Guardando...' : 'Registrar'}</span>
                   </button>
                 </form>
 
@@ -1264,11 +1254,11 @@ const handleAddBarber = async () => {
 
                   <button
                     type="submit"
-                    disabled={cashStatus !== 'abierta'}
+                    disabled={savingTip || cashStatus !== 'abierta'}
                     className="sm:col-span-2 py-2.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs cursor-pointer flex items-center justify-center gap-1 touch-manipulation disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <Plus className="w-4 h-4" />
-                    <span>Sumar</span>
+                    <span>{savingTip ? 'Guardando...' : 'Sumar'}</span>
                   </button>
                 </form>
 
@@ -1322,6 +1312,7 @@ const handleAddBarber = async () => {
                   Gastos del Local
                 </h3>
 
+                <p className="text-xs text-zinc-400">Registrá aquí insumos, alquiler y otros gastos del local. No registres pagos de comisiones: ya están descontados del resultado del negocio.</p>
                 <form onSubmit={handleAddExpense} noValidate className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
                   <input
                     type="text"
@@ -1337,7 +1328,7 @@ const handleAddBarber = async () => {
                   >
                     <option value="Insumos">Insumos</option>
                     <option value="Alquiler / Servicios">Alquiler / Luz</option>
-                    <option value="Adelantos / Sueldos">Adelantos</option>
+                    {/* Los pagos de comisiones requieren liquidaciones propias. No descontarlos dos veces. */}
                     <option value="Otros">Otros</option>
                   </select>
                   <input
@@ -1402,6 +1393,113 @@ const handleAddBarber = async () => {
 
           {activeTab === 'facturacion' && (
             <div className="space-y-6">
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+                <h2 className="text-xl font-extrabold">Informes del negocio</h2>
+                <p className="mt-1 text-xs text-zinc-400">Consultá períodos y jornadas anteriores. El resultado económico no es dinero físico en caja.</p>
+              </div>
+              <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 sm:p-6 space-y-5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800 pb-4">
+                  <div>
+                    <h3 className="font-bold text-base flex items-center gap-2">
+                      <BarChart3 className="w-5 h-5 text-emerald-400" />
+                      Detalle de ingresos por día
+                    </h3>
+                    <p className="text-xs text-zinc-400">Seleccioná una fecha y consultá los ingresos, gastos y propinas de esa jornada.</p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button type="button" onClick={() => setAuditDate(getMontevideoDateKey())}
+                      className="rounded-lg border border-zinc-700 px-3 py-2 text-xs font-bold hover:border-emerald-400">Hoy</button>
+                    <button type="button" onClick={() => setAuditDate(getMontevideoDateKey(new Date(Date.now() - 86400000)))}
+                      className="rounded-lg border border-zinc-700 px-3 py-2 text-xs font-bold hover:border-emerald-400">Ayer</button>
+                  <input
+                    type="date"
+                    value={auditDate}
+                    onChange={(e) => setAuditDate(e.target.value)}
+                    className="px-3.5 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-xs font-bold text-emerald-400 outline-none cursor-pointer"
+                  />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAuditBarberId('todos')}
+                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex items-center space-x-2.5 ${
+                      auditBarberId === 'todos'
+                        ? 'bg-zinc-100 text-zinc-950 border-white font-bold shadow-md'
+                        : 'bg-zinc-950/80 border-zinc-800 text-zinc-300 hover:border-zinc-700'
+                    }`}
+                  >
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${auditBarberId === 'todos' ? 'bg-zinc-950 text-white' : 'bg-zinc-800 text-zinc-200'}`}>
+                      ⚡
+                    </div>
+                    <span className="text-xs truncate">Todos (Total)</span>
+                  </button>
+
+                  {safeBarbers.map((b) => {
+                    const isSelected = auditBarberId === b.id;
+                    return (
+                      <button
+                        key={b.id}
+                        type="button"
+                        onClick={() => setAuditBarberId(b.id)}
+                        className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex items-center space-x-2.5 ${
+                          isSelected
+                            ? 'bg-zinc-100 text-zinc-950 border-white font-bold shadow-md'
+                            : 'bg-zinc-950/80 border-zinc-800 text-zinc-300 hover:border-zinc-700'
+                        }`}
+                      >
+                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${isSelected ? 'bg-zinc-950 text-white' : 'bg-zinc-800 text-zinc-200'}`}>
+                          {b.name.charAt(0)}
+                        </div>
+                        <span className="text-xs truncate">{b.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+                  <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 space-y-1">
+                    <span className="text-xs text-zinc-400">Facturación del día</span>
+                    <p className="text-2xl font-extrabold text-emerald-400">${auditedGrossTotal}</p>
+                    <span className="text-[11px] text-zinc-500">{auditedAppointments.length} turnos + {auditedManualCharges.length} extras</span>
+                  </div>
+                  <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 space-y-1">
+                    <span className="text-xs text-zinc-400">Propinas por separado</span>
+                    <p className="text-2xl font-extrabold text-amber-400">+${auditedTipsTotal}</p>
+                  </div>
+                  <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 space-y-1">
+                    <span className="text-xs text-zinc-400">Gastos registrados</span>
+                    <p className="text-2xl font-extrabold text-rose-400">-${auditedExpensesTotal}</p>
+                  </div>
+                </div>
+
+                {auditedOldRows > 0 && (
+                  <div role="status" className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
+                    {auditedOldRows} movimientos de esta fecha son anteriores al registro de comisiones. El reparto mostrado es estimado.
+                  </div>
+                )}
+                {auditBarberId === 'todos' && auditedBarbersBreakdown.length > 0 && (
+                  <div className="pt-2 space-y-2">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-400">Ingresos por barbero</h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {auditedBarbersBreakdown.map((item) => (
+                        <div key={item.barber.id} className="bg-zinc-950/70 border border-zinc-800/80 rounded-xl p-3 space-y-1 text-xs">
+                          <div className="flex justify-between font-bold text-sm text-zinc-100">
+                            <span>{item.barber.name}</span>
+                            <span className="text-emerald-400">${item.totalGen}</span>
+                          </div>
+                          <p className="text-zinc-400">{item.cutsCount} cortes • {item.barber.isOwner ? <>Al fondo común: <strong className="text-emerald-300">${item.totalGen - item.commissionEarned}</strong></> : <>Comisión generada: <strong className="text-zinc-200">${item.commissionEarned}</strong></>}</p>
+                          {item.tipsEarned > 0 && <p className="text-amber-400 font-medium">Propinas: +${item.tipsEarned}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+
               <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="flex items-center space-x-1.5 bg-zinc-950 p-1 rounded-xl border border-zinc-800">
@@ -1443,6 +1541,11 @@ const handleAddBarber = async () => {
                 </div>
               </div>
 
+              {legacyFinancialRows > 0 && (
+                <div role="status" className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
+                  Hay {legacyFinancialRows} operaciones antiguas sin comisión histórica guardada. Su reparto es estimado; no lo uses para liquidar pagos definitivos.
+                </div>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
                 <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 space-y-1">
                   <div className="flex items-center justify-between text-xs text-zinc-400">
@@ -1455,7 +1558,7 @@ const handleAddBarber = async () => {
 
                 <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 space-y-1">
                   <div className="flex items-center justify-between text-xs text-zinc-400">
-                    <span>Pago a Barberos</span>
+                    <span>Comisiones generadas</span>
                     <Users className="w-4 h-4 text-amber-400" />
                   </div>
                   <p className="text-2xl font-extrabold text-amber-400">-${staffCommissionsToPay}</p>
@@ -1464,11 +1567,11 @@ const handleAddBarber = async () => {
 
                 <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 space-y-1">
                   <div className="flex items-center justify-between text-xs text-zinc-300 font-semibold">
-                    <span>Total Bruto Negocio</span>
+                    <span>Para el negocio antes de gastos</span>
                     <Crown className="w-4 h-4 text-emerald-400" />
                   </div>
                   <p className="text-2xl font-extrabold text-emerald-400">${ownerTotalGrossIncome}</p>
-                  <p className="text-[11px] text-zinc-400">Propietario + retención</p>
+                  <p className="text-[11px] text-zinc-400">Ingresos del local menos comisiones, antes de gastos</p>
                 </div>
 
                 <div
@@ -1479,7 +1582,7 @@ const handleAddBarber = async () => {
                   }`}
                 >
                   <div className="flex items-center justify-between text-xs font-bold text-emerald-300">
-                    <span>Neto en Bolsillo</span>
+                    <span>Resultado del negocio</span>
                     <DollarSign className="w-4 h-4 text-emerald-400" />
                   </div>
                   <p
@@ -1498,7 +1601,7 @@ const handleAddBarber = async () => {
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
                   {barberFinancials.map((item) => {
-                    const isOwner = item.barber.isOwner || item.barber.commissionRate === 100;
+                    const isOwner = item.barber.isOwner === true;
                     const totalBarberPocket = item.barberTakeHome + item.barberTipsTotal;
 
                     return (
@@ -1514,7 +1617,7 @@ const handleAddBarber = async () => {
                             <div>
                               <h4 className="font-bold text-sm">{item.barber.name}</h4>
                               <span className="text-[11px] text-zinc-400">
-                                Comisión: <strong>{item.barber.commissionRate}%</strong>
+                                {isOwner ? 'Propietario: 100% al fondo común' : <>Comisión: <strong>{item.barber.commissionRate}%</strong></>}
                               </span>
                             </div>
                           </div>
@@ -1549,8 +1652,8 @@ const handleAddBarber = async () => {
                           </div>
 
                           <div className="flex justify-between pt-1 text-emerald-400 font-bold">
-                            <span>Para local:</span>
-                            <span>+${isOwner ? item.barberTakeHome : item.leftForOwner}</span>
+                            <span>Al fondo común:</span>
+                            <span>+${item.leftForOwner}</span>
                           </div>
                         </div>
                       </div>
@@ -1650,12 +1753,12 @@ const handleAddBarber = async () => {
                           <span>WhatsApp</span>
                         </a>
 
-                        {apt.status !== 'completado' && (
+                        {apt.status === 'confirmado' && (
                           <button
                             type="button"
                             onClick={() => {
-                              if (!canCompleteAppointment(apt.dateString)) {
-                                alert('No podés completar un turno que corresponde a una fecha futura.');
+                              if (appointmentTimeState(apt) !== 'started') {
+                                alert('Podés completar el turno cuando llegue su hora de inicio.');
                                 return;
                               }
                               handleStatusChange(apt.id, 'completado');
@@ -1667,14 +1770,20 @@ const handleAddBarber = async () => {
                             <span>Completar</span>
                           </button>
                         )}
-                        <button
+                        {apt.status === 'confirmado' && <button
                           type="button"
-                          onClick={() => handleStatusChange(apt.id, 'cancelado')}
+                          onClick={() => {
+                            if (appointmentTimeState(apt) !== 'future') {
+                              alert('Este turno ya comenzó o pasó y no se puede cancelar.');
+                              return;
+                            }
+                            handleStatusChange(apt.id, 'cancelado');
+                          }}
                           className="px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-rose-400 text-xs font-semibold flex items-center gap-1 cursor-pointer"
                         >
                           <XCircle className="w-3.5 h-3.5" />
                           <span>Cancelar</span>
-                        </button>
+                        </button>}
                       </div>
                     </div>
                   ))
@@ -1735,12 +1844,12 @@ const handleAddBarber = async () => {
                         <span>WhatsApp</span>
                       </a>
 
-                      {apt.status !== 'completado' && (
+                      {apt.status === 'confirmado' && (
                         <button
                           type="button"
                           onClick={() => {
-                            if (!canCompleteAppointment(apt.dateString)) {
-                              alert('No podés completar un turno que corresponde a una fecha futura.');
+                            if (appointmentTimeState(apt) !== 'started') {
+                              alert('Podés completar el turno cuando llegue su hora de inicio.');
                               return;
                             }
                             handleStatusChange(apt.id, 'completado');
@@ -1753,10 +1862,16 @@ const handleAddBarber = async () => {
                         </button>
                       )}
 
-                      {apt.status !== 'cancelado' && (
+                      {apt.status === 'confirmado' && (
                         <button
                           type="button"
-                          onClick={() => handleStatusChange(apt.id, 'cancelado')}
+                          onClick={() => {
+                            if (appointmentTimeState(apt) !== 'future') {
+                              alert('Este turno ya comenzó o pasó y no se puede cancelar.');
+                              return;
+                            }
+                            handleStatusChange(apt.id, 'cancelado');
+                          }}
                           className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-rose-400 hover:bg-rose-500/10 text-xs font-medium flex items-center space-x-1 cursor-pointer"
                         >
                           <XCircle className="w-3.5 h-3.5" />
@@ -1816,6 +1931,10 @@ const handleAddBarber = async () => {
                     Sumar
                   </button>
                 </div>
+                <label className="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
+                  <input type="checkbox" checked={newBarberIsOwner} onChange={(e) => setNewBarberIsOwner(e.target.checked)} className="accent-emerald-500 size-4" />
+                  Es propietario: 100% de sus cortes al fondo común (sin comisión)
+                </label>
               </div>
 
               <div className="grid grid-cols-1 gap-4">
@@ -1847,18 +1966,27 @@ const handleAddBarber = async () => {
                                 <ExternalLink className="w-3 h-3" />
                               </Link>
                             </div>
-                            <p className="text-xs text-zinc-400">Barbero</p>
+                            <p className="text-xs text-zinc-400">{brb.isOwner ? 'Propietario · fondo común' : 'Barbero · comisión'}</p>
                           </div>
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2.5">
+                          <label className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-zinc-800 bg-zinc-950 text-xs text-zinc-300 cursor-pointer">
+                            <input type="checkbox" className="size-4 accent-emerald-500" checked={brb.isOwner === true} onChange={(e) => handleUpdateBarberField(brb.id, 'isOwner', e.target.checked)} />
+                            Propietario
+                          </label>
+                          <label className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-zinc-800 bg-zinc-950 text-xs text-zinc-300 cursor-pointer">
+                            <input type="checkbox" className="size-4 accent-emerald-500" checked={brb.active !== false} onChange={(e) => handleUpdateBarberField(brb.id, 'active', e.target.checked)} />
+                            Habilitado
+                          </label>
                           <div className="flex items-center space-x-1.5 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-1.5">
-                            <span className="text-xs text-zinc-400">Comisión:</span>
+                            <span className="text-xs text-zinc-400">{brb.isOwner ? 'Comisión no aplica:' : 'Comisión:'}</span>
                             <input
                               type="number"
                               min={0}
                               max={100}
                               value={brb.commissionRate}
+                              disabled={brb.isOwner === true}
                               onChange={(e) =>
                                 handleUpdateBarberField(brb.id, 'commissionRate', e.target.value)
                               }
@@ -1869,12 +1997,14 @@ const handleAddBarber = async () => {
 
                           <div className="flex items-center space-x-1.5 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-1.5">
                             <KeyRound className="w-3.5 h-3.5 text-zinc-400" />
-                            <span className="text-xs text-zinc-400">PIN:</span>
+                            <span className="text-xs text-zinc-400">Cambiar PIN:</span>
                             <input
-                              type="text"
+                              type="password"
                               inputMode="numeric"
+                              autoComplete="new-password"
+                              placeholder="Nuevo PIN"
                               maxLength={6}
-                              value={barberPinDrafts[brb.id] ?? brb.pin}
+                              value={barberPinDrafts[brb.id] ?? ''}
                               onChange={(e) => setBarberPinDrafts((prev) => ({
                                 ...prev,
                                 [brb.id]: e.target.value.replace(/\D/g, '').slice(0, 6),
@@ -2010,6 +2140,10 @@ const handleAddBarber = async () => {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2.5">
+                      <label className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-xs text-zinc-300 cursor-pointer">
+                        <input type="checkbox" className="size-4 accent-emerald-500" checked={srv.active !== false} onChange={(e) => handleToggleServiceActive(srv.id, e.target.checked)} />
+                        Habilitado
+                      </label>
                       <div className="flex items-center bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-1.5">
                         <Clock className="w-3.5 h-3.5 text-zinc-500 mr-1.5" />
                         <input

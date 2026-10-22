@@ -10,6 +10,7 @@ import {
 } from '@/lib/session';
 import { isValidUUID } from '@/lib/booking-store';
 import { requireOpenCash } from '@/lib/cash-guard';
+import {appointmentTimeState} from '@/lib/appointment-rules';
 
 export async function POST(request: Request) {
   if (!verifyCsrfOrigin(request)) {
@@ -23,47 +24,32 @@ export async function POST(request: Request) {
     }
 
     const supabase = getSupabaseServer();
-    // Consultas independientes: comprobar perfil y límites de PIN a la vez.
-    // Conservamos el mismo bloqueo y la auditoría de intentos fallidos.
-    const cutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
-    const [barberLookup, attemptsLookup] = await Promise.all([
+    // La comprobación y el bloqueo por intentos se ejecutan atómicamente
+    // en PostgreSQL. Nunca traer PIN (ni su hash) al servidor Next.js.
+    const [barberLookup, verification] = await Promise.all([
       supabase.from('barbers')
-        .select('id,name,pin,commission_rate,active')
+        .select('id,name,commission_rate,active')
         .eq('id', barberId)
         .eq('shop_id', SHOP_UUID)
         .maybeSingle(),
-      supabase.from('audit_logs')
-        .select('id', {count: 'exact', head: true})
-        .eq('shop_id', SHOP_UUID)
-        .eq('action', 'PIN_FAILED')
-        .eq('details', barberId)
-        .gte('created_at', cutoff),
+      supabase.rpc('verify_barber_pin_login', {
+        p_shop_id: SHOP_UUID,
+        p_barber_id: barberId,
+        p_pin: pin.trim(),
+      }),
     ]);
     const {data: barber, error} = barberLookup;
     if (error || !barber || !barber.active) {
-      return NextResponse.json({error: 'Barbero no encontrado.'}, {status: 404});
+      return NextResponse.json({error: 'Credenciales inválidas.'}, {status: 401});
     }
-    if (attemptsLookup.error) {
-      return NextResponse.json({error: 'No se pudo verificar el límite de intentos.'}, {status: 503});
+    if (verification.error) {
+      return NextResponse.json({error: 'No se pudo validar el acceso.'}, {status: 503});
     }
-    if ((attemptsLookup.count ?? 0) >= 5) {
+    if (verification.data === 'blocked') {
       return NextResponse.json({error: 'Demasiados intentos. Intentá nuevamente en 15 minutos.'}, {status: 429});
     }
-
-    const expectedPin = String(barber.pin || '').trim();
-    if (!expectedPin || expectedPin === '1234') {
-      return NextResponse.json({error: 'El barbero debe configurar un PIN nuevo.'}, {status: 403});
-    }
-    if (pin.trim() !== expectedPin) {
-      const {error: logError} = await supabase.from('audit_logs').insert({
-        shop_id: SHOP_UUID,
-        action: 'PIN_FAILED',
-        details: barberId,
-      });
-      if (logError) {
-        return NextResponse.json({error: 'No se pudo verificar el PIN de forma segura.'}, {status: 503});
-      }
-      return NextResponse.json({error: 'PIN incorrecto.'}, {status: 401});
+    if (verification.data !== 'ok') {
+      return NextResponse.json({error: 'Credenciales inválidas.'}, {status: 401});
     }
 
     const token = signSessionToken({
@@ -88,9 +74,10 @@ export async function POST(request: Request) {
     });
 
     return response;
-  } catch (err: any) {
+  } catch {
+    // No exponer errores internos o detalles de credenciales al visitante.
     return NextResponse.json(
-      { error: err?.message || 'Error verificando el PIN.' },
+      { error: 'No se pudo verificar el acceso. Intentá nuevamente.' },
       { status: 500 }
     );
   }
@@ -137,7 +124,7 @@ export async function PATCH(request: Request) {
     }
 
     const { id, status } = await request.json();
-    if (!isValidUUID(id) || !['confirmado', 'completado', 'cancelado'].includes(status)) {
+    if (!isValidUUID(id) || !['completado', 'cancelado'].includes(status)) {
       return NextResponse.json({ error: 'Parámetros inválidos.' }, { status: 400 });
     }
 
@@ -146,15 +133,29 @@ export async function PATCH(request: Request) {
     // Verificar también el estado anterior: revertir un turno completado
     // modifica la facturación, no solo marcarlo como completado.
     let lookup = supabase.from('appointments')
-      .select('status').eq('id', id).eq('shop_id', SHOP_UUID);
+      .select('status,date_string,time_slot,created_at').eq('id', id).eq('shop_id', SHOP_UUID);
     if (!adminSession && barberSession) {
       lookup = lookup.eq('barber_id', barberSession.sub);
     }
     const {data: current, error: lookupError} = await lookup.maybeSingle();
     if (lookupError) return NextResponse.json({error: 'No se pudo consultar el turno.'}, {status: 500});
     if (!current) return NextResponse.json({error: 'Turno inexistente o sin permiso.'}, {status: 404});
+    if (current.status !== 'confirmado') {
+      return NextResponse.json({error: 'Solo se puede modificar un turno confirmado una vez.'}, {status: 409});
+    }
 
-    if (status !== current.status && (status === 'completado' || current.status === 'completado')) {
+    const timeState = appointmentTimeState({
+      dateString: current.date_string, timeSlot: current.time_slot,
+      createdAt: current.created_at,
+    });
+    if (status === 'cancelado' && timeState !== 'future') {
+      return NextResponse.json({error: 'El horario ya comenzó o pasó; no se puede cancelar.'}, {status: 409});
+    }
+    if (status === 'completado' && timeState !== 'started') {
+      return NextResponse.json({error: 'No se puede completar un turno futuro o con fecha inválida.'}, {status: 409});
+    }
+
+    if (status === 'completado') {
       const cashDenied = await requireOpenCash();
       if (cashDenied) return cashDenied;
     }
@@ -163,21 +164,37 @@ export async function PATCH(request: Request) {
       .from('appointments')
       .update({ status })
       .eq('id', id)
-      .eq('shop_id', SHOP_UUID);
+      .eq('shop_id', SHOP_UUID)
+      .eq('status', 'confirmado');
 
     if (!adminSession && barberSession) {
       query = query.eq('barber_id', barberSession.sub);
     }
 
-    const { error } = await query;
+    const { data, error } = await query
+      .select('id,status,completed_at,commission_rate_snapshot,barber_earnings_snapshot,business_earnings_snapshot,completed_cash_register_id')
+      .maybeSingle();
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
+    if (!data) return NextResponse.json({error: 'El turno cambió de estado o ya no está disponible.'}, {status: 409});
 
-    return NextResponse.json({ ok: true });
-  } catch (err: any) {
+    return NextResponse.json({
+      ok: true,
+      appointment: {
+        id: data.id,
+        status: data.status,
+        completedAt: data.completed_at ?? null,
+        commissionRateSnapshot: data.commission_rate_snapshot == null ? null : Number(data.commission_rate_snapshot),
+        barberEarningsSnapshot: data.barber_earnings_snapshot == null ? null : Number(data.barber_earnings_snapshot),
+        businessEarningsSnapshot: data.business_earnings_snapshot == null ? null : Number(data.business_earnings_snapshot),
+        completedCashRegisterId: data.completed_cash_register_id ?? null,
+      },
+    });
+  } catch {
+    // Los errores internos no deben filtrarse por una ruta privada.
     return NextResponse.json(
-      { error: err?.message || 'Error al actualizar turno.' },
+      { error: 'No se pudo actualizar el turno. Intentá nuevamente.' },
       { status: 500 }
     );
   }

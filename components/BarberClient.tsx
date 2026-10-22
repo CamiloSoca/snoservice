@@ -1,7 +1,7 @@
 // app/barbero/barbero.tsx
 'use client';
 
-import { useState, useEffect, useMemo, Suspense } from 'react';
+import { useState, useEffect, useMemo, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -24,16 +24,19 @@ import {
   ManualChargeItem,
   unlockBarberPanelWithPin,
   getBarberDashboardSnapshot,
+  getMontevideoDateKey,
   updateAppointmentStatus,
   createTip,
   deleteTip,
   createManualCharge,
   deleteManualCharge,
   sortAppointmentsChronologically,
-  canCompleteAppointment,
+  generateUUID,
 } from '@/lib/booking-store';
+import { appointmentTimeState } from '@/lib/appointment-rules';
 import { InitialShopSkeleton, PanelLoading } from '@/components/InitialShopState';
 import type { PublicShopData } from '@/lib/public-shop-data';
+import { splitBusinessRevenue } from '@/lib/financial-allocations';
 
 const MONTH_NAMES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -61,7 +64,7 @@ function isWithinSelectedMonth(isoOrDateStr: string, selectedMonthYear: string):
   if (isNaN(target.getTime())) return true;
   const [selYear, selMonth] = selectedMonthYear.split('-').map(Number);
   if (!selYear || !selMonth) return true;
-  return target.getFullYear() === selYear && target.getMonth() + 1 === selMonth;
+  return getMontevideoDateKey(target).slice(0, 7) === selectedMonthYear;
 }
 
 function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
@@ -71,7 +74,8 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
 
   const availableMonths = getRecentMonths(12);
   const [selectedMonth, setSelectedMonth] = useState<string>(availableMonths[0].value);
-  const [auditDate, setAuditDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [auditDate, setAuditDate] = useState<string>(getMontevideoDateKey());
+  const [appointmentsView, setAppointmentsView] = useState<'pendientes' | 'historial'>('pendientes');
 
   const shopConfig = initialShop.shopConfig;
   const barbers = useMemo(
@@ -87,6 +91,7 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
   const [barberTips, setBarberTips] = useState<TipItem[]>([]);
   const [barberCharges, setBarberCharges] = useState<ManualChargeItem[]>([]);
   const [commissionRate, setCommissionRate] = useState<number>(50);
+  const [isOwner, setIsOwner] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [panelLoading, setPanelLoading] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
@@ -94,10 +99,12 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
   const [newTipAmount, setNewTipAmount] = useState<string>('');
   const [newTipNote, setNewTipNote] = useState<string>('');
   const [savingTip, setSavingTip] = useState<boolean>(false);
+  const tipAttempt = useRef<{fingerprint: string; id: string; pending: boolean} | null>(null);
 
   const [newChargeAmount, setNewChargeAmount] = useState<string>('');
   const [newChargeNote, setNewChargeNote] = useState<string>('');
   const [savingCharge, setSavingCharge] = useState<boolean>(false);
+  const chargeAttempt = useRef<{fingerprint: string; id: string; pending: boolean} | null>(null);
 
   useEffect(() => {
     if (!profileSlug || barbers.length === 0) return;
@@ -129,6 +136,7 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
       const snapshot = await getBarberDashboardSnapshot();
       setCashOpen(snapshot.cashOpen);
       setCommissionRate(snapshot.commissionRate);
+      setIsOwner(snapshot.isOwner);
       setBarberAppointments(sortAppointmentsChronologically(snapshot.appointments));
       setBarberTips(snapshot.tips);
       setBarberCharges(snapshot.manualCharges);
@@ -145,9 +153,9 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
   const handleStatusChange = async (appointmentId: string, status: AppointmentItem['status']) => {
     try {
       setErrorMsg('');
-      await updateAppointmentStatus(appointmentId, status);
+      const persisted = await updateAppointmentStatus(appointmentId, status);
       setBarberAppointments((current) => current.map((appointment) =>
-        appointment.id === appointmentId ? {...appointment, status} : appointment
+        appointment.id === appointmentId ? {...appointment, ...persisted} : appointment
       ));
     } catch (err: any) {
       setErrorMsg(err?.message || 'No se pudo actualizar el estado del turno.');
@@ -157,6 +165,12 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
   const handleAddMyTip = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedBarberId || !newTipAmount || Number(newTipAmount) <= 0) return;
+    const fingerprint = JSON.stringify([selectedBarberId, Number(newTipAmount), newTipNote.trim()]);
+    if (tipAttempt.current?.pending) return;
+    if (tipAttempt.current?.fingerprint !== fingerprint) {
+      tipAttempt.current = {fingerprint, id: generateUUID(), pending: false};
+    }
+    tipAttempt.current!.pending = true;
     try {
       setSavingTip(true);
       setErrorMsg('');
@@ -164,13 +178,16 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
         barberId: selectedBarberId,
         amount: Number(newTipAmount),
         note: newTipNote.trim(),
+        requestId: tipAttempt.current!.id,
       });
       setBarberTips(Array.isArray(updatedTips) ? updatedTips : []);
       setNewTipAmount('');
       setNewTipNote('');
+      tipAttempt.current = null;
     } catch (err: any) {
       setErrorMsg(err?.message || 'No se pudo guardar la propina.');
     } finally {
+      if (tipAttempt.current) tipAttempt.current.pending = false;
       setSavingTip(false);
     }
   };
@@ -188,6 +205,12 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
   const handleAddMyCharge = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedBarberId || !newChargeAmount || Number(newChargeAmount) <= 0) return;
+    const fingerprint = JSON.stringify([selectedBarberId, Number(newChargeAmount), newChargeNote.trim()]);
+    if (chargeAttempt.current?.pending) return;
+    if (chargeAttempt.current?.fingerprint !== fingerprint) {
+      chargeAttempt.current = {fingerprint, id: generateUUID(), pending: false};
+    }
+    chargeAttempt.current!.pending = true;
     try {
       setSavingCharge(true);
       setErrorMsg('');
@@ -195,13 +218,16 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
         barberId: selectedBarberId,
         amount: Number(newChargeAmount),
         note: newChargeNote.trim() || 'Corte extra sin turno',
+        requestId: chargeAttempt.current!.id,
       });
       setBarberCharges(Array.isArray(updatedCharges) ? updatedCharges : []);
       setNewChargeAmount('');
       setNewChargeNote('');
+      chargeAttempt.current = null;
     } catch (err: any) {
       setErrorMsg(err?.message || 'No se pudo registrar el cobro.');
     } finally {
+      if (chargeAttempt.current) chargeAttempt.current.pending = false;
       setSavingCharge(false);
     }
   };
@@ -219,7 +245,7 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
   const selectedBarberObj = barbers.find((b) => b.id === selectedBarberId);
 
   const completedAppointments = barberAppointments.filter(
-    (a) => a.status === 'completado' && isWithinSelectedMonth(a.createdAt, selectedMonth)
+    (a) => a.status === 'completado' && isWithinSelectedMonth(a.completedAt || a.createdAt, selectedMonth)
   );
 
   const monthlyTips = barberTips.filter((t) =>
@@ -238,13 +264,15 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
   const grossFromCharges = monthlyCharges.reduce((sum, c) => sum + Number(c.amount), 0);
   const totalGrossMonthly = grossFromAppointments + grossFromCharges;
 
-  const totalEarned = Math.round((totalGrossMonthly * commissionRate) / 100);
+  const totalEarned = completedAppointments.reduce((sum, a) => sum + splitBusinessRevenue(Number(a.priceSnapshot ?? a.servicePrice), {commissionRate, isOwner}, a).barber, 0) +
+    monthlyCharges.reduce((sum, c) => sum + splitBusinessRevenue(Number(c.amount), {commissionRate, isOwner}, c).barber, 0);
+  const totalToBusiness = totalGrossMonthly - totalEarned;
   const totalTipsAmount = monthlyTips.reduce((sum, t) => sum + Number(t.amount), 0);
 
   const dailyAppointments = barberAppointments.filter((a) => {
     if (a.status !== 'completado') return false;
     if (auditDate) {
-      const aDate = (a.createdAt || '').split('T')[0];
+      const aDate = getMontevideoDateKey(a.completedAt || a.createdAt);
       if (aDate !== auditDate) return false;
     }
     return true;
@@ -252,7 +280,7 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
 
   const dailyCharges = barberCharges.filter((c) => {
     if (auditDate) {
-      const cDate = (c.createdAt || '').split('T')[0];
+      const cDate = getMontevideoDateKey(c.createdAt);
       if (cDate !== auditDate) return false;
     }
     return true;
@@ -260,7 +288,7 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
 
   const dailyTips = barberTips.filter((t) => {
     if (auditDate) {
-      const tDate = (t.createdAt || '').split('T')[0];
+      const tDate = getMontevideoDateKey(t.createdAt);
       if (tDate !== auditDate) return false;
     }
     return true;
@@ -270,8 +298,19 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
     dailyAppointments.reduce((sum, a) => sum + Number(a.priceSnapshot ?? a.servicePrice), 0) +
     dailyCharges.reduce((sum, c) => sum + Number(c.amount), 0);
 
-  const dailyCommission = Math.round((dailyGross * commissionRate) / 100);
+  const dailyCommission = dailyAppointments.reduce((sum, a) => sum + splitBusinessRevenue(Number(a.priceSnapshot ?? a.servicePrice), {commissionRate, isOwner}, a).barber, 0) +
+    dailyCharges.reduce((sum, c) => sum + splitBusinessRevenue(Number(c.amount), {commissionRate, isOwner}, c).barber, 0);
   const dailyTipsTotal = dailyTips.reduce((sum, t) => sum + Number(t.amount), 0);
+  const dailyToBusiness = dailyAppointments.reduce((sum, a) =>
+    sum + splitBusinessRevenue(Number(a.priceSnapshot ?? a.servicePrice), {commissionRate,isOwner}, a).business, 0)
+    + dailyCharges.reduce((sum, c) =>
+      sum + splitBusinessRevenue(Number(c.amount), {commissionRate,isOwner}, c).business, 0);
+  const historicEstimateCount = [...completedAppointments,...monthlyCharges].filter(
+    item => item.barberEarningsSnapshot == null || item.businessEarningsSnapshot == null
+  ).length;
+  const visibleAppointments = barberAppointments.filter(apt =>
+    appointmentsView === 'pendientes' ? apt.status === 'confirmado' : apt.status !== 'confirmado'
+  );
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 pb-28 sm:pb-16 relative">
@@ -413,7 +452,7 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
                 </div>
                 <div>
                   <h2 className="text-lg font-extrabold">{selectedBarberObj?.name}</h2>
-                  <p className="text-xs text-zinc-400">Comisión configurada: {commissionRate}%</p>
+                  <p className="text-xs text-zinc-400">{isOwner ? 'Sos dueño: el dinero de tus cortes va al negocio, no a una comisión personal.' : `Tu comisión configurada es del ${commissionRate}%`}</p>
                 </div>
               </div>
 
@@ -441,28 +480,136 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
               </div>
             </div>
 
+            {historicEstimateCount > 0 && (
+              <div role="status" className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
+                {historicEstimateCount} movimientos anteriores no guardaron su comisión histórica. Estos importes son estimados.
+              </div>
+            )}
+            <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 sm:p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold text-base flex items-center gap-2">
+                  <CalendarIcon className="w-4 h-4 text-emerald-400" />
+                  Mis turnos
+                </h3>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={() => setAppointmentsView('pendientes')}
+                  className={'rounded-xl px-4 py-2 text-xs font-bold '+(appointmentsView==='pendientes'?'bg-emerald-400 text-zinc-950':'border border-zinc-700 bg-zinc-950 text-zinc-300')}>
+                  Pendientes ({barberAppointments.filter(a => a.status === 'confirmado').length})
+                </button>
+                <button type="button" onClick={() => setAppointmentsView('historial')}
+                  className={'rounded-xl px-4 py-2 text-xs font-bold '+(appointmentsView==='historial'?'bg-emerald-400 text-zinc-950':'border border-zinc-700 bg-zinc-950 text-zinc-300')}>
+                  Historial
+                </button>
+              </div>
+              {visibleAppointments.length === 0 ? (
+                <div className="p-12 text-center bg-zinc-950 border border-zinc-800 rounded-2xl space-y-2">
+                  <CalendarIcon className="w-8 h-8 text-zinc-600 mx-auto" />
+                  <p className="text-xs text-zinc-400">{appointmentsView === 'pendientes' ? 'No tenés turnos pendientes.' : 'Todavía no hay turnos en el historial.'}</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {visibleAppointments.map((apt) => (
+                    <div
+                      key={apt.id}
+                      className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-xs font-bold text-emerald-400">
+                            {apt.dateString} • {apt.timeSlot} hs
+                          </span>
+                          <span
+                            className={`text-[11px] font-bold px-2 py-0.5 rounded capitalize ${
+                              apt.status === 'completado'
+                                ? 'bg-emerald-500/15 text-emerald-400'
+                                : 'bg-amber-500/15 text-amber-400'
+                            }`}
+                          >
+                            {apt.status}
+                          </span>
+                        </div>
+                        <h4 className="font-bold text-sm sm:text-base">
+                          {apt.clientName}{' '}
+                          <span className="font-normal text-xs text-zinc-400">
+                            ({apt.clientPhone})
+                          </span>
+                        </h4>
+                        <p className="text-xs text-zinc-400">
+                          {apt.serviceName} (${apt.priceSnapshot ?? apt.servicePrice})
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {apt.status === 'confirmado' && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (appointmentTimeState(apt) !== 'started') {
+                                alert('Podés completar el turno cuando llegue su hora de inicio.');
+                                return;
+                              }
+                              handleStatusChange(apt.id, 'completado');
+                            }}
+                            disabled={!cashOpen}
+                            className="px-3.5 py-2 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-bold flex items-center gap-1 cursor-pointer"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>Completar</span>
+                          </button>
+                        )}
+                        {apt.status === 'confirmado' && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (appointmentTimeState(apt) !== 'future') {
+                              alert('Este turno ya comenzó o pasó y no se puede cancelar.');
+                              return;
+                            }
+                            handleStatusChange(apt.id, 'cancelado');
+                          }}
+                          className="px-3.5 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-rose-400 text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                        >
+                          <XCircle className="w-3.5 h-3.5" />
+                          <span>Cancelar</span>
+                        </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800 pb-3">
                 <h3 className="font-bold text-sm flex items-center gap-2">
                   <BarChart3 className="w-4 h-4 text-emerald-400" />
-                  Mis Ganancias Día a Día
+                  {isOwner ? 'Mis ingresos para el negocio' : 'Mis ganancias por día'}
                 </h3>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button type="button" onClick={() => setAuditDate(getMontevideoDateKey())}
+                    className="rounded-lg border border-zinc-700 px-3 py-2 text-xs font-bold hover:border-emerald-400">Hoy</button>
+                  <button type="button" onClick={() => setAuditDate(getMontevideoDateKey(new Date(Date.now() - 86400000)))}
+                    className="rounded-lg border border-zinc-700 px-3 py-2 text-xs font-bold hover:border-emerald-400">Ayer</button>
                 <input
                   type="date"
                   value={auditDate}
                   onChange={(e) => setAuditDate(e.target.value)}
                   className="px-3.5 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-xs font-bold text-emerald-400 outline-none cursor-pointer"
                 />
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 space-y-1">
-                  <span className="text-xs text-zinc-400">Mi Comisión Generada (Día)</span>
-                  <p className="text-2xl font-extrabold text-emerald-400">${dailyCommission}</p>
-                  <span className="text-[11px] text-zinc-500">{dailyAppointments.length} turnos + {dailyCharges.length} extras</span>
+                  <span className="text-xs text-zinc-400">{isOwner ? 'Aporte al negocio en esta fecha' : 'Comisión generada en esta fecha'}</span>
+                  <p className="text-2xl font-extrabold text-emerald-400">${isOwner ? dailyToBusiness : dailyCommission}</p>
+                  <span className="text-[11px] text-zinc-500">{dailyAppointments.length} turnos completados + {dailyCharges.length} cobros extra</span>
                 </div>
                 <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 space-y-1">
-                  <span className="text-xs text-zinc-400">Mis Propinas (Día)</span>
+                  <span className="text-xs text-zinc-400">Propinas de la fecha</span>
                   <p className="text-2xl font-extrabold text-amber-400">+${dailyTipsTotal}</p>
                 </div>
               </div>
@@ -470,19 +617,22 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-1">
-                <span className="text-xs text-zinc-400">Turnos Completados (Mes)</span>
+                <span className="text-xs text-zinc-400">Turnos realizados este mes</span>
                 <p className="text-3xl font-extrabold text-white">{completedAppointments.length}</p>
               </div>
 
               <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-1">
-                <span className="text-xs text-emerald-400 font-bold">Mis Comisiones (Mes)</span>
-                <p className="text-3xl font-extrabold text-emerald-400">${totalEarned}</p>
+                <span className="text-xs text-emerald-400 font-bold">{isOwner ? 'Total generado con mis servicios (mes)' : 'Mis comisiones generadas (mes)'}</span>
+                <p className="text-3xl font-extrabold text-emerald-400">${isOwner ? totalGrossMonthly : totalEarned}</p>
+                {isOwner
+                  ? <p className="text-xs text-zinc-400">Al fondo común: ${totalToBusiness}. No es un pago ni retiro personal.</p>
+                  : <p className="text-xs text-zinc-400">Comisión generada, no necesariamente pagada.</p>}
               </div>
 
               <div className="bg-zinc-900/90 border border-emerald-500/30 rounded-2xl p-5 space-y-1">
                 <span className="text-xs text-amber-400 font-bold flex items-center gap-1.5">
                   <Coins className="w-3.5 h-3.5" />
-                  Mis Propinas (Mes)
+                  Propinas del mes
                 </span>
                 <p className="text-3xl font-extrabold text-amber-400">+${totalTipsAmount}</p>
               </div>
@@ -610,84 +760,6 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
               )}
             </div>
 
-            <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 sm:p-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="font-bold text-base flex items-center gap-2">
-                  <CalendarIcon className="w-4 h-4 text-emerald-400" />
-                  Mis Turnos Asignados
-                </h3>
-              </div>
-
-              {barberAppointments.length === 0 ? (
-                <div className="p-12 text-center bg-zinc-950 border border-zinc-800 rounded-2xl space-y-2">
-                  <CalendarIcon className="w-8 h-8 text-zinc-600 mx-auto" />
-                  <p className="text-xs text-zinc-400">No hay turnos registrados.</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {barberAppointments.map((apt) => (
-                    <div
-                      key={apt.id}
-                      className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                    >
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-xs font-bold text-emerald-400">
-                            {apt.dateString} • {apt.timeSlot} hs
-                          </span>
-                          <span
-                            className={`text-[11px] font-bold px-2 py-0.5 rounded capitalize ${
-                              apt.status === 'completado'
-                                ? 'bg-emerald-500/15 text-emerald-400'
-                                : 'bg-amber-500/15 text-amber-400'
-                            }`}
-                          >
-                            {apt.status}
-                          </span>
-                        </div>
-                        <h4 className="font-bold text-sm sm:text-base">
-                          {apt.clientName}{' '}
-                          <span className="font-normal text-xs text-zinc-400">
-                            ({apt.clientPhone})
-                          </span>
-                        </h4>
-                        <p className="text-xs text-zinc-400">
-                          {apt.serviceName} (${apt.priceSnapshot ?? apt.servicePrice})
-                        </p>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        {apt.status !== 'completado' && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (!canCompleteAppointment(apt.dateString)) {
-                                alert('No podés completar un turno que corresponde a una fecha futura.');
-                                return;
-                              }
-                              handleStatusChange(apt.id, 'completado');
-                            }}
-                            disabled={!cashOpen}
-                            className="px-3.5 py-2 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-bold flex items-center gap-1 cursor-pointer"
-                          >
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            <span>Completar</span>
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => handleStatusChange(apt.id, 'cancelado')}
-                          className="px-3.5 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-rose-400 text-xs font-semibold flex items-center gap-1 cursor-pointer"
-                        >
-                          <XCircle className="w-3.5 h-3.5" />
-                          <span>Cancelar</span>
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
           </div>
         )}
       </main>

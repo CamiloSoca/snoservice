@@ -11,6 +11,7 @@ import {
   AppointmentItem,
   ServiceItem,
 } from '@/lib/booking-store';
+import {validateBookingTime, type BusinessSchedule} from '@/lib/appointment-rules';
 
 // Los turnos se guardan como "Mié 21 Oct" (sin año), el mismo formato
 // generado por buildRealOpenDays. La agenda publica muestra los siguientes
@@ -45,9 +46,9 @@ export async function GET() {
       .in('date_string', getVisibleBookingDates());
 
     if (error) {
-      console.error('Error detallado de Supabase en GET /booking:', error);
+      console.error('No se pudo consultar la disponibilidad:', error.code);
       return NextResponse.json(
-        { error: `Error de base de datos: ${error.message}` },
+        { error: 'No se pudo consultar la disponibilidad. Intentá nuevamente.' },
         { status: 500 }
       );
     }
@@ -65,9 +66,9 @@ export async function GET() {
     return NextResponse.json({ appointments: sanitizedSlots }, {
       headers: {'Cache-Control': 'private, no-store'},
     });
-  } catch (err: any) {
+  } catch {
     return NextResponse.json(
-      { error: err?.message || 'Error de configuración en el servidor.' },
+      { error: 'No se pudo consultar la disponibilidad. Intentá nuevamente.' },
       { status: 500 }
     );
   }
@@ -89,11 +90,16 @@ export async function POST(request: Request) {
     const cleanDate = sanitizeInput(String(dateString || '')).slice(0, 30);
     const cleanTime = sanitizeInput(String(timeSlot || '')).slice(0, 10);
 
-    if (cleanName.length < 3 || !cleanEmail.includes('@')) {
+    if (cleanName.length < 3 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
       return NextResponse.json(
         { error: 'Ingresá tu nombre y un correo electrónico válido.' },
         { status: 400 }
       );
+    }
+
+    if (!/^09[1-9][0-9]{6}$/.test(cleanPhone.replace(/\D/g, '')) ||
+        !isValidUruguayanPhone(cleanPhone)) {
+      return NextResponse.json({error: 'Ingresá un celular uruguayo válido (09X XXX XXX).'}, {status: 400});
     }
 
     if (!/^\d{2}:\d{2}$/.test(cleanTime) || !cleanDate) {
@@ -102,7 +108,8 @@ export async function POST(request: Request) {
 
     const supabase = getSupabaseServer();
 
-    const [{ data: serviceRow, error: srvErr }, { data: barberRow, error: brbErr }] =
+    const [{ data: serviceRow, error: srvErr }, { data: barberRow, error: brbErr },
+      {data: shopRow, error: shopErr}] =
       await Promise.all([
         supabase
           .from('services')
@@ -116,7 +123,12 @@ export async function POST(request: Request) {
           .eq('id', barberId)
           .eq('shop_id', SHOP_UUID)
           .maybeSingle(),
+        supabase.from('shops').select('schedule').eq('id', SHOP_UUID).maybeSingle(),
       ]);
+
+    if (shopErr || !shopRow?.schedule) {
+      return NextResponse.json({error: 'No se pudo verificar el horario del local.'}, {status: 503});
+    }
 
     if (srvErr || !serviceRow || !serviceRow.active) {
       return NextResponse.json(
@@ -144,6 +156,13 @@ export async function POST(request: Request) {
 
     const realPrice = Number(serviceRow.price) || 0;
     const realDuration = Number(serviceRow.duration_minutes) || 60;
+    const timeError = validateBookingTime({
+      dateString: cleanDate,
+      timeSlot: cleanTime,
+      durationMinutes: realDuration,
+      schedule: shopRow.schedule as BusinessSchedule,
+    });
+    if (timeError) return NextResponse.json({error: timeError}, {status: 400});
 
     const { data: existingRows, error: aptErr } = await supabase
       .from('appointments')
@@ -294,9 +313,9 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ appointment: confirmed }, { status: 201 });
-  } catch (err: any) {
+  } catch {
     return NextResponse.json(
-      { error: err?.message || 'Error procesando la reserva.' },
+      { error: 'No se pudo procesar la reserva. Intentá nuevamente.' },
       { status: 500 }
     );
   }
