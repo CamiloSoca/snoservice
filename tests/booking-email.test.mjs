@@ -33,7 +33,7 @@ test('confirmation email has a centered visual layout, emojis, full details and 
 
 test('booking email HTML escapes unsafe user-supplied names', () => {
   const mail = buildBookingConfirmationEmail(sample);
-  assert.doesNotMatch(mail.html, /<script>/);
+  assert.doesNotMatch(mail.html, /<\\s*script\\b/i);
   assert.match(mail.html, /Alex &lt;script&gt;/);
   assert.match(mail.text, /Alex <script>alert/);
 });
