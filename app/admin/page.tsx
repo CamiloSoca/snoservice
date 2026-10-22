@@ -51,6 +51,7 @@ import {
   deleteServiceFromDb,
   getAdminBarbers,
   getAdminDashboardSnapshot,
+  getAgendaRevision,
   getMontevideoDateKey,
   saveBarbers,
   deleteBarberFromDb,
@@ -247,37 +248,64 @@ export default function AdminDashboard() {
     loadAdminData();
   }, []);
 
-  // Un cliente puede reservar/cancelar desde otro celular mientras
-  // administración tiene la agenda abierta. Sin recargar ni pisar los formularios.
+  // Detectar nuevas reservas/cancelaciones mediante una señal muy liviana.
+  // Sin cambios, no descargar la contabilidad completa innecesariamente.
   useEffect(() => {
     if (initialLoad !== 'ready') return;
     let disposed = false;
-    let busy = false;
-    const refreshOperations = async () => {
-      if (disposed || busy || document.visibilityState === 'hidden') return;
-      busy = true;
+    let refreshing = false;
+    let checking = false;
+    let lastRevision: number | null = null;
+
+    const refreshOperations = async (): Promise<boolean> => {
+      if (disposed || refreshing || document.visibilityState === 'hidden') return false;
+      refreshing = true;
       try {
         const snapshot = await getAdminDashboardSnapshot();
-        if (disposed) return;
+        if (disposed) return false;
         setAppointments(sortAppointmentsChronologically(snapshot.appointments));
         setExpenses(snapshot.expenses);
         setTips(snapshot.tips);
         setManualCharges(snapshot.manualCharges);
         setCashStatus(snapshot.cashStatus);
         setLastClosedDate(snapshot.lastClosedDate);
+        return true;
       } catch (error) {
-        console.warn('No se pudo actualizar la agenda de administración.', error);
+        console.warn('No se pudo actualizar el panel de administración.', error);
+        return false;
       } finally {
-        busy = false;
+        refreshing = false;
       }
     };
-    const interval = window.setInterval(() => void refreshOperations(), 60_000);
+
+    const checkAgenda = async () => {
+      if (disposed || checking || refreshing || document.visibilityState === 'hidden') return;
+      checking = true;
+      try {
+        const revision = await getAgendaRevision();
+        if (disposed) return;
+        if (lastRevision === null) {
+          lastRevision = revision;
+        } else if (revision !== lastRevision) {
+          if (await refreshOperations()) lastRevision = revision;
+        }
+      } catch (error) {
+        console.warn('No se pudo comprobar si cambió la agenda.', error);
+      } finally {
+        checking = false;
+      }
+    };
+
+    void checkAgenda();
+    const quickInterval = window.setInterval(() => void checkAgenda(), 6_000);
+    const fullInterval = window.setInterval(() => void refreshOperations(), 60_000);
     const onFocus = () => void refreshOperations();
     window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onFocus);
     return () => {
       disposed = true;
-      window.clearInterval(interval);
+      window.clearInterval(quickInterval);
+      window.clearInterval(fullInterval);
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onFocus);
     };
