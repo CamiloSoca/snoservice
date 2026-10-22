@@ -162,8 +162,8 @@ BEGIN
   v_close := (v_rule->>'closeTime')::time;
   IF v_start<v_open OR v_start>=v_close OR
      v_start + v_service.duration_minutes * interval '1 minute'>
-       v_close + CASE WHEN v_service.duration_minutes<90
-                        THEN interval '30 minutes' ELSE interval '0 minutes' END OR
+       v_close + (CASE WHEN v_service.duration_minutes<90
+                        THEN interval '30 minutes' ELSE interval '0 minutes' END) OR
      (EXTRACT(EPOCH FROM (v_start-v_open))::int/60)%30<>0 THEN
     RAISE EXCEPTION 'El servicio no cabe en el horario comercial' USING ERRCODE='23514';
   END IF;
