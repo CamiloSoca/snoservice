@@ -69,6 +69,8 @@ import {
 import { appointmentTimeState } from '@/lib/appointment-rules';
 import { InitialShopSkeleton, InitialShopError } from '@/components/InitialShopState';
 import { splitBusinessRevenue } from '@/lib/financial-allocations';
+import { invalidatePublicShopData } from '@/lib/public-shop-data';
+import { MAX_BARBER_PHOTO_BYTES } from '@/lib/barber-photo';
 
 type PeriodFilter = 'hoy' | 'semana' | 'mes';
 type CashHistoryEntry = {
@@ -136,6 +138,7 @@ export default function AdminDashboard() {
   const [days, setDays] = useState<DayOption[]>([]);
   const [savedBanner, setSavedBanner] = useState(false);
   const [savingBarberId, setSavingBarberId] = useState<string | null>(null);
+  const [barberPhotoBusyId, setBarberPhotoBusyId] = useState<string | null>(null);
   const [adminError, setAdminError] = useState<string>('');
   const [initialLoad, setInitialLoad] = useState<'loading' | 'ready' | 'error'>('loading');
   const [loadingTooLong, setLoadingTooLong] = useState(false);
@@ -506,6 +509,57 @@ const handleAddBarber = async () => {
       return { ...b, serviceIds: nextIds };
     });
     setBarbers(updated);
+  };
+
+  const handleBarberPhotoUpload = async (barberId: string, file?: File) => {
+    if (!file) return;
+    if (file.size > MAX_BARBER_PHOTO_BYTES || !['image/jpeg','image/png','image/webp'].includes(file.type)) {
+      setAdminError('Elegí una foto JPG, PNG o WebP de hasta 2 MB.');
+      return;
+    }
+    setBarberPhotoBusyId(barberId);
+    setAdminError('');
+    try {
+      const form = new FormData();
+      form.append('barberId', barberId);
+      form.append('photo', file);
+      const response = await fetch('/api/admin/barber-photo', {
+        method: 'POST', credentials: 'same-origin', body: form,
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.ok) throw new Error(result.error || 'No se pudo subir la foto.');
+      setBarbers(current => current.map(barber =>
+        barber.id === barberId ? {...barber, imageUrl: result.imageUrl} : barber
+      ));
+      invalidatePublicShopData();
+    } catch (error: any) {
+      setAdminError(error?.message || 'No se pudo actualizar la foto.');
+    } finally {
+      setBarberPhotoBusyId(null);
+    }
+  };
+
+  const handleBarberPhotoRemove = async (barberId: string) => {
+    if (!window.confirm('¿Quitar la foto de este barbero?')) return;
+    setBarberPhotoBusyId(barberId);
+    setAdminError('');
+    try {
+      const response = await fetch('/api/admin/barber-photo', {
+        method: 'DELETE', credentials: 'same-origin',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({barberId}),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result.ok) throw new Error(result.error || 'No se pudo quitar la foto.');
+      setBarbers(current => current.map(barber =>
+        barber.id === barberId ? {...barber, imageUrl: ''} : barber
+      ));
+      invalidatePublicShopData();
+    } catch (error: any) {
+      setAdminError(error?.message || 'No se pudo quitar la foto.');
+    } finally {
+      setBarberPhotoBusyId(null);
+    }
   };
 
   const handleSaveBarberChanges = async (barberId: string) => {
@@ -1947,8 +2001,32 @@ const handleAddBarber = async () => {
                     >
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div className="flex items-center space-x-3">
-                          <div className="w-11 h-11 rounded-xl bg-zinc-950 border border-zinc-800 flex items-center justify-center font-bold text-base text-zinc-100">
-                            {brb.name.charAt(0)}
+                          <div className="flex flex-col items-center gap-1.5">
+                            <div className="w-14 h-14 rounded-xl overflow-hidden bg-zinc-950 border border-zinc-800 flex items-center justify-center font-bold text-base text-zinc-100">
+                              {brb.imageUrl ? (
+                                <img src={brb.imageUrl} alt={'Foto de ' + brb.name} className="w-full h-full object-cover" />
+                              ) : brb.name.charAt(0)}
+                            </div>
+                            <label htmlFor={'foto-barbero-' + brb.id}
+                              className="text-[11px] font-semibold text-emerald-300 cursor-pointer hover:underline text-center">
+                              {barberPhotoBusyId === brb.id ? 'Procesando...' : brb.imageUrl ? 'Cambiar foto' : 'Agregar foto'}
+                            </label>
+                            <input id={'foto-barbero-' + brb.id} type="file" className="sr-only"
+                              accept="image/jpeg,image/png,image/webp"
+                              aria-label={'Seleccionar foto de ' + brb.name}
+                              disabled={barberPhotoBusyId === brb.id}
+                              onChange={event => {
+                                const file = event.currentTarget.files?.[0];
+                                event.currentTarget.value = '';
+                                void handleBarberPhotoUpload(brb.id,file);
+                              }} />
+                            {brb.imageUrl && (
+                              <button type="button" disabled={barberPhotoBusyId === brb.id}
+                                onClick={() => void handleBarberPhotoRemove(brb.id)}
+                                className="text-[10px] text-zinc-400 hover:text-rose-300 cursor-pointer disabled:opacity-50">
+                                Quitar foto
+                              </button>
+                            )}
                           </div>
                           <div>
                             <div className="flex items-center gap-2">
