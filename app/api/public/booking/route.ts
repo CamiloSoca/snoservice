@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import {buildBookingConfirmationEmail} from '@/lib/booking-email';
 import { randomBytes } from 'crypto';
 // app/api/public/booking/route.ts
 import { NextResponse, after } from 'next/server';
@@ -123,7 +124,7 @@ export async function POST(request: Request) {
           .eq('id', barberId)
           .eq('shop_id', SHOP_UUID)
           .maybeSingle(),
-        supabase.from('shops').select('schedule').eq('id', SHOP_UUID).maybeSingle(),
+        supabase.from('shops').select('schedule,name,address').eq('id', SHOP_UUID).maybeSingle(),
       ]);
 
     if (shopErr || !shopRow?.schedule) {
@@ -295,16 +296,24 @@ export async function POST(request: Request) {
             socketTimeout: 10000,
             auth: {user: process.env.SMTP_USER, pass: process.env.SMTP_PASS},
           });
-          const safe = (value: unknown) => String(value || '').replace(/[&<>"']/g, (c) =>
-            ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c] || c));
+          const email = buildBookingConfirmationEmail({
+            clientName: cleanName,
+            barberName: barberRow.name,
+            serviceName: serviceRow.name,
+            dateString: cleanDate,
+            timeSlot: cleanTime,
+            durationMinutes: realDuration,
+            price: realPrice,
+            code: confirmed.code,
+            shopName: shopRow.name || "13'Cut",
+            shopAddress: shopRow.address || '',
+          });
           await transporter.sendMail({
             from: process.env.SMTP_USER,
             to: cleanEmail,
-            subject: 'Confirmación de turno - 13-Cut',
-            html: '<h2>Reserva confirmada</h2><p>Hola ' + safe(cleanName) +
-              '</p><p>Servicio: ' + safe(serviceRow.name) + '</p><p>Barbero: ' +
-              safe(barberRow.name) + '</p><p>Fecha: ' + safe(cleanDate) +
-              '</p><p>Hora: ' + safe(cleanTime) + '</p><p>Código: ' + safe(confirmed.code) + '</p>',
+            subject: email.subject,
+            html: email.html,
+            text: email.text,
           });
         } catch (mailError) {
           console.error('No se pudo enviar la confirmación de la reserva', mailError);
