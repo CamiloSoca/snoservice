@@ -78,7 +78,7 @@ test('ONE-WAY overlap: if 09:30-10:30 is booked, 09:00 is free but 10:00 is bloc
   assert.equal(bookingIntervalsConflict('09:00',60,'09:15',60),true);
   assert.equal(bookingIntervalsConflict('09:00',90,'09:30',60),true);
   assert.equal(bookingIntervalsConflict('09:00',60,'09:30',90),true);
-  assert.equal(bookingIntervalsConflict('09:00',90,'10:00',60),false);
+  assert.equal(bookingIntervalsConflict('09:00',90,'10:00',60),true);
 });
 
 test('long services (120min mechas or color) do not overlap existing appointments', () => {
