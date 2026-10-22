@@ -65,7 +65,7 @@ function onlyPublicFields(source: PublicShopData): PublicShopData {
     barbers: source.barbers.map((b) => ({
       id: b.id, slug: b.slug || '', name: b.name, role: b.role || 'Barbero',
       bio: b.bio || '', specialties: b.specialties || [],
-      serviceIds: b.serviceIds || [], active: b.active !== false,
+      serviceIds: b.serviceIds || [], imageUrl: b.imageUrl || '', active: b.active !== false,
       isOwner: false, commissionRate: 0, pin: '',
     })),
   };

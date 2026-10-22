@@ -52,7 +52,7 @@ export async function GET(request: Request) {
     if (resource === 'barbers') {
       const { data, error } = await supabase
         .from('barbers')
-        .select('id,slug,name,role,bio,specialties,service_ids,active,commission_rate,is_owner')
+        .select('id,slug,name,role,bio,specialties,service_ids,active,commission_rate,is_owner,image_url')
         .eq('shop_id', SHOP_UUID);
       if (error) return NextResponse.json({ error: error.message }, { status: 400 });
       return NextResponse.json({ data: data || [] });
