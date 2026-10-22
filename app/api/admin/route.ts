@@ -10,6 +10,7 @@ import {
   sanitizeInput,
   ExpenseCategory,
   DEFAULT_SHOP_CONFIG,
+  getMontevideoDateKey,
 } from '@/lib/booking-store';
 
 const VALID_EXPENSE_CATEGORIES: ExpenseCategory[] = [
@@ -138,6 +139,29 @@ export async function POST(request: Request) {
         }
         if (openRows?.length) {
           return NextResponse.json({error: 'Ya existe una caja abierta para este negocio.'}, {status: 409});
+        }
+
+        // Mantener la misma regla del panel: en producción no reabrir
+        // una caja que ya fue cerrada durante el día operativo.
+        const isStagingTest = process.env.NEXT_PUBLIC_SUPABASE_URL ===
+          'https://vjtwvhdiypfxgodhnjiw.supabase.co';
+        if (!isStagingTest) {
+          const {data: lastClose, error: closeLookupError} = await supabase
+            .from('cash_registers')
+            .select('closed_at')
+            .eq('shop_id', SHOP_UUID)
+            .eq('status', 'cerrada')
+            .order('closed_at', {ascending: false})
+            .limit(1);
+          if (closeLookupError) {
+            return NextResponse.json({error: 'No se pudo verificar el último cierre.'}, {status: 503});
+          }
+          const closedAt = lastClose?.[0]?.closed_at;
+          if (closedAt && getMontevideoDateKey(closedAt) === getMontevideoDateKey()) {
+            return NextResponse.json({
+              error: 'La caja de hoy ya fue cerrada. Podrás abrir otra en la próxima jornada.',
+            }, {status: 409});
+          }
         }
 
         // La verificación anterior mejora UX; el índice único parcial en PostgreSQL
