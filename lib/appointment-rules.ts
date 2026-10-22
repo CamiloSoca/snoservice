@@ -43,22 +43,27 @@ export function slotsOverlap(firstTime: string, firstDuration: number,
   return first < second + secondDuration && second < first + firstDuration;
 }
 
-// Reglas de agenda real: servicios cortos (hasta 90 min) pueden compartir
-// como máximo 30 minutos. Servicios largos (>90 min) no se solapan nunca.
-// Un mismo horario de inicio nunca puede asignarse dos veces al mismo barbero.
+// Orden IMPORTA: el nuevo cliente puede ocupar los 30 minutos previos
+// al comienzo de un turno YA reservado (si ambos servicios duran <90 min).
+// Nunca se permite un nuevo inicio que invada un turno anterior, ni dos
+// reservas a la misma hora. Tratamientos largos requieren tiempo exclusivo.
+// first = candidato nuevo; second = turno previamente confirmado.
 export function bookingIntervalsConflict(
   firstTime: string, firstDuration: number, secondTime: string, secondDuration: number,
 ): boolean {
-  const first = minutes(firstTime);
-  const second = minutes(secondTime);
-  if (first === null || second === null ||
-      !Number.isFinite(firstDuration) || !Number.isFinite(secondDuration) ||
+  const candidate = minutes(firstTime);
+  const booked = minutes(secondTime);
+  if (candidate === null || booked === null ||
+      !Number.isInteger(firstDuration) || !Number.isInteger(secondDuration) ||
       firstDuration <= 0 || secondDuration <= 0) return true;
-  if (first === second) return true;
-  const sharedMinutes = Math.max(0, Math.min(first + firstDuration, second + secondDuration)
-    - Math.max(first, second));
-  if (sharedMinutes === 0) return false;
-  return firstDuration > 90 || secondDuration > 90 || sharedMinutes > 30;
+  if (candidate === booked) return true;
+  const overlap = Math.max(0, Math.min(candidate + firstDuration, booked + secondDuration)
+    - Math.max(candidate, booked));
+  if (overlap === 0) return false;
+  // Si el turno existente empezó ANTES, no ofrecer un turno posterior
+  // hasta que haya terminado: 09:30-10:30 bloquea las 10:00.
+  if (candidate > booked) return true;
+  return firstDuration >= 90 || secondDuration >= 90 || overlap > 30;
 }
 
 export function businessDayOptions(now = new Date(), count = 30) {
@@ -90,7 +95,10 @@ export function validateBookingTime(input: {
   const duration = input.durationMinutes;
   if (start === null || open === null || close === null || (start - open) % 30 !== 0 ||
       !Number.isInteger(duration) || duration < 15 || duration > 720 ||
-      start < open || start + duration > close) {
+      start < open || start >= close ||
+      // Un corte corto puede empezar hasta 30 min antes del cierre y
+      // terminar 30 min después; mechas/color (>=90 min) terminan antes.
+      start + duration > close + (duration < 90 ? 30 : 0)) {
     return 'El horario no está disponible dentro del horario del local.';
   }
   const today = businessParts(now);
