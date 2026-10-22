@@ -62,6 +62,7 @@ export interface BarberItem {
   bio?: string;
   specialties?: string[];
   serviceIds?: string[];
+  imageUrl?: string;
   isOwner?: boolean;
   active?: boolean;
   commissionRate: number;
@@ -365,6 +366,7 @@ function mapBarber(d: any): BarberItem {
     bio: d.bio || '',
     specialties: d.specialties || [],
     serviceIds: d.service_ids || [],
+    imageUrl: d.image_url || '',
     isOwner: d.is_owner ?? false,
     active: d.active ?? true,
     commissionRate: Number(d.commission_rate ?? 0),
@@ -460,7 +462,7 @@ export async function getBarbers(forceRefresh = false): Promise<BarberItem[]> {
   // Nunca consultar PIN o comisiones desde el navegador público.
   const { data, error } = await supabase
     .from('barbers')
-    .select('id,slug,name,role,bio,specialties,service_ids,active')
+    .select('id,slug,name,role,bio,specialties,service_ids,active,image_url')
     .eq('shop_id', SHOP_UUID)
     .eq('active', true);
   if (error) throw new Error('No se pudieron cargar los barberos.');
