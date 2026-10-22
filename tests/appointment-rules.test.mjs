@@ -44,3 +44,21 @@ test('all overlapping intervals are rejected regardless of insertion order', () 
   assert.equal(slotsOverlap('10:00', 30, '10:30', 30), false);
   assert.equal(slotsOverlap('10:00', 60, '10:00', 30), true);
 });
+
+test('a short cut uses the free 09:00–09:30 gap before a 09:30–10:30 booking', () => {
+  // Adjacent appointments are valid; the first must end before the next starts.
+  assert.equal(slotsOverlap('09:00', 30, '09:30', 60), false);
+  assert.equal(slotsOverlap('09:00', 45, '09:30', 60), true);
+  assert.equal(slotsOverlap('09:00', 120, '09:30', 60), true);
+  assert.equal(slotsOverlap('10:30', 30, '09:30', 60), false);
+  assert.equal(slotsOverlap('10:00', 30, '09:30', 60), true);
+});
+
+test('near closing, only services that finish before the closing minute can be booked', () => {
+  const tomorrow = businessDayOptions(new Date('2026-10-21T17:01:00Z'), 2)[1].dateString;
+  const now = new Date('2026-10-21T17:01:00Z');
+  assert.equal(validateBookingTime({dateString: tomorrow, timeSlot:'18:30',
+    durationMinutes:30, schedule, now}), null);
+  assert.match(validateBookingTime({dateString: tomorrow, timeSlot:'18:30',
+    durationMinutes:120, schedule, now}) || '', /horario/);
+});
