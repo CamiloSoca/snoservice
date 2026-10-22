@@ -176,6 +176,8 @@ export default function AdminDashboard() {
   const [expenseCategory, setExpenseCategory] = useState<ExpenseCategory>('Insumos');
   const [expenseFeedback, setExpenseFeedback] = useState<{kind: 'error' | 'success'; message: string} | null>(null);
   const [savingExpense, setSavingExpense] = useState(false);
+  const [removingExpenseId, setRemovingExpenseId] = useState<string | null>(null);
+  const expenseAttempt = useRef<{fingerprint: string; id: string; pending: boolean} | null>(null);
 
   const [tipBarberId, setTipBarberId] = useState<string>('');
   const [tipAmount, setTipAmount] = useState<string>('');
@@ -625,44 +627,63 @@ const handleAddBarber = async () => {
 
   const handleAddExpense = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (savingExpense) return;
-
+    if (savingExpense || expenseAttempt.current?.pending) return;
     setExpenseFeedback(null);
     const description = expenseDesc.trim();
     const amount = Number(expenseAmount);
+    const date = getMontevideoDateKey();
 
     if (!description || !expenseAmount.trim() || !Number.isFinite(amount) || amount <= 0) {
       setExpenseFeedback({kind: 'error', message: 'Ingresá una descripción y un monto mayor a $0.'});
       return;
     }
-
+    const fingerprint = JSON.stringify([description, amount, expenseCategory, date]);
+    if (expenseAttempt.current?.fingerprint !== fingerprint) {
+      expenseAttempt.current = {fingerprint, id: generateUUID(), pending: false};
+    }
+    expenseAttempt.current!.pending = true;
     setSavingExpense(true);
     try {
       setAdminError('');
-      const updated = await createExpense({
-        description,
-        amount,
-        category: expenseCategory,
-        date: new Date().toISOString().split('T')[0],
-      });
-      setExpenses(Array.isArray(updated) ? updated : []);
+      const inserted = await createExpense({
+        description, amount, category: expenseCategory, date,
+      }, expenseAttempt.current!.id);
+      setExpenses(current => [...current.filter(exp => exp.id !== inserted.id), inserted]);
       setExpenseDesc('');
       setExpenseAmount('');
+      expenseAttempt.current = null;
       setExpenseFeedback({kind: 'success', message: 'Gasto registrado correctamente.'});
     } catch (err: any) {
-      setExpenseFeedback({kind: 'error', message: err?.message || 'No se pudo registrar el gasto.'});
+      setExpenseFeedback({kind: 'error', message: err?.message || 'No se pudo confirmar el gasto. Reintentá sin cambiar los datos.'});
     } finally {
+      if (expenseAttempt.current) expenseAttempt.current.pending = false;
       setSavingExpense(false);
     }
   };
 
   const handleRemoveExpense = async (id: string) => {
+    if (removingExpenseId) return;
+    setRemovingExpenseId(id);
+    setExpenseFeedback(null);
+    setAdminError('');
     try {
-      setAdminError('');
-      const updated = await deleteExpense(id);
-      setExpenses(Array.isArray(updated) ? updated : []);
+      const deletedId = await deleteExpense(id);
+      setExpenses(current => current.filter(exp => exp.id !== deletedId));
+      setExpenseFeedback({kind: 'success', message: 'Gasto eliminado correctamente.'});
     } catch (err: any) {
-      setAdminError(err?.message || 'Error al eliminar el gasto.');
+      try {
+        const fresh = await getExpenses();
+        setExpenses(fresh);
+        if (!fresh.some(exp => exp.id === id)) {
+          setExpenseFeedback({kind: 'success', message: 'El gasto ya no figura en el registro.'});
+        } else {
+          setExpenseFeedback({kind: 'error', message: err?.message || 'No se pudo eliminar el gasto.'});
+        }
+      } catch {
+        setExpenseFeedback({kind: 'error', message: 'No se pudo verificar la eliminación. Actualizá antes de repetir.'});
+      }
+    } finally {
+      setRemovingExpenseId(null);
     }
   };
 
@@ -1468,7 +1489,8 @@ const handleAddBarber = async () => {
                         <button
                           type="button"
                           onClick={() => handleRemoveExpense(exp.id)}
-                          disabled={cashStatus !== 'abierta'}
+                          disabled={cashStatus !== 'abierta' || removingExpenseId === exp.id}
+                          aria-label={'Eliminar gasto ' + exp.description}
                           className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-rose-400 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
