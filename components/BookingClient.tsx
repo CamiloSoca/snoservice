@@ -454,11 +454,19 @@ function AgendarContent({initialShop}: {initialShop: PublicShopData}) {
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'No se pudo cancelar el turno.');
 
-      const updatedSlots = await getPublicBookedSlots(true);
-      setAppointments(updatedSlots);
+      // La cancelación confirmada no debe parecer fallida si la lectura posterior falla.
       setCancelSuccess(true);
       setCancelCode('');
       setCancelEmail('');
+      try {
+        const updatedSlots = await getPublicBookedSlots(true);
+        setAppointments(updatedSlots);
+        setAvailabilityState('ready');
+      } catch (refreshError) {
+        // Sin datos actualizados, bloquear los horarios hasta el reintento.
+        setAvailabilityState('error');
+        console.warn('Cancelación realizada, pero falló la actualización de disponibilidad:', refreshError);
+      }
     } catch (err: any) {
       setCancelError(err?.message || 'No se pudo cancelar el turno.');
     } finally {
