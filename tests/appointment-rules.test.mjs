@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {appointmentTimeState, businessDayOptions, slotsOverlap, validateBookingTime} from '../lib/appointment-rules.ts';
+import {appointmentTimeState, businessDayOptions, slotsOverlap, bookingIntervalsConflict, validateBookingTime} from '../lib/appointment-rules.ts';
 
 const schedule = Object.fromEntries(
   ['domingo','lunes','martes','miercoles','jueves','viernes','sabado']
@@ -61,4 +61,21 @@ test('near closing, only services that finish before the closing minute can be b
     durationMinutes:30, schedule, now}), null);
   assert.match(validateBookingTime({dateString: tomorrow, timeSlot:'18:30',
     durationMinutes:120, schedule, now}) || '', /horario/);
+});
+
+test('barbershop booking: 60min cuts at 09:00 and 09:30 are both available', () => {
+  assert.equal(bookingIntervalsConflict('09:00',60,'09:30',60),false);
+  assert.equal(bookingIntervalsConflict('09:30',60,'09:00',60),false);
+  assert.equal(bookingIntervalsConflict('09:00',60,'09:00',60),true);
+  assert.equal(bookingIntervalsConflict('09:00',60,'09:15',60),true);
+  assert.equal(bookingIntervalsConflict('09:00',90,'09:30',60),true);
+  assert.equal(bookingIntervalsConflict('09:00',90,'10:00',60),false);
+});
+
+test('long services (120min mechas or color) do not overlap existing appointments', () => {
+  assert.equal(bookingIntervalsConflict('09:00',120,'09:30',60),true);
+  assert.equal(bookingIntervalsConflict('09:30',60,'09:00',120),true);
+  assert.equal(bookingIntervalsConflict('09:00',60,'09:30',120),true);
+  assert.equal(bookingIntervalsConflict('09:30',120,'11:30',60),false);
+  assert.equal(bookingIntervalsConflict('09:00',60,'10:00',120),false);
 });
