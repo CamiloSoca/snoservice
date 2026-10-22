@@ -282,44 +282,73 @@ export async function POST(request: Request) {
       createdAt: inserted.created_at || new Date().toISOString(),
     };
 
-    if (process.env.SMTP_USER && process.env.SMTP_PASS) {
-      // El turno ya quedó persistido. El envío SMTP no debe bloquear la
-      // confirmación en pantalla; Next/Vercel esperan este callback tras responder.
-      after(async () => {
+    // Registrar el resultado real del intento de email (sin datos personales ni claves).
+    // El envío sigue fuera de la respuesta HTTP: la reserva es válida aunque SMTP falle.
+    after(async () => {
+      const recordStatus = async (action: string, category = '') => {
         try {
-          const transporter = nodemailer.createTransport({
-            host: process.env.SMTP_HOST || 'smtp.zoho.com',
-            port: Number(process.env.SMTP_PORT) || 465,
-            secure: true,
-            connectionTimeout: 5000,
-            greetingTimeout: 5000,
-            socketTimeout: 10000,
-            auth: {user: process.env.SMTP_USER, pass: process.env.SMTP_PASS},
+          const {error} = await getSupabaseServer().from('audit_logs').insert({
+            shop_id: SHOP_UUID,
+            action,
+            details: category ? confirmed.id + ':' + category : confirmed.id,
           });
-          const email = buildBookingConfirmationEmail({
-            clientName: cleanName,
-            barberName: barberRow.name,
-            serviceName: serviceRow.name,
-            dateString: cleanDate,
-            timeSlot: cleanTime,
-            durationMinutes: realDuration,
-            price: realPrice,
-            code: confirmed.code,
-            shopName: shopRow.name || "13'Cut",
-            shopAddress: shopRow.address || '',
-          });
-          await transporter.sendMail({
-            from: process.env.SMTP_USER,
-            to: cleanEmail,
-            subject: email.subject,
-            html: email.html,
-            text: email.text,
-          });
-        } catch (mailError) {
-          console.error('No se pudo enviar la confirmación de la reserva', mailError);
+          if (error) console.error('No se pudo auditar el correo de reserva:', error.code);
+        } catch {
+          console.error('No se pudo auditar el correo de reserva.');
         }
-      });
-    }
+      };
+
+      if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+        await recordStatus('BOOKING_EMAIL_UNCONFIGURED');
+        console.error('Correo de reservas sin SMTP_USER/SMTP_PASS configurados.');
+        return;
+      }
+      try {
+        await recordStatus('BOOKING_EMAIL_ATTEMPT');
+        const transporter = nodemailer.createTransport({
+          host: process.env.SMTP_HOST || 'smtp.zoho.com',
+          port: Number(process.env.SMTP_PORT) || 465,
+          secure: Number(process.env.SMTP_PORT || 465) === 465,
+          connectionTimeout: 5000,
+          greetingTimeout: 5000,
+          socketTimeout: 10000,
+          auth: {user: process.env.SMTP_USER, pass: process.env.SMTP_PASS},
+        });
+        const email = buildBookingConfirmationEmail({
+          clientName: cleanName,
+          barberName: barberRow.name,
+          serviceName: serviceRow.name,
+          dateString: cleanDate,
+          timeSlot: cleanTime,
+          durationMinutes: realDuration,
+          price: realPrice,
+          code: confirmed.code,
+          shopName: shopRow.name || "13'Cut",
+          shopAddress: shopRow.address || '',
+        });
+        const receipt = await transporter.sendMail({
+          from: process.env.SMTP_USER,
+          to: cleanEmail,
+          subject: email.subject,
+          html: email.html,
+          text: email.text,
+        });
+        // Aceptado por SMTP no equivale a entregado en la bandeja del destinatario.
+        if (receipt.accepted?.some((address: string) => address.toLowerCase() === cleanEmail)) {
+          await recordStatus('BOOKING_EMAIL_ACCEPTED');
+        } else {
+          await recordStatus('BOOKING_EMAIL_REJECTED');
+          console.error('Servidor SMTP no aceptó el destinatario del correo de reserva.');
+        }
+      } catch (mailError) {
+        const code = typeof mailError === 'object' && mailError !== null && 'code' in mailError
+          ? String(mailError.code).toUpperCase() : '';
+        const category = ['EAUTH','ECONNECTION','ETIMEDOUT','ESOCKET','EENVELOPE','EMESSAGE'].includes(code)
+          ? code : 'OTHER';
+        await recordStatus('BOOKING_EMAIL_FAILED', category);
+        console.error('Falló el correo de confirmación de reserva:', category);
+      }
+    });
 
     return NextResponse.json({ appointment: confirmed }, { status: 201 });
   } catch {

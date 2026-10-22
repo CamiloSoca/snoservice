@@ -640,19 +640,38 @@ export async function getExpenses(): Promise<ExpenseItem[]> {
   }));
 }
 
+function expenseFromApi(d: any): ExpenseItem {
+  return {
+    id: d.id,
+    description: d.description,
+    amount: Number(d.amount) || 0,
+    category: d.category || 'Otros',
+    date: d.expense_date || '',
+    createdAt: d.created_at,
+  };
+}
+
 export async function createExpense(item: {
   description: string;
   amount: number;
   category: ExpenseCategory;
   date: string;
-}): Promise<ExpenseItem[]> {
-  await apiRequest('/api/admin', jsonRequest('POST', {operation: 'CREATE_EXPENSE', expense: item}));
-  return getExpenses();
+}, requestId: string): Promise<ExpenseItem> {
+  const {expense} = await apiRequest('/api/admin',
+    jsonRequest('POST', {operation: 'CREATE_EXPENSE', expense: item, requestId}));
+  if (!expense?.id || expense.id !== requestId) {
+    throw new Error('No se confirmó el registro del gasto.');
+  }
+  // La confirmación de escritura alcanza; no agregar una segunda consulta
+  // capaz de fallar después de que el gasto ya se haya guardado.
+  return expenseFromApi(expense);
 }
 
-export async function deleteExpense(id: string): Promise<ExpenseItem[]> {
-  await apiRequest('/api/admin', jsonRequest('POST', {operation: 'DELETE_EXPENSE', id}));
-  return getExpenses();
+export async function deleteExpense(id: string): Promise<string> {
+  const {deletedId} = await apiRequest('/api/admin',
+    jsonRequest('POST', {operation: 'DELETE_EXPENSE', id}));
+  if (deletedId !== id) throw new Error('No se confirmó la eliminación del gasto.');
+  return deletedId;
 }
 
 function mapFinancialEntry(d: any): TipItem & ManualChargeItem {
