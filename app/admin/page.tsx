@@ -244,6 +244,42 @@ export default function AdminDashboard() {
     loadAdminData();
   }, []);
 
+  // Un cliente puede reservar/cancelar desde otro celular mientras
+  // administración tiene la agenda abierta. Sin recargar ni pisar los formularios.
+  useEffect(() => {
+    if (initialLoad !== 'ready') return;
+    let disposed = false;
+    let busy = false;
+    const refreshOperations = async () => {
+      if (disposed || busy || document.visibilityState === 'hidden') return;
+      busy = true;
+      try {
+        const snapshot = await getAdminDashboardSnapshot();
+        if (disposed) return;
+        setAppointments(sortAppointmentsChronologically(snapshot.appointments));
+        setExpenses(snapshot.expenses);
+        setTips(snapshot.tips);
+        setManualCharges(snapshot.manualCharges);
+        setCashStatus(snapshot.cashStatus);
+        setLastClosedDate(snapshot.lastClosedDate);
+      } catch (error) {
+        console.warn('No se pudo actualizar la agenda de administración.', error);
+      } finally {
+        busy = false;
+      }
+    };
+    const interval = window.setInterval(() => void refreshOperations(), 60_000);
+    const onFocus = () => void refreshOperations();
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => {
+      disposed = true;
+      window.clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    };
+  }, [initialLoad]);
+
   const toggleCashHistory = async () => {
     if (cashHistoryOpen) { setCashHistoryOpen(false); return; }
     setCashHistoryOpen(true);
