@@ -24,6 +24,7 @@ import {
   ManualChargeItem,
   unlockBarberPanelWithPin,
   getBarberDashboardSnapshot,
+  getAgendaRevision,
   getMontevideoDateKey,
   updateAppointmentStatus,
   createTip,
@@ -150,24 +151,29 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
     }
   };
 
-  // Refrescar la agenda mientras el barbero mantiene abierto su panel.
-  // No perder los datos del formulario ni reiniciar sesión.
+  // Consultas livianas cada 6 s para actualizar turnos nuevos/cancelados.
+  // Los datos completos se descargan solo cuando cambia la versión de agenda,
+  // al regresar a la pantalla o en la sincronización general cada minuto.
   useEffect(() => {
     if (!isUnlocked || panelLoading) return;
     let disposed = false;
-    let busy = false;
-    const refreshOperations = async () => {
-      if (disposed || busy || document.visibilityState === 'hidden') return;
-      busy = true;
+    let refreshing = false;
+    let checking = false;
+    let lastRevision: number | null = null;
+
+    const refreshOperations = async (): Promise<boolean> => {
+      if (disposed || refreshing || document.visibilityState === 'hidden') return false;
+      refreshing = true;
       try {
         const snapshot = await getBarberDashboardSnapshot();
-        if (disposed) return;
+        if (disposed) return false;
         setBarberAppointments(sortAppointmentsChronologically(snapshot.appointments));
         setBarberTips(snapshot.tips);
         setBarberCharges(snapshot.manualCharges);
         setCashOpen(snapshot.cashOpen);
         setCommissionRate(snapshot.commissionRate);
         setIsOwner(snapshot.isOwner);
+        return true;
       } catch (error: any) {
         if (!disposed && error?.status === 401) {
           setIsUnlocked(false);
@@ -175,17 +181,45 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
         } else {
           console.warn('No se pudieron actualizar los turnos del barbero.', error);
         }
+        return false;
       } finally {
-        busy = false;
+        refreshing = false;
       }
     };
-    const interval = window.setInterval(() => void refreshOperations(), 60_000);
+
+    const checkAgenda = async () => {
+      if (disposed || checking || refreshing || document.visibilityState === 'hidden') return;
+      checking = true;
+      try {
+        const revision = await getAgendaRevision();
+        if (disposed) return;
+        if (lastRevision === null) {
+          lastRevision = revision;
+        } else if (revision !== lastRevision) {
+          if (await refreshOperations()) lastRevision = revision;
+        }
+      } catch (error: any) {
+        if (!disposed && error?.status === 401) {
+          setIsUnlocked(false);
+          setErrorMsg('Tu sesión venció. Ingresá tu PIN nuevamente.');
+        } else {
+          console.warn('No se pudo comprobar si cambió la agenda.', error);
+        }
+      } finally {
+        checking = false;
+      }
+    };
+
+    void checkAgenda();
+    const quickInterval = window.setInterval(() => void checkAgenda(), 6_000);
+    const fullInterval = window.setInterval(() => void refreshOperations(), 60_000);
     const onFocus = () => void refreshOperations();
     window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onFocus);
     return () => {
       disposed = true;
-      window.clearInterval(interval);
+      window.clearInterval(quickInterval);
+      window.clearInterval(fullInterval);
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onFocus);
     };
