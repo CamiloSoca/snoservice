@@ -209,8 +209,11 @@ export async function POST(request: Request) {
           const existingPins = new Map((existing || []).map(row => [row.id, row.pin]));
           for (const item of payloads) {
             if (!item.pin) item.pin = existingPins.get(item.id) || '';
-            if (!/^\d{4,6}$/.test(item.pin)) {
-              return NextResponse.json({error: 'Definí un PIN para cada barbero nuevo.'}, {status: 400});
+            const validNewPin = /^\d{4,6}$/.test(item.pin) && item.pin !== '1234';
+            const existingStoredHash = /^\$2[abxy]\$\d{2}\$[./A-Za-z0-9]{53}$/.test(item.pin)
+              && existingPins.get(item.id) === item.pin;
+            if (!validNewPin && !existingStoredHash) {
+              return NextResponse.json({error: 'Definí un PIN válido para cada barbero nuevo.'}, {status: 400});
             }
           }
           const {error} = await supabase.from('barbers')
