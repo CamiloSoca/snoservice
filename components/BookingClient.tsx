@@ -34,7 +34,7 @@ import {
 } from '@/lib/booking-store';
 import { InitialShopSkeleton } from '@/components/InitialShopState';
 import type { PublicShopData } from '@/lib/public-shop-data';
-import {businessDayOptions} from '@/lib/appointment-rules';
+import {businessDayOptions, validateBookingTime} from '@/lib/appointment-rules';
 
 const BOOKING_COOLDOWN_MS = 60 * 1000;
 const BOOKING_STORAGE_KEY = '13cut_last_booking_ts';
@@ -232,6 +232,14 @@ function AgendarContent({initialShop}: {initialShop: PublicShopData}) {
 
   const checkSlotBooked = (barberId: string, dateStr: string, timeSlot: string): boolean => {
     const duration = selectedService?.durationMinutes || 60;
+    // El hueco debe alcanzar para TODO el servicio: hasta el turno siguiente
+    // y también antes del cierre del local (no solo la hora de inicio).
+    if (validateBookingTime({
+      dateString: dateStr,
+      timeSlot,
+      durationMinutes: duration,
+      schedule: shopConfig.schedule,
+    })) return true;
     return !isSlotAvailable({
       candidateTime: timeSlot,
       serviceDurationMinutes: duration,
@@ -270,7 +278,8 @@ function AgendarContent({initialShop}: {initialShop: PublicShopData}) {
       if (!b.serviceIds || !Array.isArray(b.serviceIds) || b.serviceIds.length === 0) return true;
       return b.serviceIds.includes(selectedService.id);
     });
-    return matched.length > 0 ? matched : barbers;
+    // No mostrar profesionales que no ofrecen el servicio seleccionado.
+    return matched;
   })();
 
   const canProceed = () => {
