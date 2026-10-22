@@ -1,5 +1,5 @@
 import 'server-only';
-import { cacheLife } from 'next/cache';
+import { cacheLife, cacheTag } from 'next/cache';
 import { getSupabaseServer, SHOP_UUID } from '@/lib/supabase-server';
 import type { PublicShopData } from '@/lib/public-shop-data';
 
@@ -67,6 +67,7 @@ function toPublicShopData(
 export async function getServerPublicShopData(): Promise<PublicShopData> {
   'use cache';
   cacheLife({stale: 30, revalidate: 15, expire: 300});
+  cacheTag('public-shop-' + SHOP_UUID);
 
   const db = getSupabaseServer();
   const {data: fastData, error: fastError} = await db.rpc(
