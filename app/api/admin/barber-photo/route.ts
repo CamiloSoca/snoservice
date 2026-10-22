@@ -1,6 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {NextResponse} from 'next/server';
-import {revalidatePath} from 'next/cache';
+import {revalidatePath, revalidateTag} from 'next/cache';
 import {getSupabaseServer, SHOP_UUID} from '@/lib/supabase-server';
 import {requireAdminSession, verifyCsrfOrigin} from '@/lib/session';
 import {isValidUUID} from '@/lib/booking-store';
@@ -12,6 +12,14 @@ import {
 const noStore = {'Cache-Control': 'private, no-store'};
 const jsonError = (message: string, status: number) =>
   NextResponse.json({error: message}, {status, headers: noStore});
+
+function invalidateBarberPhotoViews() {
+  // La tienda pública se comparte entre Inicio, Agendar y Portal de Barberos.
+  revalidateTag('public-shop-' + SHOP_UUID, {expire: 0});
+  revalidatePath('/');
+  revalidatePath('/barbero');
+  revalidatePath('/agendar');
+}
 
 async function authenticatedBarber(barberId: string) {
   if (!isValidUUID(barberId)) return null;
@@ -72,7 +80,7 @@ export async function POST(request: Request) {
       return jsonError('No se pudo asociar la foto al barbero.',503);
     }
     await removeFormerPhoto(barber.image_url,barberId);
-    revalidatePath('/agendar');
+    invalidateBarberPhotoViews();
     return NextResponse.json({ok:true,imageUrl:urlData.publicUrl},{headers:noStore});
   } catch (error) {
     console.error('Error procesando foto de barbero', error);
@@ -95,7 +103,7 @@ export async function DELETE(request: Request) {
       .update({image_url:null}).eq('shop_id',SHOP_UUID).eq('id',barberId);
     if (error) return jsonError('No se pudo quitar la foto.',503);
     await removeFormerPhoto(barber.image_url,barberId);
-    revalidatePath('/agendar');
+    invalidateBarberPhotoViews();
     return NextResponse.json({ok:true,imageUrl:''},{headers:noStore});
   } catch (error) {
     console.error('Error quitando foto de barbero',error);

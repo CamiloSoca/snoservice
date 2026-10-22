@@ -288,8 +288,11 @@ export function getSlotsForDayOfWeek(
   return { morning, afternoon };
 }
 
-// La agenda usa intervalos completos. Ningún turno del mismo barbero puede
-// compartir minutos con otro, independientemente del orden de creación.
+// REGLA 13'CUT: la validación es UNIDIRECCIONAL, no simétrica.
+// Un corte (<90 min) puede arrancar antes de otro ya reservado y
+// compartir como máximo 30 minutos, NUNCA empezar dentro de uno existente.
+// Color Global/Mechas (>=90 min) jamás se solapan.
+// No reemplazar bookingIntervalsConflict por slotsOverlap.
 export function isSlotAvailable(params: {
   candidateTime: string;
   serviceDurationMinutes: number;

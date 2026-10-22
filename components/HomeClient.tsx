@@ -439,8 +439,10 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
                     }`}
                   >
                     <div className="flex items-center space-x-3">
-                      <div className="w-11 h-11 rounded-xl bg-zinc-800 border border-zinc-700 flex items-center justify-center font-extrabold text-base text-white shrink-0">
-                        {b.name.charAt(0)}
+                      <div className="w-11 h-11 rounded-xl overflow-hidden bg-zinc-800 border border-zinc-700 flex items-center justify-center font-extrabold text-base text-white shrink-0">
+                        {b.imageUrl ? (
+                          <img src={b.imageUrl} alt={'Foto de ' + b.name} loading="lazy" className="w-full h-full object-cover" />
+                        ) : b.name.charAt(0)}
                       </div>
                       <div>
                         <h3 className="font-bold text-base">{b.name}</h3>

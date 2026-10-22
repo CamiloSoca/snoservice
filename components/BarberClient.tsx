@@ -150,6 +150,47 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
     }
   };
 
+  // Refrescar la agenda mientras el barbero mantiene abierto su panel.
+  // No perder los datos del formulario ni reiniciar sesión.
+  useEffect(() => {
+    if (!isUnlocked || panelLoading) return;
+    let disposed = false;
+    let busy = false;
+    const refreshOperations = async () => {
+      if (disposed || busy || document.visibilityState === 'hidden') return;
+      busy = true;
+      try {
+        const snapshot = await getBarberDashboardSnapshot();
+        if (disposed) return;
+        setBarberAppointments(sortAppointmentsChronologically(snapshot.appointments));
+        setBarberTips(snapshot.tips);
+        setBarberCharges(snapshot.manualCharges);
+        setCashOpen(snapshot.cashOpen);
+        setCommissionRate(snapshot.commissionRate);
+        setIsOwner(snapshot.isOwner);
+      } catch (error: any) {
+        if (!disposed && error?.status === 401) {
+          setIsUnlocked(false);
+          setErrorMsg('Tu sesión venció. Ingresá tu PIN nuevamente.');
+        } else {
+          console.warn('No se pudieron actualizar los turnos del barbero.', error);
+        }
+      } finally {
+        busy = false;
+      }
+    };
+    const interval = window.setInterval(() => void refreshOperations(), 60_000);
+    const onFocus = () => void refreshOperations();
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => {
+      disposed = true;
+      window.clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    };
+  }, [isUnlocked, panelLoading]);
+
   const handleStatusChange = async (appointmentId: string, status: AppointmentItem['status']) => {
     try {
       setErrorMsg('');
@@ -376,11 +417,13 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
                         }`}
                       >
                         <div
-                          className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-sm shrink-0 ${
+                          className={`w-9 h-9 rounded-xl overflow-hidden flex items-center justify-center font-bold text-sm shrink-0 ${
                             isSelected ? 'bg-zinc-950 text-white' : 'bg-zinc-800 text-zinc-100'
                           }`}
                         >
-                          {b.name.charAt(0)}
+                          {b.imageUrl ? (
+                            <img src={b.imageUrl} alt={'Foto de ' + b.name} loading="lazy" className="w-full h-full object-cover" />
+                          ) : b.name.charAt(0)}
                         </div>
                         <div className="truncate">
                           <p className="text-sm font-bold truncate">{b.name}</p>
@@ -447,8 +490,10 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
 
             <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-center space-x-3.5">
-                <div className="w-12 h-12 rounded-2xl bg-zinc-950 border border-zinc-800 flex items-center justify-center font-extrabold text-lg text-emerald-400">
-                  {selectedBarberObj?.name.charAt(0) || 'B'}
+                <div className="w-12 h-12 rounded-2xl overflow-hidden bg-zinc-950 border border-zinc-800 flex items-center justify-center font-extrabold text-lg text-emerald-400 shrink-0">
+                  {selectedBarberObj?.imageUrl ? (
+                    <img src={selectedBarberObj.imageUrl} alt={'Foto de ' + selectedBarberObj.name} className="w-full h-full object-cover" />
+                  ) : (selectedBarberObj?.name.charAt(0) || 'B')}
                 </div>
                 <div>
                   <h2 className="text-lg font-extrabold">{selectedBarberObj?.name}</h2>
