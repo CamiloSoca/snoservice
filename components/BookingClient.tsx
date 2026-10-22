@@ -826,8 +826,10 @@ function AgendarContent({initialShop}: {initialShop: PublicShopData}) {
                               }`}
                             >
                               <div className="flex items-center space-x-3.5">
-                                <div className="w-12 h-12 rounded-xl flex items-center justify-center font-extrabold text-base bg-zinc-800 border border-zinc-700 text-zinc-100 shrink-0">
-                                  {barber.name.charAt(0)}
+                                <div className="w-12 h-12 rounded-xl overflow-hidden flex items-center justify-center font-extrabold text-base bg-zinc-800 border border-zinc-700 text-zinc-100 shrink-0">
+                                  {barber.imageUrl ? (
+                                    <img src={barber.imageUrl} alt={'Foto de ' + barber.name} loading="lazy" className="w-full h-full object-cover" />
+                                  ) : barber.name.charAt(0)}
                                 </div>
                                 <div>
                                   <h3 className="font-bold text-base">{barber.name}</h3>
