@@ -8,6 +8,18 @@ test('avisa si Gmail termina en .con y conserva el nombre de usuario', () => {
 
 test('reconoce erratas comunes de los principales proveedores', () => {
   for (const [wrong, expected] of [
+    ['usuario@gnail.com', 'usuario@gmail.com'],
+    ['usuario@GNAIL.COM', 'usuario@gmail.com'],
+    ['usuario@gmaill.com', 'usuario@gmail.com'],
+    ['usuario@gmaiil.com', 'usuario@gmail.com'],
+    ['usuario@gmajl.com', 'usuario@gmail.com'],
+    ['usuario@gmaik.com', 'usuario@gmail.com'],
+    ['usuario@gmail.om', 'usuario@gmail.com'],
+    ['usuario@gmail.cpm', 'usuario@gmail.com'],
+    ['usuario@gmail.cim', 'usuario@gmail.com'],
+    ['usuario@gmail.coim', 'usuario@gmail.com'],
+    ['usuario@gmail.ocm', 'usuario@gmail.com'],
+    ['usuario@gmail.comn', 'usuario@gmail.com'],
     ['usuario@gamil.com', 'usuario@gmail.com'],
     ['usuario@GMIAL.COM', 'usuario@gmail.com'],
     ['usuario@hotmail.con', 'usuario@hotmail.com'],
@@ -38,4 +50,10 @@ test('ignora correos incompletos sin inventar direcciones y detecta espacios alr
   assert.equal(suggestEmailCorrection('cliente@'), null);
   assert.equal(suggestEmailCorrection('cliente@@gmail.con'), null);
   assert.equal(suggestEmailCorrection('  cliente@GMAIL.CON '), 'cliente@gmail.com');
+});
+
+test('regresión: un correo con dominio gnail.com del formulario se corrige antes de reservar', () => {
+  assert.equal(suggestEmailCorrection('cliente@gnail.com'), 'cliente@gmail.com');
+  assert.equal(suggestEmailCorrection(' cliente@GnAiL.CoM '), 'cliente@gmail.com');
+  assert.equal(suggestEmailCorrection('cliente@gmail.com'), null);
 });
