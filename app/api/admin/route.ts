@@ -5,7 +5,7 @@ import { requireAdminSession, verifyCsrfOrigin } from '@/lib/session';
 import { requireOpenCash } from '@/lib/cash-guard';
 import {appointmentTimeState} from '@/lib/appointment-rules';
 import {isOnSitePaymentMethod} from '@/lib/payment-method';
-import {isOnSitePaymentMethod} from '@/lib/payment-method';
+
 import {sendBookingCancellationNotice} from '@/lib/server-booking-cancellation';
 import {
   generateUUID,
