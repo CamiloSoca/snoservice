@@ -72,6 +72,7 @@ import { splitBusinessRevenue } from '@/lib/financial-allocations';
 import { invalidatePublicShopData } from '@/lib/public-shop-data';
 import { MAX_BARBER_PHOTO_BYTES } from '@/lib/barber-photo';
 import AgendaCalendar from '@/components/AgendaCalendar';
+import FinanceLedgerCard from '@/components/FinanceLedgerCard';
 import type {OnSitePaymentMethod} from '@/lib/payment-method';
 import {customerWhatsAppLink} from '@/lib/customer-contact';
 import {useAgendaAutoSync} from '@/hooks/useAgendaAutoSync';
@@ -1115,6 +1116,7 @@ const handleAddBarber = async () => {
 
           {activeTab === 'caja' && (
             <div className="space-y-6">
+              <FinanceLedgerCard mode="admin" />
               {cashStatus !== 'abierta' && (
                 <div role="status" className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
                   La caja está cerrada. Podés consultar el historial, pero no agregar ni borrar gastos, propinas o cobros manuales hasta abrir la próxima caja.
