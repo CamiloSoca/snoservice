@@ -21,11 +21,11 @@ jobs:
     timeout-minutes: 12
     steps:
       - name: Checkout source
-        uses: actions/checkout@11bd71901bbe5b163f54866e382bbf5f24d069d0 # v4.2.2
+        uses: actions/checkout@v4
         with:
           persist-credentials: false
       - name: Setup Node
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
