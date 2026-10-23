@@ -175,11 +175,17 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
       setBarberAppointments((current) => current.map((appointment) =>
         appointment.id === appointmentId ? {...appointment, ...persisted} : appointment
       ));
-      const fresh = await getBarberDashboardSnapshot();
-      setBarberAppointments(sortAppointmentsChronologically(fresh.appointments));
-      setBarberTips(fresh.tips);
-      setBarberCharges(fresh.manualCharges);
-      setCashOpen(fresh.cashOpen);
+      // El cambio confirmado nunca debe devolverse como error sólo porque
+      // la recarga financiera haya demorado o perdido conexión.
+      try {
+        const fresh = await getBarberDashboardSnapshot();
+        setBarberAppointments(sortAppointmentsChronologically(fresh.appointments));
+        setBarberTips(fresh.tips);
+        setBarberCharges(fresh.manualCharges);
+        setCashOpen(fresh.cashOpen);
+      } catch {
+        console.warn('Turno guardado; no se pudieron refrescar las finanzas.');
+      }
       refreshAgenda();
       return {ok: true, cancellationEmailStatus: persisted.cancellationEmailStatus};
     } catch (err: any) {
