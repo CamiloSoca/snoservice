@@ -523,6 +523,28 @@ export function getMontevideoDateKey(value: Date | string = new Date()): string 
 }
 
 // Una consulta de una columna detecta cambios de reservas sin cargar finanzas.
+/** Consulta ligera para refrescar la agenda sin volver a cargar gastos, propinas,
+ *  servicios y balances en cada modificación de un turno. Su API comprueba
+ *  sesión en servidor y filtra por el barbero autenticado. */
+export async function getLiveAgendaSnapshot(): Promise<{
+  appointments: AppointmentItem[];
+  cashOpen: boolean;
+}> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const payload = await apiRequest('/api/barber', {
+      cache: 'no-store', signal: controller.signal,
+    });
+    if (!Array.isArray(payload.appointments) || typeof payload.cashOpen !== 'boolean') {
+      throw new Error('La respuesta de agenda no es válida.');
+    }
+    return {appointments: payload.appointments as AppointmentItem[], cashOpen: payload.cashOpen};
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export async function getAgendaRevision(): Promise<number> {
   // Una conexión interrumpida no debe detener el polling indefinidamente.
   const controller = new AbortController();
