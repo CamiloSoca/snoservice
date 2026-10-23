@@ -536,8 +536,8 @@ function AgendarContent({initialShop}: {initialShop: PublicShopData}) {
         </div>
       </header>
 
-      <main ref={bookingSectionRef} className="max-w-5xl mx-auto px-4 py-4 sm:py-6 space-y-4 sm:space-y-5">
-        <div className="max-w-md mx-auto grid grid-cols-2 gap-1.5 bg-zinc-900 p-1.5 rounded-2xl border border-zinc-800">
+      <main ref={bookingSectionRef} className="max-w-5xl mx-auto px-3 py-3 sm:px-4 sm:py-6 space-y-3 sm:space-y-5 scroll-mt-20">
+        <div className="max-w-md mx-auto grid grid-cols-2 gap-1 bg-zinc-900 p-1 rounded-xl border border-zinc-800">
           <button
             type="button"
             onClick={() => {
@@ -648,9 +648,9 @@ function AgendarContent({initialShop}: {initialShop: PublicShopData}) {
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            <div className="lg:col-span-7 border rounded-3xl p-4 sm:p-7 bg-zinc-900/90 border-zinc-800 backdrop-blur-sm">
+            <div className="lg:col-span-7 border rounded-2xl sm:rounded-3xl p-3 sm:p-7 bg-zinc-900/90 border-zinc-800 backdrop-blur-sm">
               {!confirmedAppointment && (
-                <div className="mb-5">
+                <div className="mb-3">
                   <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-zinc-400 mb-2">
                     <span>Paso {step} de 4</span>
                     <span className="text-emerald-400">
@@ -1011,14 +1011,14 @@ function AgendarContent({initialShop}: {initialShop: PublicShopData}) {
                   )}
 
                   {step === 4 && (
-                    <div className="space-y-4">
+                    <div className="space-y-3">
                       <div>
                         <h2 className="text-xl sm:text-2xl font-extrabold tracking-tight">Tus datos</h2>
                         <p className="text-xs mt-0.5 text-zinc-400">
                           Completá tu nombre y correo electrónico para confirmar el turno
                         </p>
                       </div>
-                      <div className="space-y-3.5">
+                      <div className="space-y-3">
                         <div>
                           <label className="block text-xs font-semibold mb-1.5 opacity-80">
                             Nombre y apellido *
@@ -1118,7 +1118,7 @@ function AgendarContent({initialShop}: {initialShop: PublicShopData}) {
               )}
             </div>
 
-            <aside className="lg:col-span-5 space-y-4 lg:sticky lg:top-20">
+            <aside className="hidden lg:block lg:col-span-5 space-y-4 lg:sticky lg:top-20">
               <div className="border rounded-3xl p-5 space-y-3.5 bg-zinc-900/90 border-zinc-800">
                 <div className="flex items-center justify-between border-b pb-3 border-zinc-800/60">
                   <h3 className="font-bold text-sm">Resumen de tu turno</h3>
@@ -1152,7 +1152,12 @@ function AgendarContent({initialShop}: {initialShop: PublicShopData}) {
       </main>
 
       {activeTab === 'reservar' && !confirmedAppointment && (
-        <div className="lg:hidden fixed bottom-0 inset-x-0 z-50 bg-zinc-950/95 backdrop-blur-xl border-t border-zinc-800 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] shadow-2xl">
+        <div className="lg:hidden fixed bottom-0 inset-x-0 z-50 bg-zinc-950/95 backdrop-blur-xl border-t border-zinc-800 px-3 pt-2 pb-[calc(0.6rem+env(safe-area-inset-bottom))] shadow-2xl">
+          {step >= 3 && selectedService && selectedBarber && (
+            <p className="mx-auto mb-2 max-w-md truncate text-center text-[11px] font-semibold text-zinc-300" aria-live="polite">
+              {selectedService.name} · {selectedBarber.name} · {selectedTime ? selectedDate + ' ' + selectedTime + ' hs' : 'Elegí horario'} · <span className="text-emerald-400">${selectedService.price}</span>
+            </p>
+          )}
           <div className="max-w-md mx-auto flex items-center justify-between gap-3">
             {step > 1 ? (
               <button
