@@ -238,3 +238,34 @@ DROP TRIGGER IF EXISTS appointment_capture_payment_method ON public.appointments
 CREATE TRIGGER appointment_capture_payment_method
 BEFORE UPDATE OF status ON public.appointments
 FOR EACH ROW EXECUTE FUNCTION public.capture_completed_payment_method();
+
+
+-- Mantener trazabilidad: una vez se liquidó a un barbero, impedir borrar o editar
+-- fuentes de ganancias con un simple botón, porque podrían volver negativo el saldo.
+-- Se usa la misma fila de barbero que bloquea el RPC de pagos concurrentes.
+CREATE OR REPLACE FUNCTION public.guard_paid_finance_entries()
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path TO pg_catalog,public
+AS $fn$
+DECLARE
+ payout_exists boolean;
+BEGIN
+  IF TG_OP='DELETE' OR (TG_OP='UPDATE' AND
+    (NEW.amount IS DISTINCT FROM OLD.amount OR NEW.barber_id IS DISTINCT FROM OLD.barber_id)) THEN
+    PERFORM 1 FROM public.barbers WHERE id=OLD.barber_id AND shop_id=OLD.shop_id FOR UPDATE;
+    SELECT EXISTS(SELECT 1 FROM public.barber_payouts p
+      WHERE p.shop_id=OLD.shop_id AND p.barber_id=OLD.barber_id)
+      INTO payout_exists;
+    IF payout_exists THEN
+      RAISE EXCEPTION 'El barbero ya tiene retiros; realizá una conciliación supervisada'
+      USING ERRCODE='23514';
+    END IF;
+  END IF;
+  RETURN CASE WHEN TG_OP='DELETE' THEN OLD ELSE NEW END;
+END;$fn$;
+REVOKE ALL ON FUNCTION public.guard_paid_finance_entries() FROM PUBLIC,anon,authenticated;
+DROP TRIGGER IF EXISTS trg_guard_paid_tips ON public.tips;
+CREATE TRIGGER trg_guard_paid_tips BEFORE DELETE OR UPDATE ON public.tips
+FOR EACH ROW EXECUTE FUNCTION public.guard_paid_finance_entries();
+DROP TRIGGER IF EXISTS trg_guard_paid_manual_charges ON public.manual_charges;
+CREATE TRIGGER trg_guard_paid_manual_charges BEFORE DELETE OR UPDATE ON public.manual_charges
+FOR EACH ROW EXECUTE FUNCTION public.guard_paid_finance_entries();
