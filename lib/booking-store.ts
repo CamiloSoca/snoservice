@@ -642,11 +642,15 @@ export async function createAppointment(item: {
 export async function updateAppointmentStatus(
   id: string,
   status: AppointmentItem['status']
-): Promise<Pick<AppointmentItem, 'id' | 'status' | 'completedAt' | 'commissionRateSnapshot' | 'barberEarningsSnapshot' | 'businessEarningsSnapshot' | 'completedCashRegisterId'>> {
-  // Sincronizar el resultado confirmado en Supabase, no un cálculo local.
-  const {appointment} = await apiRequest('/api/barber', jsonRequest('PATCH', {id, status}));
-  if (!appointment || appointment.id !== id) throw new Error('No se pudo confirmar el cierre económico del turno.');
-  return appointment;
+): Promise<Pick<AppointmentItem, 'id' | 'status' | 'completedAt' | 'commissionRateSnapshot' | 'barberEarningsSnapshot' | 'businessEarningsSnapshot' | 'completedCashRegisterId'> & {cancellationEmailStatus?: string}> {
+  // Sincronizar sólo el resultado confirmado de Supabase; el servidor retorna
+  // por separado si el SMTP aceptó el aviso de cancelación.
+  const {appointment, cancellationEmailStatus} =
+    await apiRequest('/api/barber', jsonRequest('PATCH', {id, status}));
+  if (!appointment || appointment.id !== id) {
+    throw new Error('No se pudo confirmar la actualización del turno.');
+  }
+  return {...appointment, ...(cancellationEmailStatus ? {cancellationEmailStatus} : {})};
 }
 
 export async function getExpenses(): Promise<ExpenseItem[]> {
