@@ -135,7 +135,7 @@ export default function FinanceLedgerCard({mode}:{mode:'admin'|'barber'}) {
         </p>
       )}
 
-      {data?.balances.map(b=(
+      {data?.balances.map(b=>(
         <div key={b.barber_id} className="rounded-xl border border-zinc-800 bg-zinc-950 p-3">
           <div className="flex items-center justify-between gap-2">
             <p className="font-bold text-sm">{b.barber_name}</p>
