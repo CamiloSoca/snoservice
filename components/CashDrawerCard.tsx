@@ -86,7 +86,8 @@ export default function CashDrawerCard(){
       </div>
       <p className="text-xs text-zinc-400">Transferencias recibidas: <strong className="text-zinc-200">{fmt(drawer.transferIn)}</strong>.
         Transferencias de salida: <strong className="text-zinc-200">{fmt(drawer.transferOut)}</strong>.
-        No forman parte del efectivo del cajón.</p>
+        No forman parte del efectivo del cajón. El sistema registra transferencias declaradas,
+        pero no verifica el saldo bancario: confirmá cada acreditación en tu banco.</p>
       {!drawer.reliable&&<p className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
         Arqueo no conciliado: {Number(drawer.unclassified)||0} movimientos sin medio de pago comprobado
         {drawer.openingVerified?'':', y el efectivo inicial aún no fue contado'}. Los retiros en efectivo se bloquean hasta conciliar.</p>}
