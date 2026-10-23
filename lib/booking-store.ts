@@ -1,4 +1,5 @@
 // lib/booking-store.ts
+import type {OnSitePaymentMethod} from './payment-method';
 import { createClient } from '@supabase/supabase-js';
 import { invalidatePublicShopData } from '@/lib/public-shop-data';
 import {businessDayOptions, bookingIntervalsConflict} from '@/lib/appointment-rules';
@@ -70,6 +71,7 @@ export interface BarberItem {
 }
 
 export interface AppointmentItem {
+  paymentMethod?: 'cash' | 'transfer' | null;
   id: string;
   code: string;
   serviceId: string;
@@ -391,6 +393,7 @@ function mapAppointment(d: any): AppointmentItem {
     clientName: d.client_name || '', clientPhone: d.client_phone || '',
     clientEmail: d.client_email || '', clientNotes: d.client_notes || '',
     status: d.status || 'confirmado', createdAt: d.created_at,
+    paymentMethod: d.payment_method === 'transfer' ? 'transfer' : d.payment_method === 'cash' ? 'cash' : null,
     completedAt: d.completed_at ?? null,
     commissionRateSnapshot: d.commission_rate_snapshot == null ? null : Number(d.commission_rate_snapshot),
     barberEarningsSnapshot: d.barber_earnings_snapshot == null ? null : Number(d.barber_earnings_snapshot),
@@ -663,12 +666,13 @@ export async function createAppointment(item: {
 
 export async function updateAppointmentStatus(
   id: string,
-  status: AppointmentItem['status']
-): Promise<Pick<AppointmentItem, 'id' | 'status' | 'completedAt' | 'commissionRateSnapshot' | 'barberEarningsSnapshot' | 'businessEarningsSnapshot' | 'completedCashRegisterId'> & {cancellationEmailStatus?: string}> {
+  status: AppointmentItem['status'],
+  paymentMethod?: OnSitePaymentMethod,
+): Promise<Pick<AppointmentItem, 'id' | 'status' | 'paymentMethod' | 'completedAt' | 'commissionRateSnapshot' | 'barberEarningsSnapshot' | 'businessEarningsSnapshot' | 'completedCashRegisterId'> & {cancellationEmailStatus?: string}> {
   // Sincronizar sólo el resultado confirmado de Supabase; el servidor retorna
   // por separado si el SMTP aceptó el aviso de cancelación.
   const {appointment, cancellationEmailStatus} =
-    await apiRequest('/api/barber', jsonRequest('PATCH', {id, status}));
+    await apiRequest('/api/barber', jsonRequest('PATCH', {id, status, paymentMethod}));
   if (!appointment || appointment.id !== id) {
     throw new Error('No se pudo confirmar la actualización del turno.');
   }

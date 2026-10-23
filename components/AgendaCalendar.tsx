@@ -4,6 +4,7 @@ import {useMemo, useState} from 'react';
 import {CalendarDays, ChevronLeft, ChevronRight, RefreshCw, WifiOff} from 'lucide-react';
 import type {AppointmentItem, BarberItem} from '@/lib/booking-store';
 import AppointmentDetailModal, {type AppointmentActionResult} from '@/components/AppointmentDetailModal';
+import type {OnSitePaymentMethod} from '@/lib/payment-method';
 import {
   agendaDayAppointments, appointmentStartMinute, calendarWeekDays,
   moveCalendarDay, readableDay, readableWeek, todayInMontevideo,
@@ -18,7 +19,7 @@ interface AgendaCalendarProps {
   appointments: AppointmentItem[];
   barbers: BarberRef[];
   canComplete: boolean;
-  onComplete: (appointment: AppointmentItem) => Promise<AppointmentActionResult>;
+  onComplete: (appointment: AppointmentItem, method: OnSitePaymentMethod) => Promise<AppointmentActionResult>;
   onCancel: (appointment: AppointmentItem) => Promise<AppointmentActionResult>;
   getWhatsAppLink?: (appointment: AppointmentItem) => string | null;
   syncState: 'connecting' | 'updating' | 'connected' | 'error';

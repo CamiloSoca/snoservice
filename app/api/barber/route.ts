@@ -11,6 +11,7 @@ import {
 import { isValidUUID } from '@/lib/booking-store';
 import { requireOpenCash } from '@/lib/cash-guard';
 import {appointmentTimeState} from '@/lib/appointment-rules';
+import {isOnSitePaymentMethod} from '@/lib/payment-method';
 import {sendBookingCancellationNotice} from '@/lib/server-booking-cancellation';
 
 export async function POST(request: Request) {
@@ -140,11 +141,14 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: 'Sesión requerida.' }, { status: 401 });
     }
 
-    const { id, status } = await request.json();
+    const { id, status, paymentMethod } = await request.json();
     if (!isValidUUID(id) || !['completado', 'cancelado'].includes(status)) {
       return NextResponse.json({ error: 'Parámetros inválidos.' }, { status: 400 });
     }
 
+    if (status === 'completado' && !isOnSitePaymentMethod(paymentMethod)) {
+      return NextResponse.json({error: 'Seleccioná efectivo o transferencia para confirmar el cobro en el local.'}, {status: 422});
+    }
     const supabase = getSupabaseServer();
 
     // Verificar también el estado anterior: revertir un turno completado
@@ -180,7 +184,7 @@ export async function PATCH(request: Request) {
 
     let query = supabase
       .from('appointments')
-      .update({ status })
+      .update(status === 'completado' ? {status, payment_method: paymentMethod} : {status})
       .eq('id', id)
       .eq('shop_id', SHOP_UUID)
       .eq('status', 'confirmado');
@@ -190,7 +194,7 @@ export async function PATCH(request: Request) {
     }
 
     const { data, error } = await query
-      .select('id,status,completed_at,commission_rate_snapshot,barber_earnings_snapshot,business_earnings_snapshot,completed_cash_register_id')
+      .select('id,status,payment_method,completed_at,commission_rate_snapshot,barber_earnings_snapshot,business_earnings_snapshot,completed_cash_register_id')
       .maybeSingle();
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 });
@@ -232,6 +236,7 @@ export async function PATCH(request: Request) {
       appointment: {
         id: data.id,
         status: data.status,
+        paymentMethod: data.payment_method === 'transfer' ? 'transfer' : 'cash',
         completedAt: data.completed_at ?? null,
         commissionRateSnapshot: data.commission_rate_snapshot == null ? null : Number(data.commission_rate_snapshot),
         barberEarningsSnapshot: data.barber_earnings_snapshot == null ? null : Number(data.barber_earnings_snapshot),

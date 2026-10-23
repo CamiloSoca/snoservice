@@ -6,6 +6,7 @@ import {CheckCircle2, Clock3, Mail, MessageCircle, Phone, Scissors, X, XCircle} 
 import type {AppointmentItem} from '@/lib/booking-store';
 import {appointmentTimeState} from '@/lib/appointment-rules';
 import {customerWhatsAppLink} from '@/lib/customer-contact';
+import type {OnSitePaymentMethod} from '@/lib/payment-method';
 
 export type AppointmentActionResult = {
   ok: boolean;
@@ -17,7 +18,7 @@ interface Props {
   appointment: AppointmentItem;
   canComplete: boolean;
   getWhatsAppLink?: (appointment: AppointmentItem) => string | null;
-  onComplete: (appointment: AppointmentItem) => Promise<AppointmentActionResult>;
+  onComplete: (appointment: AppointmentItem, method: OnSitePaymentMethod) => Promise<AppointmentActionResult>;
   onCancel: (appointment: AppointmentItem) => Promise<AppointmentActionResult>;
   onSuccess: (message: string) => void;
   onClose: () => void;
@@ -43,6 +44,7 @@ export default function AppointmentDetailModal({
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<OnSitePaymentMethod | null>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
 
   useEffect(() => setMounted(true), []);
@@ -74,13 +76,16 @@ export default function AppointmentDetailModal({
 
   async function perform(action: 'complete' | 'cancel') {
     if (busy) return;
-    if (action === 'complete' && !completeAllowed) return;
+    if (action === 'complete' && (!completeAllowed || !paymentMethod)) {
+      setError('Seleccioná cómo pagó el cliente: efectivo o transferencia.');
+      return;
+    }
     if (action === 'cancel' && !cancelAllowed) return;
     setError('');
     setBusy(true);
     try {
       const result = action === 'complete'
-        ? await onComplete(appointment) : await onCancel(appointment);
+        ? await onComplete(appointment, paymentMethod!) : await onCancel(appointment);
       if (!result.ok) {
         setError(result.error || 'No se pudo actualizar el turno. Intentá nuevamente.');
         return;
@@ -162,6 +167,27 @@ export default function AppointmentDetailModal({
               <p className="mt-3 text-xs text-amber-300">No hay un celular uruguayo válido para contactar por WhatsApp.</p>
             )}
           </div>
+          {appointment.status === 'confirmado' && timeState === 'started' && (
+            <fieldset className="rounded-xl border border-zinc-700 bg-zinc-900 p-3">
+              <legend className="px-1 text-xs font-bold text-zinc-200">¿Cómo pagó el cliente? *</legend>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                {([{value:'cash',label:'Efectivo'},{value:'transfer',label:'Transferencia'}] as const).map(option => (
+                  <button key={option.value} type="button" disabled={busy}
+                    aria-pressed={paymentMethod === option.value}
+                    onClick={() => {setPaymentMethod(option.value);setError('');}}
+                    className={'rounded-xl border px-3 py-3 text-sm font-bold transition-colors ' +
+                      (paymentMethod === option.value
+                        ? 'border-emerald-400 bg-emerald-500/20 text-emerald-200'
+                        : 'border-zinc-700 text-zinc-300 hover:border-zinc-500')}>
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-2 text-[11px] text-zinc-400">
+                El cobro se realiza en el local. Esta selección queda registrada junto al turno completado.
+              </p>
+            </fieldset>
+          )}
           {error && <p role="alert" className="rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">{error}</p>}
           {confirmCancel && (
             <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-sm text-rose-100">
@@ -199,7 +225,7 @@ export default function AppointmentDetailModal({
                 className="flex items-center justify-center gap-1.5 rounded-xl border border-rose-500/40 px-2 py-3 text-sm font-bold text-rose-300 disabled:cursor-not-allowed disabled:opacity-35">
                 <XCircle className="h-4 w-4"/> Cancelar
               </button>
-              <button type="button" disabled={busy || !completeAllowed}
+              <button type="button" disabled={busy || !completeAllowed || !paymentMethod}
                 onClick={() => {void perform('complete');}}
                 className="flex items-center justify-center gap-1.5 rounded-xl bg-emerald-400 px-2 py-3 text-sm font-bold text-zinc-950 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500">
                 <CheckCircle2 className="h-4 w-4"/> {busy ? 'Guardando…' : 'Completar'}
