@@ -281,12 +281,18 @@ export default function AdminDashboard() {
       setAppointments((current) => current.map((appointment) =>
         appointment.id === id ? {...appointment, ...persisted} : appointment
       ));
-      const fresh = await getAdminDashboardSnapshot();
-      setAppointments(sortAppointmentsChronologically(fresh.appointments));
-      setExpenses(fresh.expenses);
-      setTips(fresh.tips);
-      setManualCharges(fresh.manualCharges);
-      setCashStatus(fresh.cashStatus);
+      // El turno ya quedó persistido; un error posterior de lectura jamás
+      // puede presentarse como fallo del cobro ni provocar una repetición.
+      try {
+        const fresh = await getAdminDashboardSnapshot();
+        setAppointments(sortAppointmentsChronologically(fresh.appointments));
+        setExpenses(fresh.expenses);
+        setTips(fresh.tips);
+        setManualCharges(fresh.manualCharges);
+        setCashStatus(fresh.cashStatus);
+      } catch {
+        console.warn('La operación quedó guardada; el resumen financiero se actualizará al reingresar.');
+      }
       refreshAgenda();
       return {ok: true, cancellationEmailStatus: persisted.cancellationEmailStatus};
     } catch (err: any) {
