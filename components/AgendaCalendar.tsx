@@ -1,6 +1,6 @@
 'use client';
 
-import {useMemo, useState} from 'react';
+import {useMemo, useState, useEffect} from 'react';
 import {CalendarDays, ChevronLeft, ChevronRight, CheckCircle2, XCircle, MessageCircle, Clock3, RefreshCw, WifiOff} from 'lucide-react';
 import type {AppointmentItem, BarberItem} from '@/lib/booking-store';
 import {appointmentTimeState} from '@/lib/appointment-rules';
@@ -120,6 +120,16 @@ export default function AgendaCalendar({
     appointment => appointment.id === selectedAppointmentId
   ) || null;
 
+  // El detalle siempre debe poder cerrarse desde el teclado.
+  useEffect(() => {
+    if (!selectedAppointmentId) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSelectedAppointmentId(null);
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
+  }, [selectedAppointmentId]);
+
   const serviceAmount = calendarAppointments.reduce(
     (sum, appointment) => sum + Number(appointment.priceSnapshot ?? appointment.servicePrice ?? 0), 0
   );
@@ -168,6 +178,7 @@ export default function AgendaCalendar({
       window.alert('Este turno ya comenzó o pasó y no se puede cancelar.');
       return;
     }
+    if (!window.confirm('¿Seguro que querés cancelar este turno?')) return;
     onCancel(appointment);
     setSelectedAppointmentId(null);
   }
@@ -184,7 +195,7 @@ export default function AgendaCalendar({
           (selectedAppointmentId === appointment.id
             ? 'border-l-emerald-400 border-emerald-500/50 bg-emerald-500/10'
             : appointment.status === 'completado'
-              ? 'border-l-emerald-600 border-zinc-800 bg-emerald-500/100/10 hover:bg-emerald-500/10'
+              ? 'border-l-emerald-600 border-zinc-800 bg-emerald-500/10 hover:bg-emerald-500/10'
               : 'border-l-amber-500 border-zinc-800 bg-zinc-900 hover:bg-zinc-900')}
       >
         <div className={'flex items-start gap-2 ' + (compact ? 'justify-between' : 'flex-col')}>
@@ -391,16 +402,6 @@ export default function AgendaCalendar({
               </div>
             </div>
           </div>
-          {false && dayAppointments.length === 0 && (
-            <p className="border-t border-zinc-800 px-4 py-3 text-center text-xs text-zinc-400">
-              No hay turnos para este día. Deslizá para ver otros profesionales.
-            </p>
-          )}
-          {false && columns > 1 && (
-            <p className="border-t border-zinc-800 px-4 py-2 text-center text-[11px] text-zinc-500 sm:hidden">
-              Deslizá horizontalmente para ver todos los barberos.
-            </p>
-          )}
         </div>
       ) : (
         <div className="space-y-3 p-3 sm:p-4">
@@ -409,7 +410,7 @@ export default function AgendaCalendar({
               .filter(appointment => filteredBarbers.some(barber => barber.id === appointment.barberId));
             return (
               <div key={date} className={'overflow-hidden rounded-2xl border ' +
-                (date === today ? 'border-emerald-500/50 bg-emerald-500/100/5' : 'border-zinc-800 bg-zinc-900')}>
+                (date === today ? 'border-emerald-500/50 bg-emerald-500/5' : 'border-zinc-800 bg-zinc-900')}>
                 <button type="button"
                   onClick={() => {setSelectedDate(date);setView('dia');setSelectedAppointmentId(null);}}
                   className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left hover:bg-zinc-900">
@@ -432,9 +433,13 @@ export default function AgendaCalendar({
       )}
 
       {selectedAppointment && (
-        <div
-          className="fixed inset-x-3 bottom-[max(12px,env(safe-area-inset-bottom))] z-50 max-h-[65vh] overflow-y-auto rounded-2xl border border-zinc-800 bg-zinc-900 p-4 shadow-2xl sm:static sm:max-h-none sm:rounded-none sm:border-x-0 sm:border-b-0 sm:p-5 sm:shadow-none"
-          role="region" aria-label="Detalle del turno seleccionado">
+        <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
+          <button type="button" onClick={() => setSelectedAppointmentId(null)}
+            className="absolute inset-0 w-full cursor-default bg-black/75"
+            aria-label="Cerrar detalle del turno" />
+          <div
+            className="relative z-10 w-full max-w-md max-h-[82vh] overflow-y-auto rounded-t-3xl border border-zinc-700 bg-zinc-900 p-5 shadow-2xl sm:mx-4 sm:rounded-3xl"
+            role="dialog" aria-modal="true" aria-label="Detalle del turno seleccionado">
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-[11px] font-bold uppercase tracking-wide text-zinc-400">Detalle del turno</p>
@@ -479,6 +484,7 @@ export default function AgendaCalendar({
           </div>
           {!canComplete && selectedAppointment.status === 'confirmado' &&
             <p className="mt-2 text-[11px] text-amber-300">Abrí la caja para poder completar turnos.</p>}
+          </div>
         </div>
       )}
     </section>
