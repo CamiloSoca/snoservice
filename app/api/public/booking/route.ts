@@ -13,6 +13,7 @@ import {
   ServiceItem,
 } from '@/lib/booking-store';
 import {validateBookingTime, type BusinessSchedule} from '@/lib/appointment-rules';
+import {suggestEmailCorrection} from '@/lib/email-validation';
 
 // Los turnos se guardan como "Mié 21 Oct" (sin año), el mismo formato
 // generado por buildRealOpenDays. La agenda publica muestra los siguientes
@@ -96,6 +97,13 @@ export async function POST(request: Request) {
         { error: 'Ingresá tu nombre y un correo electrónico válido.' },
         { status: 400 }
       );
+    }
+
+    const suggestedEmail = suggestEmailCorrection(cleanEmail);
+    if (suggestedEmail) {
+      return NextResponse.json({
+        error: `Revisá el correo electrónico: ¿quisiste escribir ${suggestedEmail}?`,
+      }, {status: 400});
     }
 
     if (!/^09[1-9][0-9]{6}$/.test(cleanPhone.replace(/\D/g, '')) ||
