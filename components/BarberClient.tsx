@@ -39,6 +39,7 @@ import { InitialShopSkeleton, PanelLoading } from '@/components/InitialShopState
 import type { PublicShopData } from '@/lib/public-shop-data';
 import { splitBusinessRevenue } from '@/lib/financial-allocations';
 import AgendaCalendar from '@/components/AgendaCalendar';
+import FinanceLedgerCard from '@/components/FinanceLedgerCard';
 import type {OnSitePaymentMethod} from '@/lib/payment-method';
 import {customerWhatsAppLink} from '@/lib/customer-contact';
 import {useAgendaAutoSync} from '@/hooks/useAgendaAutoSync';
@@ -553,6 +554,8 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
                 {historicEstimateCount} movimientos anteriores no guardaron su comisión histórica. Estos importes son estimados.
               </div>
             )}
+            <FinanceLedgerCard mode="barber" />
+
             <AgendaCalendar
               mode="barber"
               appointments={barberAppointments.filter(appointment => appointment.barberId === selectedBarberId)}
