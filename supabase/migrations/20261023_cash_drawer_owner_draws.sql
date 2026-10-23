@@ -217,3 +217,24 @@ BEGIN
 END;$fn$;
 REVOKE ALL ON FUNCTION public.close_cash_reconciled(uuid,numeric) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.close_cash_reconciled(uuid,numeric) TO service_role;
+
+
+-- El método indicado se confirma en la propia transición, no en reservas pendientes ni en datos heredados.
+CREATE OR REPLACE FUNCTION public.capture_completed_payment_method()
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
+SET search_path TO pg_catalog,public
+AS $fn$
+BEGIN
+  IF OLD.status='confirmado' AND NEW.status='completado' THEN
+    IF NEW.payment_method IS NULL OR NEW.payment_method NOT IN ('cash','transfer') THEN
+      RAISE EXCEPTION 'Indicá efectivo o transferencia al completar' USING ERRCODE='23514';
+    END IF;
+    NEW.payment_confirmed_at:=clock_timestamp();
+  END IF;
+  RETURN NEW;
+END;$fn$;
+REVOKE ALL ON FUNCTION public.capture_completed_payment_method() FROM PUBLIC,anon,authenticated;
+DROP TRIGGER IF EXISTS appointment_capture_payment_method ON public.appointments;
+CREATE TRIGGER appointment_capture_payment_method
+BEFORE UPDATE OF status ON public.appointments
+FOR EACH ROW EXECUTE FUNCTION public.capture_completed_payment_method();
