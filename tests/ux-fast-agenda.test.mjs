@@ -19,7 +19,8 @@ test('el formulario advierte errores de correo y API los rechaza también', () =
 });
 test('calendario y administración reducen la navegación vertical del celular', () => {
   assert.match(admin,/Secciones de administración/);
-  assert.match(admin,/overflow-x-auto overscroll-x-contain/);
+  assert.match(admin,/grid grid-cols-3 gap-1.5/);
+  assert.match(admin,/sm:grid-cols-6/);
   assert.match(agenda,/min-h-\[66px\]/);
   assert.match(agenda,/space-y-3 border-b/);
   assert.match(booking,/Elegí horario/);
