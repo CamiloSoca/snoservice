@@ -38,6 +38,7 @@ import { appointmentTimeState } from '@/lib/appointment-rules';
 import { InitialShopSkeleton, PanelLoading } from '@/components/InitialShopState';
 import type { PublicShopData } from '@/lib/public-shop-data';
 import { splitBusinessRevenue } from '@/lib/financial-allocations';
+import AgendaCalendar from '@/components/AgendaCalendar';
 
 const MONTH_NAMES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -564,6 +565,19 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
                 {historicEstimateCount} movimientos anteriores no guardaron su comisión histórica. Estos importes son estimados.
               </div>
             )}
+            <AgendaCalendar
+              mode="barber"
+              appointments={barberAppointments.filter(appointment => appointment.barberId === selectedBarberId)}
+              barbers={selectedBarberObj ? [{id: selectedBarberObj.id, name: selectedBarberObj.name}] : []}
+              canComplete={cashOpen}
+              onComplete={(appointment) => {void handleStatusChange(appointment.id, 'completado');}}
+              onCancel={(appointment) => {void handleStatusChange(appointment.id, 'cancelado');}}
+            />
+
+            <details className="rounded-3xl border border-zinc-800 bg-zinc-900/90">
+              <summary className="cursor-pointer px-5 py-4 text-sm font-bold text-zinc-200 hover:text-emerald-400">
+                Ver listado de turnos e historial
+              </summary>
             <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 sm:p-6 space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="font-bold text-base flex items-center gap-2">
@@ -660,6 +674,7 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
                 </div>
               )}
             </div>
+            </details>
 
             <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800 pb-3">
