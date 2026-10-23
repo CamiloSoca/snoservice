@@ -249,6 +249,36 @@ export default function AdminDashboard() {
       },
     });
 
+  // La agenda se refresca con una consulta breve; las cifras contables se
+  // reconcilian por separado mientras el administrador consulta finanzas.
+  useEffect(() => {
+    if (initialLoad !== 'ready' || !['inicio', 'caja', 'facturacion'].includes(activeTab)) return;
+    let mounted = true;
+    let busy = false;
+    const reconcile = async () => {
+      if (!mounted || busy || document.visibilityState === 'hidden') return;
+      busy = true;
+      try {
+        const financial = await getAdminDashboardSnapshot();
+        if (!mounted) return;
+        setAppointments(sortAppointmentsChronologically(financial.appointments));
+        setExpenses(financial.expenses);
+        setTips(financial.tips);
+        setManualCharges(financial.manualCharges);
+        setCashStatus(financial.cashStatus);
+        setLastClosedDate(financial.lastClosedDate);
+      } catch {
+        console.warn('No se pudieron conciliar finanzas; se conserva la última lectura válida.');
+      } finally {
+        busy = false;
+      }
+    };
+    // Al cambiar desde Agenda a Caja/Inicio, reconciliar lo actualizado en otra sesión.
+    void reconcile();
+    const timer = window.setInterval(() => {void reconcile();}, 60_000);
+    return () => {mounted = false; window.clearInterval(timer);};
+  }, [initialLoad, activeTab]);
+
   const toggleCashHistory = async () => {
     if (cashHistoryOpen) { setCashHistoryOpen(false); return; }
     setCashHistoryOpen(true);
