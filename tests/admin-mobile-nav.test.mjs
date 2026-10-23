@@ -26,7 +26,7 @@ test('el menú conserva botones interactivos con estado y selección', () => {
 
 test('las rutas de Equipo y Configuración y sus opciones siguen presentes', () => {
   assert.match(source,/activeTab==='configuracion'/);
-  assert.match(source,/activeTab==='barberos'/);
+  assert.match(source,/id:'barberos',label:'Equipo'/);
   assert.match(source,/Servicios y precios/);
   assert.match(source,/Datos de la barbería/);
 });
