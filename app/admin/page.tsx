@@ -72,6 +72,9 @@ import { splitBusinessRevenue } from '@/lib/financial-allocations';
 import { invalidatePublicShopData } from '@/lib/public-shop-data';
 import { MAX_BARBER_PHOTO_BYTES } from '@/lib/barber-photo';
 import AgendaCalendar from '@/components/AgendaCalendar';
+import CashDrawerCard from '@/components/CashDrawerCard';
+import FinanceLedgerCard from '@/components/FinanceLedgerCard';
+import type {OnSitePaymentMethod} from '@/lib/payment-method';
 import type {OnSitePaymentMethod} from '@/lib/payment-method';
 import {customerWhatsAppLink} from '@/lib/customer-contact';
 import {useAgendaAutoSync} from '@/hooks/useAgendaAutoSync';
@@ -174,6 +177,7 @@ export default function AdminDashboard() {
   const [expenseDesc, setExpenseDesc] = useState('');
   const [expenseAmount, setExpenseAmount] = useState('');
   const [expenseCategory, setExpenseCategory] = useState<ExpenseCategory>('Insumos');
+  const [expensePaymentMethod,setExpensePaymentMethod] = useState<OnSitePaymentMethod | ''>('');
   const [expenseFeedback, setExpenseFeedback] = useState<{kind: 'error' | 'success'; message: string} | null>(null);
   const [savingExpense, setSavingExpense] = useState(false);
   const [removingExpenseId, setRemovingExpenseId] = useState<string | null>(null);
@@ -182,12 +186,14 @@ export default function AdminDashboard() {
   const [tipBarberId, setTipBarberId] = useState<string>('');
   const [tipAmount, setTipAmount] = useState<string>('');
   const [tipNote, setTipNote] = useState<string>('');
+  const [tipPaymentMethod,setTipPaymentMethod] = useState<OnSitePaymentMethod | ''>('');
   const [savingTip, setSavingTip] = useState(false);
   const tipAttempt = useRef<{fingerprint: string; id: string; pending: boolean} | null>(null);
 
   const [chargeBarberId, setChargeBarberId] = useState<string>('');
   const [chargeAmount, setChargeAmount] = useState<string>('');
   const [chargeNote, setChargeNote] = useState<string>('');
+  const [chargePaymentMethod,setChargePaymentMethod] = useState<OnSitePaymentMethod | ''>('');
   const [savingCharge, setSavingCharge] = useState(false);
   const chargeAttempt = useRef<{fingerprint: string; id: string; pending: boolean} | null>(null);
 
@@ -646,11 +652,11 @@ const handleAddBarber = async () => {
     const amount = Number(expenseAmount);
     const date = getMontevideoDateKey();
 
-    if (!description || !expenseAmount.trim() || !Number.isFinite(amount) || amount <= 0) {
+    if (!description || !expenseAmount.trim() || !Number.isFinite(amount) || amount <= 0 || !expensePaymentMethod) {
       setExpenseFeedback({kind: 'error', message: 'Ingresá una descripción y un monto mayor a $0.'});
       return;
     }
-    const fingerprint = JSON.stringify([description, amount, expenseCategory, date]);
+    const fingerprint = JSON.stringify([description, amount, expenseCategory, date, expensePaymentMethod]);
     if (expenseAttempt.current?.fingerprint !== fingerprint) {
       expenseAttempt.current = {fingerprint, id: generateUUID(), pending: false};
     }
@@ -659,7 +665,7 @@ const handleAddBarber = async () => {
     try {
       setAdminError('');
       const inserted = await createExpense({
-        description, amount, category: expenseCategory, date,
+        description, amount, category: expenseCategory, date, paymentMethod: expensePaymentMethod,
       }, expenseAttempt.current!.id);
       setExpenses(current => [...current.filter(exp => exp.id !== inserted.id), inserted]);
       setExpenseDesc('');
@@ -702,8 +708,8 @@ const handleAddBarber = async () => {
 
   const handleAddTipAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!tipBarberId || !tipAmount || Number(tipAmount) <= 0) return;
-    const fingerprint = JSON.stringify([tipBarberId, Number(tipAmount), tipNote.trim()]);
+    if (!tipBarberId || !tipAmount || Number(tipAmount) <= 0 || !tipPaymentMethod) return;
+    const fingerprint = JSON.stringify([tipBarberId, Number(tipAmount), tipNote.trim(), tipPaymentMethod]);
     if (tipAttempt.current?.pending) return;
     if (tipAttempt.current?.fingerprint !== fingerprint) {
       tipAttempt.current = {fingerprint, id: generateUUID(), pending: false};
@@ -715,6 +721,7 @@ const handleAddBarber = async () => {
       const updated = await createTip({
         barberId: tipBarberId,
         amount: Number(tipAmount),
+        paymentMethod:tipPaymentMethod,
         note: tipNote.trim() || 'Agregada por Admin',
         requestId: tipAttempt.current!.id,
       });
@@ -742,8 +749,8 @@ const handleAddBarber = async () => {
 
   const handleAddChargeAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!chargeBarberId || !chargeAmount || Number(chargeAmount) <= 0) return;
-    const fingerprint = JSON.stringify([chargeBarberId, Number(chargeAmount), chargeNote.trim()]);
+    if (!chargeBarberId || !chargeAmount || Number(chargeAmount) <= 0 || !chargePaymentMethod) return;
+    const fingerprint = JSON.stringify([chargeBarberId, Number(chargeAmount), chargeNote.trim(), chargePaymentMethod]);
     if (chargeAttempt.current?.pending) return;
     if (chargeAttempt.current?.fingerprint !== fingerprint) {
       chargeAttempt.current = {fingerprint, id: generateUUID(), pending: false};
@@ -755,6 +762,7 @@ const handleAddBarber = async () => {
       const updated = await createManualCharge({
         barberId: chargeBarberId,
         amount: Number(chargeAmount),
+        paymentMethod:chargePaymentMethod,
         note: chargeNote.trim() || 'Cobro manual extra',
         requestId: chargeAttempt.current!.id,
       });
@@ -1115,6 +1123,8 @@ const handleAddBarber = async () => {
 
           {activeTab === 'caja' && (
             <div className="space-y-6">
+              <CashDrawerCard />
+              <FinanceLedgerCard mode="admin" />
               {cashStatus !== 'abierta' && (
                 <div role="status" className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
                   La caja está cerrada. Podés consultar el historial, pero no agregar ni borrar gastos, propinas o cobros manuales hasta abrir la próxima caja.
@@ -1274,6 +1284,12 @@ const handleAddBarber = async () => {
                     className="sm:col-span-4 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
                   />
 
+                  <label className="sm:col-span-2 text-[11px] text-zinc-400">Medio de cargo
+                    <select value={chargePaymentMethod} onChange={e=>setChargePaymentMethod(e.target.value as OnSitePaymentMethod | '')} required
+                      className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-2 text-sm text-white">
+                      <option value="">Elegir</option><option value="cash">Efectivo</option><option value="transfer">Transferencia</option>
+                    </select>
+                  </label>
                   <button
                     type="submit"
                     disabled={savingCharge || cashStatus !== 'abierta'}
@@ -1361,6 +1377,12 @@ const handleAddBarber = async () => {
                     className="sm:col-span-4 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
                   />
 
+                  <label className="sm:col-span-2 text-[11px] text-zinc-400">Medio de propina
+                    <select value={tipPaymentMethod} onChange={e=>setTipPaymentMethod(e.target.value as OnSitePaymentMethod | '')} required
+                      className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-2 text-sm text-white">
+                      <option value="">Elegir</option><option value="cash">Efectivo</option><option value="transfer">Transferencia</option>
+                    </select>
+                  </label>
                   <button
                     type="submit"
                     disabled={savingTip || cashStatus !== 'abierta'}
@@ -1449,6 +1471,12 @@ const handleAddBarber = async () => {
                     onChange={(e) => setExpenseAmount(e.target.value)}
                     className="sm:col-span-2 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
                   />
+                  <label className="sm:col-span-2 text-[11px] text-zinc-400">Medio de gasto
+                    <select value={expensePaymentMethod} onChange={e=>setExpensePaymentMethod(e.target.value as OnSitePaymentMethod | '')} required
+                      className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-2 text-sm text-white">
+                      <option value="">Elegir</option><option value="cash">Efectivo</option><option value="transfer">Transferencia</option>
+                    </select>
+                  </label>
                   <button
                     type="submit"
                     disabled={savingExpense || cashStatus !== 'abierta'}
