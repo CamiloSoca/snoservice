@@ -4,6 +4,9 @@
     "gru1"
   ],
   "git": {
-    "deploymentEnabled": false
+    "deploymentEnabled": {
+      "*": false,
+      "main": true
+    }
   }
 }
