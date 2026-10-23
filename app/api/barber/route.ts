@@ -11,6 +11,7 @@ import {
 import { isValidUUID } from '@/lib/booking-store';
 import { requireOpenCash } from '@/lib/cash-guard';
 import {appointmentTimeState} from '@/lib/appointment-rules';
+import {sendBookingCancellationNotice} from '@/lib/server-booking-cancellation';
 
 export async function POST(request: Request) {
   if (!verifyCsrfOrigin(request)) {
@@ -133,7 +134,8 @@ export async function PATCH(request: Request) {
     // Verificar también el estado anterior: revertir un turno completado
     // modifica la facturación, no solo marcarlo como completado.
     let lookup = supabase.from('appointments')
-      .select('status,date_string,time_slot,created_at').eq('id', id).eq('shop_id', SHOP_UUID);
+      .select('status,date_string,time_slot,created_at,client_name,client_email,code,services(name),barbers(name)')
+      .eq('id', id).eq('shop_id', SHOP_UUID);
     if (!adminSession && barberSession) {
       lookup = lookup.eq('barber_id', barberSession.sub);
     }
@@ -179,7 +181,37 @@ export async function PATCH(request: Request) {
     }
     if (!data) return NextResponse.json({error: 'El turno cambió de estado o ya no está disponible.'}, {status: 409});
 
+    // Esta sección corre sólo luego de una transición confirmada por PostgreSQL.
+    // El update condicional e inmutable evita notificar dos veces ante doble clic.
+    // Una falla SMTP no revierte el turno ni vuelve a ocupar el horario.
+    let cancellationEmailStatus: string | undefined;
+    if (status === 'cancelado') {
+      const booked = current as typeof current & {
+        services?: {name?: string} | {name?: string}[] | null;
+        barbers?: {name?: string} | {name?: string}[] | null;
+      };
+      const service = Array.isArray(booked.services) ? booked.services[0] : booked.services;
+      const barber = Array.isArray(booked.barbers) ? booked.barbers[0] : booked.barbers;
+      try {
+        cancellationEmailStatus = await sendBookingCancellationNotice({
+          appointmentId: data.id,
+          clientEmail: current.client_email,
+          clientName: current.client_name || 'Cliente',
+          barberName: barber?.name || 'Tu barbero',
+          serviceName: service?.name || 'Servicio',
+          dateString: current.date_string,
+          timeSlot: current.time_slot,
+          code: current.code || '',
+          cancelledBy: adminSession ? 'admin' : 'barber',
+        });
+      } catch {
+        cancellationEmailStatus = 'failed';
+        console.error('El turno se canceló, pero el aviso por correo no pudo procesarse.');
+      }
+    }
+
     return NextResponse.json({
+      ...(cancellationEmailStatus ? {cancellationEmailStatus} : {}),
       ok: true,
       appointment: {
         id: data.id,
