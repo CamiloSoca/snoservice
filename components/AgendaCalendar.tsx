@@ -373,8 +373,9 @@ export default function AgendaCalendar({
       )}
 
       {selectedAppointment && (
-        <div className="border-t border-slate-200 bg-white p-4 sm:p-5" role="region"
-          aria-label="Detalle del turno seleccionado">
+        <div
+          className="fixed inset-x-3 bottom-[max(12px,env(safe-area-inset-bottom))] z-50 max-h-[65vh] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl sm:static sm:max-h-none sm:rounded-none sm:border-x-0 sm:border-b-0 sm:p-5 sm:shadow-none"
+          role="region" aria-label="Detalle del turno seleccionado">
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Detalle del turno</p>
