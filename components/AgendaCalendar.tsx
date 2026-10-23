@@ -1,9 +1,9 @@
 'use client';
 
-import {useMemo, useState, useEffect} from 'react';
-import {CalendarDays, ChevronLeft, ChevronRight, CheckCircle2, XCircle, MessageCircle, Clock3, RefreshCw, WifiOff} from 'lucide-react';
+import {useMemo, useState} from 'react';
+import {CalendarDays, ChevronLeft, ChevronRight, RefreshCw, WifiOff} from 'lucide-react';
 import type {AppointmentItem, BarberItem} from '@/lib/booking-store';
-import {appointmentTimeState} from '@/lib/appointment-rules';
+import AppointmentDetailModal, {type AppointmentActionResult} from '@/components/AppointmentDetailModal';
 import {
   agendaDayAppointments, appointmentStartMinute, calendarWeekDays,
   moveCalendarDay, readableDay, readableWeek, todayInMontevideo,
@@ -18,9 +18,9 @@ interface AgendaCalendarProps {
   appointments: AppointmentItem[];
   barbers: BarberRef[];
   canComplete: boolean;
-  onComplete: (appointment: AppointmentItem) => void;
-  onCancel: (appointment: AppointmentItem) => void;
-  getWhatsAppLink?: (appointment: AppointmentItem) => string;
+  onComplete: (appointment: AppointmentItem) => Promise<AppointmentActionResult>;
+  onCancel: (appointment: AppointmentItem) => Promise<AppointmentActionResult>;
+  getWhatsAppLink?: (appointment: AppointmentItem) => string | null;
   syncState: 'connecting' | 'updating' | 'connected' | 'error';
   lastUpdatedAt: number | null;
   onRefresh: () => void;
@@ -81,6 +81,7 @@ export default function AgendaCalendar({
   const [selectedDate, setSelectedDate] = useState<string>(() => todayInMontevideo());
   const [selectedBarber, setSelectedBarber] = useState('todos');
   const [selectedAppointmentId, setSelectedAppointmentId] = useState<string | null>(null);
+  const [actionFeedback, setActionFeedback] = useState<string>('');
 
   const today = todayInMontevideo();
   const syncLabel = syncState === 'error' ? 'Sin sincronizar'
@@ -120,16 +121,6 @@ export default function AgendaCalendar({
     appointment => appointment.id === selectedAppointmentId
   ) || null;
 
-  // El detalle siempre debe poder cerrarse desde el teclado.
-  useEffect(() => {
-    if (!selectedAppointmentId) return;
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setSelectedAppointmentId(null);
-    };
-    document.addEventListener('keydown', closeOnEscape);
-    return () => document.removeEventListener('keydown', closeOnEscape);
-  }, [selectedAppointmentId]);
-
   const serviceAmount = calendarAppointments.reduce(
     (sum, appointment) => sum + Number(appointment.priceSnapshot ?? appointment.servicePrice ?? 0), 0
   );
@@ -160,26 +151,6 @@ export default function AgendaCalendar({
 
   function selectView(next: CalendarView) {
     setView(next);
-    setSelectedAppointmentId(null);
-  }
-
-  function handleComplete(appointment: AppointmentItem) {
-    if (!canComplete) return;
-    if (appointmentTimeState(appointment) !== 'started') {
-      window.alert('Podés completar el turno cuando llegue su hora de inicio.');
-      return;
-    }
-    onComplete(appointment);
-    setSelectedAppointmentId(null);
-  }
-
-  function handleCancel(appointment: AppointmentItem) {
-    if (appointmentTimeState(appointment) !== 'future') {
-      window.alert('Este turno ya comenzó o pasó y no se puede cancelar.');
-      return;
-    }
-    if (!window.confirm('¿Seguro que querés cancelar este turno?')) return;
-    onCancel(appointment);
     setSelectedAppointmentId(null);
   }
 
@@ -295,6 +266,14 @@ export default function AgendaCalendar({
           Actualizar
         </button>
       </div>
+
+      {actionFeedback && (
+        <div role="status" className="mx-3 mt-3 flex items-start justify-between gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-3 text-sm text-emerald-200">
+          <span>{actionFeedback}</span>
+          <button type="button" onClick={() => setActionFeedback('')}
+            aria-label="Ocultar aviso" className="shrink-0 text-xs font-bold underline">Cerrar</button>
+        </div>
+      )}
 
       {columns === 0 ? (
         <div className="p-8 text-center text-sm text-zinc-400">
@@ -433,59 +412,16 @@ export default function AgendaCalendar({
       )}
 
       {selectedAppointment && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
-          <button type="button" onClick={() => setSelectedAppointmentId(null)}
-            className="absolute inset-0 w-full cursor-default bg-black/75"
-            aria-label="Cerrar detalle del turno" />
-          <div
-            className="relative z-10 w-full max-w-md max-h-[82vh] overflow-y-auto rounded-t-3xl border border-zinc-700 bg-zinc-900 p-5 shadow-2xl sm:mx-4 sm:rounded-3xl"
-            role="dialog" aria-modal="true" aria-label="Detalle del turno seleccionado">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-wide text-zinc-400">Detalle del turno</p>
-              <h3 className="mt-1 text-base font-extrabold text-zinc-100">{selectedAppointment.clientName}</h3>
-              <p className="mt-1 text-xs text-zinc-400">
-                <Clock3 className="mr-1 inline h-3 w-3" />
-                {selectedAppointment.dateString} · {selectedAppointment.timeSlot} hs · {selectedAppointment.durationMinutes} min
-              </p>
-              <p className="mt-1 text-xs text-zinc-400">
-                {selectedAppointment.serviceName} · {selectedAppointment.barberName} ·
-                {' ' + formatMoney(Number(selectedAppointment.priceSnapshot ?? selectedAppointment.servicePrice ?? 0))}
-              </p>
-              <p className="mt-1 text-[11px] font-semibold text-zinc-400">
-                Estado: {selectedAppointment.status === 'completado' ? 'Completado' : 'Sin marcar'}
-              </p>
-            </div>
-            <button type="button" onClick={() => setSelectedAppointmentId(null)}
-              className="rounded-lg border border-zinc-800 px-2.5 py-1.5 text-xs text-zinc-400 hover:bg-zinc-900">
-              Cerrar
-            </button>
-          </div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {getWhatsAppLink && selectedAppointment.clientPhone && (
-              <a href={getWhatsAppLink(selectedAppointment)} target="_blank" rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 px-3 py-2 text-xs font-bold text-zinc-200">
-                <MessageCircle className="h-3.5 w-3.5 text-emerald-600" /> WhatsApp
-              </a>
-            )}
-            {selectedAppointment.status === 'confirmado' && (
-              <>
-                <button type="button" onClick={() => handleComplete(selectedAppointment)}
-                  disabled={!canComplete}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-400 px-3 py-2 text-xs font-bold text-zinc-950 disabled:cursor-not-allowed disabled:opacity-40">
-                  <CheckCircle2 className="h-3.5 w-3.5" /> Completar
-                </button>
-                <button type="button" onClick={() => handleCancel(selectedAppointment)}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 px-3 py-2 text-xs font-bold text-rose-700 hover:bg-rose-50">
-                  <XCircle className="h-3.5 w-3.5" /> Cancelar
-                </button>
-              </>
-            )}
-          </div>
-          {!canComplete && selectedAppointment.status === 'confirmado' &&
-            <p className="mt-2 text-[11px] text-amber-300">Abrí la caja para poder completar turnos.</p>}
-          </div>
-        </div>
+        <AppointmentDetailModal
+          key={selectedAppointment.id}
+          appointment={selectedAppointment}
+          canComplete={canComplete}
+          getWhatsAppLink={getWhatsAppLink}
+          onComplete={onComplete}
+          onCancel={onCancel}
+          onSuccess={(message) => {setActionFeedback(message); onRefresh();}}
+          onClose={() => setSelectedAppointmentId(null)}
+        />
       )}
     </section>
   );
