@@ -64,15 +64,14 @@ import {
   createManualCharge,
   deleteManualCharge,
   saveShopConfig,
-  buildRealOpenDays,
   sortAppointmentsChronologically,
-  DayOption,
 } from '@/lib/booking-store';
 import { appointmentTimeState } from '@/lib/appointment-rules';
 import { InitialShopSkeleton, InitialShopError } from '@/components/InitialShopState';
 import { splitBusinessRevenue } from '@/lib/financial-allocations';
 import { invalidatePublicShopData } from '@/lib/public-shop-data';
 import { MAX_BARBER_PHOTO_BYTES } from '@/lib/barber-photo';
+import AgendaCalendar from '@/components/AgendaCalendar';
 
 type PeriodFilter = 'hoy' | 'semana' | 'mes';
 type CashHistoryEntry = {
@@ -137,7 +136,6 @@ export default function AdminDashboard() {
   const [tips, setTips] = useState<TipItem[]>([]);
   const [manualCharges, setManualCharges] = useState<ManualChargeItem[]>([]);
   const [shopConfig, setShopConfig] = useState<ShopConfig>(DEFAULT_SHOP_CONFIG);
-  const [days, setDays] = useState<DayOption[]>([]);
   const [savedBanner, setSavedBanner] = useState(false);
   const [savingBarberId, setSavingBarberId] = useState<string | null>(null);
   const [barberPhotoBusyId, setBarberPhotoBusyId] = useState<string | null>(null);
@@ -159,9 +157,6 @@ export default function AdminDashboard() {
 
   const [auditDate, setAuditDate] = useState<string>(getMontevideoDateKey());
   const [auditBarberId, setAuditBarberId] = useState<string>('todos');
-
-  const [adminAgendaDate, setAdminAgendaDate] = useState<string>('');
-  const [adminAgendaBarberId, setAdminAgendaBarberId] = useState<string>('todos');
 
   const [newServiceName, setNewServiceName] = useState('');
   const [newServicePrice, setNewServicePrice] = useState('');
@@ -214,12 +209,6 @@ export default function AdminDashboard() {
         setAdminError('');
         const snapshot = await getAdminDashboardSnapshot();
         const freshConfig = snapshot.config || DEFAULT_SHOP_CONFIG;
-        const openDays = buildRealOpenDays(30, freshConfig.schedule);
-        setDays(openDays);
-        if (openDays.length > 0) {
-          setAdminAgendaDate(openDays[0].dateString);
-        }
-
         const freshBarbers = snapshot.barbers;
         if (freshBarbers.length > 0) {
           setTipBarberId(freshBarbers[0].id);
@@ -809,7 +798,6 @@ const handleAddBarber = async () => {
         schedule: shopConfig.schedule || DEFAULT_SHOP_CONFIG.schedule,
       };
       await saveShopConfig(configToSave);
-      setDays(buildRealOpenDays(30, configToSave.schedule));
       setSavedBanner(true);
       setTimeout(() => setSavedBanner(false), 2500);
     } catch (err: any) {
@@ -911,13 +899,6 @@ const handleAddBarber = async () => {
         tipsEarned,
       };
     });
-
-  const adminAgendaAppointments = safeAppointments.filter((apt) => {
-    if (apt.status === 'cancelado') return false;
-    if (adminAgendaDate && apt.dateString !== adminAgendaDate) return false;
-    if (adminAgendaBarberId !== 'todos' && apt.barberId !== adminAgendaBarberId) return false;
-    return true;
-  });
 
   const barberFinancials = safeBarbers.map((barber) => {
     const barberApts = filteredAppointments.filter((apt) => apt.barberId === barber.id);
@@ -1806,131 +1787,15 @@ const handleAddBarber = async () => {
           )}
 
           {activeTab === 'agenda' && (
-            <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 sm:p-6 space-y-5">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800 pb-4">
-                <div>
-                  <h3 className="font-bold text-base flex items-center gap-2">
-                    <CalendarIcon className="w-4 h-4 text-emerald-400" />
-                    Agenda General de la Barbería
-                  </h3>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <select
-                    value={adminAgendaBarberId}
-                    onChange={(e) => setAdminAgendaBarberId(e.target.value)}
-                    className="px-3.5 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-xs text-zinc-200 outline-none font-semibold cursor-pointer"
-                  >
-                    <option value="todos">Todos los barberos</option>
-                    {safeBarbers.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.name}
-                      </option>
-                    ))}
-                  </select>
-
-                  <select
-                    value={adminAgendaDate}
-                    onChange={(e) => setAdminAgendaDate(e.target.value)}
-                    className="px-3.5 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-xs text-zinc-200 outline-none font-semibold cursor-pointer"
-                  >
-                    {days.map((d) => (
-                      <option key={d.dateString} value={d.dateString}>
-                        {d.dateString}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                {adminAgendaAppointments.length === 0 ? (
-                  <div className="p-12 text-center bg-zinc-950 border border-zinc-800 rounded-2xl space-y-2">
-                    <CalendarIcon className="w-8 h-8 text-zinc-600 mx-auto" />
-                    <p className="text-xs text-zinc-400 font-medium">
-                      No hay turnos agendados para este filtro.
-                    </p>
-                  </div>
-                ) : (
-                  adminAgendaAppointments.map((apt) => (
-                    <div
-                      key={apt.id}
-                      className="bg-zinc-950 border border-zinc-800/90 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-zinc-700 transition-colors"
-                    >
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-xs font-extrabold text-emerald-400">
-                            {apt.dateString} • {apt.timeSlot} hs ({apt.durationMinutes || 60}m)
-                          </span>
-                          <span
-                            className={`text-[11px] font-bold px-2 py-0.5 rounded capitalize ${
-                              apt.status === 'completado'
-                                ? 'bg-emerald-500/15 text-emerald-400'
-                                : 'bg-amber-500/15 text-amber-400'
-                            }`}
-                          >
-                            {apt.status}
-                          </span>
-                        </div>
-                        <h4 className="font-bold text-sm sm:text-base pt-0.5">
-                          {apt.clientName}{' '}
-                          <span className="font-normal text-xs text-zinc-400">
-                            ({apt.clientPhone})
-                          </span>
-                        </h4>
-                        <p className="text-xs text-zinc-400">
-                          Servicio: <strong className="text-zinc-200">{apt.serviceName}</strong> (${apt.priceSnapshot ?? apt.servicePrice}) • Atiende: <strong className="text-zinc-200">{apt.barberName}</strong>
-                        </p>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-2">
-                        <a
-                          href={getClientWhatsAppLink(apt)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-200 text-xs font-medium flex items-center space-x-1"
-                        >
-                          <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>WhatsApp</span>
-                        </a>
-
-                        {apt.status === 'confirmado' && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (appointmentTimeState(apt) !== 'started') {
-                                alert('Podés completar el turno cuando llegue su hora de inicio.');
-                                return;
-                              }
-                              handleStatusChange(apt.id, 'completado');
-                            }}
-                            disabled={cashStatus !== 'abierta'}
-                            className="px-3 py-2 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-bold flex items-center gap-1 cursor-pointer"
-                          >
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            <span>Completar</span>
-                          </button>
-                        )}
-                        {apt.status === 'confirmado' && <button
-                          type="button"
-                          onClick={() => {
-                            if (appointmentTimeState(apt) !== 'future') {
-                              alert('Este turno ya comenzó o pasó y no se puede cancelar.');
-                              return;
-                            }
-                            handleStatusChange(apt.id, 'cancelado');
-                          }}
-                          className="px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-rose-400 text-xs font-semibold flex items-center gap-1 cursor-pointer"
-                        >
-                          <XCircle className="w-3.5 h-3.5" />
-                          <span>Cancelar</span>
-                        </button>}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
+            <AgendaCalendar
+              mode="admin"
+              appointments={safeAppointments}
+              barbers={safeBarbers}
+              canComplete={cashStatus === 'abierta'}
+              onComplete={(appointment) => {void handleStatusChange(appointment.id, 'completado');}}
+              onCancel={(appointment) => {void handleStatusChange(appointment.id, 'cancelado');}}
+              getWhatsAppLink={getClientWhatsAppLink}
+            />
           )}
 
           {activeTab === 'turnos' && (
