@@ -128,7 +128,14 @@ export default function FinanceLedgerCard({mode}:{mode:'admin'|'barber'}) {
       {error&&<p role="alert" className="rounded-lg border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-200">{error}</p>}
       {feedback&&<p role="status" className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-200">{feedback}</p>}
 
-      {data?.balances.map(b=>(
+      {data && !data.physicalCashVerified && (
+        <p className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-[11px] text-zinc-400">
+          El efectivo físico todavía no fue arqueado en este módulo. El saldo pendiente de comisiones
+          no significa que haya ese importe disponible en el cajón.
+        </p>
+      )}
+
+      {data?.balances.map(b=(
         <div key={b.barber_id} className="rounded-xl border border-zinc-800 bg-zinc-950 p-3">
           <div className="flex items-center justify-between gap-2">
             <p className="font-bold text-sm">{b.barber_name}</p>
