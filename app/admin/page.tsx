@@ -1,89 +1,44 @@
-// app/admin/page.tsx
+// app/barbero/barbero.tsx
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useMemo, useRef, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   Scissors,
   Calendar as CalendarIcon,
-  Users,
-  DollarSign,
-  Plus,
-  Trash2,
   CheckCircle2,
   XCircle,
-  MessageSquare,
-  ArrowLeft,
-  Clock,
   LogOut,
-  Settings,
-  Check,
-  Image as ImageIcon,
-  Wallet,
-  TrendingUp,
-  Percent,
+  ArrowLeft,
   KeyRound,
-  Receipt,
-  UserCheck,
-  ExternalLink,
-  Crown,
-  Save,
   AlertCircle,
-  ShieldCheck,
-  Lock,
   Coins,
+  Plus,
+  Trash2,
   BarChart3,
 } from 'lucide-react';
 import {
-  ServiceItem,
-  BarberItem,
   AppointmentItem,
-  ExpenseItem,
-  ExpenseCategory,
   TipItem,
   ManualChargeItem,
-  ShopConfig,
-  DEFAULT_SHOP_CONFIG,
-  SHOP_UUID,
-  generateUUID,
-  saveServices,
-  deleteServiceFromDb,
-  getAdminBarbers,
-  getAdminDashboardSnapshot,
-  getAgendaRevision,
+  unlockBarberPanelWithPin,
+  getBarberDashboardSnapshot,
   getMontevideoDateKey,
-  saveBarbers,
-  deleteBarberFromDb,
   updateAppointmentStatus,
-  getExpenses,
-  createExpense,
-  deleteExpense,
   createTip,
   deleteTip,
   createManualCharge,
   deleteManualCharge,
-  saveShopConfig,
   sortAppointmentsChronologically,
+  generateUUID,
 } from '@/lib/booking-store';
 import { appointmentTimeState } from '@/lib/appointment-rules';
-import { InitialShopSkeleton, InitialShopError } from '@/components/InitialShopState';
+import { InitialShopSkeleton, PanelLoading } from '@/components/InitialShopState';
+import type { PublicShopData } from '@/lib/public-shop-data';
 import { splitBusinessRevenue } from '@/lib/financial-allocations';
-import { invalidatePublicShopData } from '@/lib/public-shop-data';
-import { MAX_BARBER_PHOTO_BYTES } from '@/lib/barber-photo';
 import AgendaCalendar from '@/components/AgendaCalendar';
-
-type PeriodFilter = 'hoy' | 'semana' | 'mes';
-type CashHistoryEntry = {
-  id: string;
-  status: 'abierta' | 'cerrada';
-  opened_at: string;
-  closed_at: string | null;
-  initial_amount: number | string | null;
-  total_sales: number | string | null;
-  total_expenses: number | string | null;
-  final_amount: number | string | null;
-};
+import {useAgendaAutoSync} from '@/hooks/useAgendaAutoSync';
 
 const MONTH_NAMES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -105,610 +60,133 @@ function getRecentMonths(count = 12): { value: string; label: string }[] {
   return result;
 }
 
-function isWithinPeriod(
-  isoOrDateStr: string,
-  period: PeriodFilter,
-  selectedMonthYear: string
-): boolean {
-  if (!isoOrDateStr) return false;
-  const date = new Date(isoOrDateStr);
-  if (Number.isNaN(date.getTime())) return false;
-  const dateKey = getMontevideoDateKey(date);
-  const todayKey = getMontevideoDateKey();
-  if (period === 'hoy') return dateKey === todayKey;
-  if (period === 'semana') {
-    const delta = (Date.parse(todayKey + 'T00:00:00Z') - Date.parse(dateKey + 'T00:00:00Z')) / 86400000;
-    return delta >= 0 && delta < 7;
-  }
-  return dateKey.slice(0, 7) === selectedMonthYear;
+function isWithinSelectedMonth(isoOrDateStr: string, selectedMonthYear: string): boolean {
+  if (!isoOrDateStr) return true;
+  const target = new Date(isoOrDateStr);
+  if (isNaN(target.getTime())) return true;
+  const [selYear, selMonth] = selectedMonthYear.split('-').map(Number);
+  if (!selYear || !selMonth) return true;
+  return getMontevideoDateKey(target).slice(0, 7) === selectedMonthYear;
 }
 
-export default function AdminDashboard() {
+function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<
-    'inicio' | 'caja' | 'facturacion' | 'agenda' | 'turnos' | 'barberos' | 'servicios' | 'marca' | 'configuracion'
-  >('inicio');
-
-  const [appointments, setAppointments] = useState<AppointmentItem[]>([]);
-  const [services, setServices] = useState<ServiceItem[]>([]);
-  const [barbers, setBarbers] = useState<BarberItem[]>([]);
-  const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
-  const [tips, setTips] = useState<TipItem[]>([]);
-  const [manualCharges, setManualCharges] = useState<ManualChargeItem[]>([]);
-  const [shopConfig, setShopConfig] = useState<ShopConfig>(DEFAULT_SHOP_CONFIG);
-  const [savedBanner, setSavedBanner] = useState(false);
-  const [savingBarberId, setSavingBarberId] = useState<string | null>(null);
-  const [barberPhotoBusyId, setBarberPhotoBusyId] = useState<string | null>(null);
-  const [adminError, setAdminError] = useState<string>('');
-  const [initialLoad, setInitialLoad] = useState<'loading' | 'ready' | 'error'>('loading');
-  const [loadingTooLong, setLoadingTooLong] = useState(false);
-
-  const [cashStatus, setCashStatus] = useState<'abierta' | 'cerrada'>('cerrada');
-  const [lastClosedDate, setLastClosedDate] = useState<string>('');
-  const [cashHistoryOpen, setCashHistoryOpen] = useState(false);
-  const [cashHistoryLoading, setCashHistoryLoading] = useState(false);
-  const [cashHistoryError, setCashHistoryError] = useState('');
-  const [cashHistory, setCashHistory] = useState<CashHistoryEntry[]>([]);
-  const [blockedBarbers, setBlockedBarbers] = useState<Record<string, boolean>>({});
+  const searchParams = useSearchParams();
+  const profileSlug = searchParams.get('perfil');
 
   const availableMonths = getRecentMonths(12);
-  const [period, setPeriod] = useState<PeriodFilter>('hoy');
   const [selectedMonth, setSelectedMonth] = useState<string>(availableMonths[0].value);
-
   const [auditDate, setAuditDate] = useState<string>(getMontevideoDateKey());
-  const [auditBarberId, setAuditBarberId] = useState<string>('todos');
+  const [appointmentsView, setAppointmentsView] = useState<'pendientes' | 'historial'>('pendientes');
 
-  const [newServiceName, setNewServiceName] = useState('');
-  const [newServicePrice, setNewServicePrice] = useState('');
-  const [newServiceDuration, setNewServiceDuration] = useState('60');
+  const shopConfig = initialShop.shopConfig;
+  const barbers = useMemo(
+    () => initialShop.barbers.filter(b => b.active !== false),
+    [initialShop.barbers],
+  );
 
-  const [newBarberName, setNewBarberName] = useState('');
-  const [newBarberCommission, setNewBarberCommission] = useState('50');
-  const [newBarberIsOwner, setNewBarberIsOwner] = useState(false);
-  const [newBarberPin, setNewBarberPin] = useState('');
-  const [barberPinDrafts, setBarberPinDrafts] = useState<Record<string, string>>({});
+  const [selectedBarberId, setSelectedBarberId] = useState<string>('');
+  const [pin, setPin] = useState<string>('');
+  const [isUnlocked, setIsUnlocked] = useState<boolean>(false);
+  const [cashOpen, setCashOpen] = useState<boolean>(false);
+  const [barberAppointments, setBarberAppointments] = useState<AppointmentItem[]>([]);
+  const [barberTips, setBarberTips] = useState<TipItem[]>([]);
+  const [barberCharges, setBarberCharges] = useState<ManualChargeItem[]>([]);
+  const [commissionRate, setCommissionRate] = useState<number>(50);
+  const [isOwner, setIsOwner] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [panelLoading, setPanelLoading] = useState<boolean>(false);
+  const [errorMsg, setErrorMsg] = useState<string>('');
 
-  const [expenseDesc, setExpenseDesc] = useState('');
-  const [expenseAmount, setExpenseAmount] = useState('');
-  const [expenseCategory, setExpenseCategory] = useState<ExpenseCategory>('Insumos');
-  const [expenseFeedback, setExpenseFeedback] = useState<{kind: 'error' | 'success'; message: string} | null>(null);
-  const [savingExpense, setSavingExpense] = useState(false);
-  const [removingExpenseId, setRemovingExpenseId] = useState<string | null>(null);
-  const expenseAttempt = useRef<{fingerprint: string; id: string; pending: boolean} | null>(null);
-
-  const [tipBarberId, setTipBarberId] = useState<string>('');
-  const [tipAmount, setTipAmount] = useState<string>('');
-  const [tipNote, setTipNote] = useState<string>('');
-  const [savingTip, setSavingTip] = useState(false);
+  const [newTipAmount, setNewTipAmount] = useState<string>('');
+  const [newTipNote, setNewTipNote] = useState<string>('');
+  const [savingTip, setSavingTip] = useState<boolean>(false);
   const tipAttempt = useRef<{fingerprint: string; id: string; pending: boolean} | null>(null);
 
-  const [chargeBarberId, setChargeBarberId] = useState<string>('');
-  const [chargeAmount, setChargeAmount] = useState<string>('');
-  const [chargeNote, setChargeNote] = useState<string>('');
-  const [savingCharge, setSavingCharge] = useState(false);
+  const [newChargeAmount, setNewChargeAmount] = useState<string>('');
+  const [newChargeNote, setNewChargeNote] = useState<string>('');
+  const [savingCharge, setSavingCharge] = useState<boolean>(false);
   const chargeAttempt = useRef<{fingerprint: string; id: string; pending: boolean} | null>(null);
 
-  const checkBarberLocks = (brbs: BarberItem[]) => {
-    const locks: Record<string, boolean> = {};
-    brbs.forEach((b) => {
-      const lockUntil = Number(localStorage.getItem(`pin_lock_${b.id}`) || '0');
-      locks[b.id] = lockUntil > Date.now();
-    });
-    setBlockedBarbers(locks);
-  };
-
   useEffect(() => {
-    if (initialLoad !== 'loading') return;
-    const timer = window.setTimeout(() => setLoadingTooLong(true), 6000);
-    return () => window.clearTimeout(timer);
-  }, [initialLoad]);
-
-  useEffect(() => {
-    async function loadAdminData() {
-      try {
-        setAdminError('');
-        const snapshot = await getAdminDashboardSnapshot();
-        const freshConfig = snapshot.config || DEFAULT_SHOP_CONFIG;
-        const freshBarbers = snapshot.barbers;
-        if (freshBarbers.length > 0) {
-          setTipBarberId(freshBarbers[0].id);
-          setChargeBarberId(freshBarbers[0].id);
-        }
-
-        setCashStatus(snapshot.cashStatus);
-        setLastClosedDate(snapshot.lastClosedDate);
-        setAppointments(sortAppointmentsChronologically(snapshot.appointments));
-        setServices(snapshot.services);
-        setBarbers(freshBarbers);
-        setExpenses(snapshot.expenses);
-        setTips(snapshot.tips);
-        setManualCharges(snapshot.manualCharges);
-        setShopConfig(freshConfig);
-
-        checkBarberLocks(freshBarbers);
-        setInitialLoad('ready');
-      } catch (err: any) {
-        console.error('Error cargando panel de admin:', err);
-        setAdminError(err?.message || 'Error al cargar los datos del panel administrativo.');
-        setInitialLoad('error');
-      }
-    }
-
-    loadAdminData();
-  }, []);
-
-  // Detectar nuevas reservas/cancelaciones mediante una señal muy liviana.
-  // Sin cambios, no descargar la contabilidad completa innecesariamente.
-  useEffect(() => {
-    if (initialLoad !== 'ready') return;
-    let disposed = false;
-    let refreshing = false;
-    let checking = false;
-    let lastRevision: number | null = null;
-
-    const refreshOperations = async (): Promise<boolean> => {
-      if (disposed || refreshing || document.visibilityState === 'hidden') return false;
-      refreshing = true;
-      try {
-        const snapshot = await getAdminDashboardSnapshot();
-        if (disposed) return false;
-        setAppointments(sortAppointmentsChronologically(snapshot.appointments));
-        setExpenses(snapshot.expenses);
-        setTips(snapshot.tips);
-        setManualCharges(snapshot.manualCharges);
-        setCashStatus(snapshot.cashStatus);
-        setLastClosedDate(snapshot.lastClosedDate);
-        return true;
-      } catch (error) {
-        console.warn('No se pudo actualizar el panel de administración.', error);
-        return false;
-      } finally {
-        refreshing = false;
-      }
-    };
-
-    const checkAgenda = async () => {
-      if (disposed || checking || refreshing || document.visibilityState === 'hidden') return;
-      checking = true;
-      try {
-        const revision = await getAgendaRevision();
-        if (disposed) return;
-        if (lastRevision === null) {
-          lastRevision = revision;
-        } else if (revision !== lastRevision) {
-          if (await refreshOperations()) lastRevision = revision;
-        }
-      } catch (error) {
-        console.warn('No se pudo comprobar si cambió la agenda.', error);
-      } finally {
-        checking = false;
-      }
-    };
-
-    void checkAgenda();
-    const quickInterval = window.setInterval(() => void checkAgenda(), 6_000);
-    const fullInterval = window.setInterval(() => void refreshOperations(), 60_000);
-    const onFocus = () => void refreshOperations();
-    window.addEventListener('focus', onFocus);
-    document.addEventListener('visibilitychange', onFocus);
-    return () => {
-      disposed = true;
-      window.clearInterval(quickInterval);
-      window.clearInterval(fullInterval);
-      window.removeEventListener('focus', onFocus);
-      document.removeEventListener('visibilitychange', onFocus);
-    };
-  }, [initialLoad]);
-
-  const toggleCashHistory = async () => {
-    if (cashHistoryOpen) { setCashHistoryOpen(false); return; }
-    setCashHistoryOpen(true);
-    setCashHistoryLoading(true);
-    setCashHistoryError('');
-    try {
-      const response = await fetch('/api/admin/cash-history', {
-        cache: 'no-store', credentials: 'same-origin',
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error || 'No se pudo cargar el historial.');
-      setCashHistory(Array.isArray(payload.registers) ? payload.registers : []);
-    } catch (error: any) {
-      setCashHistoryError(error?.message || 'No se pudo cargar el historial.');
-    } finally {
-      setCashHistoryLoading(false);
-    }
-  };
-
-  const handleLogout = async () => {
-    await fetch('/api/auth', { method: 'DELETE' });
-    router.push('/login');
-    router.refresh();
-  };
-
-  const handleStatusChange = async (id: string, status: AppointmentItem['status']) => {
-    try {
-      setAdminError('');
-      const persisted = await updateAppointmentStatus(id, status);
-      // La API confirmó el cambio: modificar solo el turno afectado.
-      setAppointments((current) => current.map((appointment) =>
-        appointment.id === id ? {...appointment, ...persisted} : appointment
-      ));
-    } catch (err: any) {
-      setAdminError(err?.message || 'No se pudo actualizar el estado del turno.');
-    }
-  };
-
-  const handleUnblockBarberPin = async (barberId: string, barberName: string) => {
-    try {
-      // Solo la API administrativa, con cookie firmada, puede desbloquear un PIN.
-      const response = await fetch('/api/admin', {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({operation: 'UNBLOCK_BARBER_PIN', barberId}),
-      });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok || !result.ok) {
-        throw new Error(result.error || 'No se pudo desbloquear el PIN.');
-      }
-
-      localStorage.removeItem(`pin_lock_${barberId}`);
-      localStorage.removeItem(`pin_attempts_${barberId}`);
-      setBlockedBarbers((prev) => ({ ...prev, [barberId]: false }));
-
-      alert(`¡Listo! El acceso por PIN para ${barberName} fue desbloqueado correctamente.`);
-    } catch (err: any) {
-      alert(err?.message || 'No se pudo desbloquear al barbero.');
-    }
-  };
-
-  const handleAddService = async () => {
-    if (!newServiceName.trim() || !newServicePrice) return;
-    const dur = Math.max(15, Number(newServiceDuration) || 60);
-    const newItem: ServiceItem = {
-      id: generateUUID(),
-      name: newServiceName.trim(),
-      price: Number(newServicePrice),
-      durationMinutes: dur,
-      description: `${dur} min`,
-      active: true,
-    };
-    const previous = services;
-    const updated = [...services, newItem];
-    try {
-      setAdminError('');
-      await saveServices(updated);
-      setServices(updated);
-      setNewServiceName('');
-      setNewServicePrice('');
-    } catch (err: any) {
-      setServices(previous);
-      setAdminError(err?.message || 'Error al guardar el nuevo servicio.');
-    }
-  };
-
-  const handleUpdateServicePrice = async (id: string, newPrice: number) => {
-    const previous = services;
-    const updated = services.map((s) => (s.id === id ? { ...s, price: newPrice } : s));
-    setServices(updated);
-    try {
-      setAdminError('');
-      await saveServices(updated);
-    } catch (err: any) {
-      setServices(previous);
-      setAdminError(err?.message || 'Error al actualizar el precio del servicio.');
-    }
-  };
-
-  const handleUpdateServiceDuration = async (id: string, newDuration: number) => {
-    const dur = Math.max(15, Number(newDuration) || 60);
-    const previous = services;
-    const updated = services.map((s) =>
-      s.id === id ? { ...s, durationMinutes: dur, description: `${dur} min` } : s
+    if (!profileSlug || barbers.length === 0) return;
+    const found = barbers.find(
+      b => (b.slug || b.name.toLowerCase()) === profileSlug.toLowerCase()
     );
-    setServices(updated);
-    try {
-      setAdminError('');
-      await saveServices(updated);
-    } catch (err: any) {
-      setServices(previous);
-      setAdminError(err?.message || 'Error al actualizar la duración del servicio.');
-    }
-  };
+    if (found) setSelectedBarberId(found.id);
+  }, [profileSlug, barbers]);
 
-  const handleToggleServiceActive = async (id: string, active: boolean) => {
-    const previous = services;
-    const updated = services.map((service) => service.id === id ? {...service, active} : service);
-    setServices(updated);
-    try {
-      setAdminError('');
-      await saveServices(updated);
-    } catch (err: any) {
-      setServices(previous);
-      setAdminError(err?.message || 'No se pudo actualizar el servicio.');
-    }
-  };
-
-  const handleDeleteService = async (id: string) => {
-    const previous = services;
-    const updated = services.filter((s) => s.id !== id);
-    try {
-      setAdminError('');
-      await deleteServiceFromDb(id);
-      setServices(updated);
-    } catch (err: any) {
-      setServices(previous);
-      setAdminError(err?.message || 'Error al eliminar el servicio.');
-    }
-  };
-
-const handleAddBarber = async () => {
-    if (!newBarberName.trim()) return;
-    const rate = Math.min(100, Math.max(0, Number(newBarberCommission) || 50));
-    const cleanPin = newBarberPin.trim();
-    if (!/^\d{4,6}$/.test(cleanPin) || cleanPin === '1234') {
-      setAdminError('Definí un PIN de 4 a 6 dígitos, distinto de 1234.');
-      return;
-    }
-    const slug = newBarberName
-      .trim()
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/\s+/g, '-');
-
-    const newItem: BarberItem = {
-      id: generateUUID(),
-      slug,
-      name: newBarberName.trim(),
-      role: 'Barbero Profesional',
-      bio: '',
-      specialties: ['Fade', 'Corte Clásico'],
-      serviceIds: services.map((s) => s.id),
-      isOwner: newBarberIsOwner,
-      active: true,
-      commissionRate: rate,
-      pin: cleanPin,
-    };
-
-    const previous = barbers;
-    const updated = [...barbers, newItem];
-    
-    try {
-      setAdminError('');
-      // Guardamos directamente en la base de datos a través de la función del store
-      await saveBarbers(updated);
-      
-      // Recargamos la lista oficial de la base de datos
-      const freshBarbers = await getAdminBarbers(true);
-      const finalBarbers = (Array.isArray(freshBarbers) && freshBarbers.length > 0 ? freshBarbers : updated)
-        .map((barber) => ({...barber, pin: ''}));
-      
-      setBarbers(finalBarbers);
-      
-      if (!tipBarberId && finalBarbers.length > 0) {
-        setTipBarberId(finalBarbers[0].id);
-        setChargeBarberId(finalBarbers[0].id);
-      }
-      
-      checkBarberLocks(finalBarbers);
-      setNewBarberName('');
-      setNewBarberCommission('50');
-      setNewBarberIsOwner(false);
-      setNewBarberPin('');
-      
-      alert(`¡Barbero ${newItem.name} agregado con éxito!`);
-    } catch (err: any) {
-      setBarbers(previous);
-      console.error('Error al agregar barbero:', err);
-      setAdminError(err?.message || 'Error al agregar el barbero en la base de datos.');
-    }
-  };
-
-  const handleUpdateBarberField = async (
-    id: string,
-    field: 'commissionRate' | 'pin' | 'isOwner' | 'active',
-    value: number | string | boolean
-  ) => {
-    const previous = barbers;
-    const updated = barbers.map((b) => {
-      if (b.id !== id) return b;
-      if (field === 'commissionRate') {
-        const rate = Math.min(100, Math.max(0, Number(value) || 0));
-        return { ...b, commissionRate: rate };
-      }
-      if (field === 'isOwner') return { ...b, isOwner: value === true };
-      if (field === 'active') return { ...b, active: value === true };
-      return { ...b, pin: String(value).trim() };
-    });
-    setBarbers(updated.map((barber) => ({...barber, pin: ''})));
-    try {
-      setAdminError('');
-      await saveBarbers(updated);
-    } catch (err: any) {
-      setBarbers(previous);
-      setAdminError(err?.message || 'Error al actualizar los datos del barbero.');
-    }
-  };
-
-  const handleBarberPinBlur = (id: string, currentPin: string) => {
-    const candidate = barberPinDrafts[id];
-    if (candidate === undefined) return;
-    if (candidate === currentPin) {
-      setBarberPinDrafts((prev) => {
-        const next = {...prev};
-        delete next[id];
-        return next;
-      });
-      return;
-    }
-    if (!/^\d{4,6}$/.test(candidate) || candidate === '1234') {
-      setAdminError('El PIN debe tener de 4 a 6 dígitos y no puede ser 1234.');
-      return; // Mantener el borrador visible, sin guardar un PIN incompleto.
-    }
-    void handleUpdateBarberField(id, 'pin', candidate);
-    setBarberPinDrafts((prev) => {
-      const next = {...prev};
-      delete next[id];
-      return next;
-    });
-  };
-
-  const handleToggleBarberService = (barberId: string, serviceId: string) => {
-    const updated = barbers.map((b) => {
-      if (b.id !== barberId) return b;
-      const currentIds = b.serviceIds || [];
-      const exists = currentIds.includes(serviceId);
-      const nextIds = exists
-        ? currentIds.filter((id) => id !== serviceId)
-        : [...currentIds, serviceId];
-      return { ...b, serviceIds: nextIds };
-    });
-    setBarbers(updated);
-  };
-
-  const handleBarberPhotoUpload = async (barberId: string, file?: File) => {
-    if (!file) return;
-    if (file.size > MAX_BARBER_PHOTO_BYTES || !['image/jpeg','image/png','image/webp'].includes(file.type)) {
-      setAdminError('Elegí una foto JPG, PNG o WebP de hasta 2 MB.');
-      return;
-    }
-    setBarberPhotoBusyId(barberId);
-    setAdminError('');
-    try {
-      const form = new FormData();
-      form.append('barberId', barberId);
-      form.append('photo', file);
-      const response = await fetch('/api/admin/barber-photo', {
-        method: 'POST', credentials: 'same-origin', body: form,
-      });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok || !result.ok) throw new Error(result.error || 'No se pudo subir la foto.');
-      setBarbers(current => current.map(barber =>
-        barber.id === barberId ? {...barber, imageUrl: result.imageUrl} : barber
-      ));
-      invalidatePublicShopData();
-    } catch (error: any) {
-      setAdminError(error?.message || 'No se pudo actualizar la foto.');
-    } finally {
-      setBarberPhotoBusyId(null);
-    }
-  };
-
-  const handleBarberPhotoRemove = async (barberId: string) => {
-    if (!window.confirm('¿Quitar la foto de este barbero?')) return;
-    setBarberPhotoBusyId(barberId);
-    setAdminError('');
-    try {
-      const response = await fetch('/api/admin/barber-photo', {
-        method: 'DELETE', credentials: 'same-origin',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({barberId}),
-      });
-      const result = await response.json().catch(() => ({}));
-      if (!response.ok || !result.ok) throw new Error(result.error || 'No se pudo quitar la foto.');
-      setBarbers(current => current.map(barber =>
-        barber.id === barberId ? {...barber, imageUrl: ''} : barber
-      ));
-      invalidatePublicShopData();
-    } catch (error: any) {
-      setAdminError(error?.message || 'No se pudo quitar la foto.');
-    } finally {
-      setBarberPhotoBusyId(null);
-    }
-  };
-
-  const handleSaveBarberChanges = async (barberId: string) => {
-    try {
-      setAdminError('');
-      await saveBarbers(barbers);
-      setSavingBarberId(barberId);
-      setTimeout(() => setSavingBarberId(null), 1500);
-    } catch (err: any) {
-      setSavingBarberId(null);
-      setAdminError(err?.message || 'Error al guardar los servicios del barbero.');
-    }
-  };
-
-  const handleDeleteBarber = async (id: string) => {
-    const previous = barbers;
-    const updated = barbers.filter((b) => b.id !== id);
-    try {
-      setAdminError('');
-      await deleteBarberFromDb(id);
-      setBarbers(updated);
-    } catch (err: any) {
-      setBarbers(previous);
-      setAdminError(err?.message || 'Error al eliminar el barbero.');
-    }
-  };
-
-  const handleAddExpense = async (e: React.FormEvent) => {
+  const handleUnlock = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (savingExpense || expenseAttempt.current?.pending) return;
-    setExpenseFeedback(null);
-    const description = expenseDesc.trim();
-    const amount = Number(expenseAmount);
-    const date = getMontevideoDateKey();
-
-    if (!description || !expenseAmount.trim() || !Number.isFinite(amount) || amount <= 0) {
-      setExpenseFeedback({kind: 'error', message: 'Ingresá una descripción y un monto mayor a $0.'});
+    if (!selectedBarberId || !pin.trim()) {
+      setErrorMsg('Seleccioná tu tarjeta e ingresá tu PIN.');
       return;
     }
-    const fingerprint = JSON.stringify([description, amount, expenseCategory, date]);
-    if (expenseAttempt.current?.fingerprint !== fingerprint) {
-      expenseAttempt.current = {fingerprint, id: generateUUID(), pending: false};
-    }
-    expenseAttempt.current!.pending = true;
-    setSavingExpense(true);
+
     try {
-      setAdminError('');
-      const inserted = await createExpense({
-        description, amount, category: expenseCategory, date,
-      }, expenseAttempt.current!.id);
-      setExpenses(current => [...current.filter(exp => exp.id !== inserted.id), inserted]);
-      setExpenseDesc('');
-      setExpenseAmount('');
-      expenseAttempt.current = null;
-      setExpenseFeedback({kind: 'success', message: 'Gasto registrado correctamente.'});
+      setLoading(true);
+      setErrorMsg('');
+      const res = await unlockBarberPanelWithPin(selectedBarberId, pin.trim());
+      // Autenticación terminada: abrir el panel sin esperar todas las finanzas.
+      setCommissionRate(res.commissionRate);
+      setIsUnlocked(true);
+      setPin('');
+      setLoading(false);
+      setPanelLoading(true);
+
+      // Una única API privada trae los turnos, movimientos y caja en paralelo.
+      const snapshot = await getBarberDashboardSnapshot();
+      setCashOpen(snapshot.cashOpen);
+      setCommissionRate(snapshot.commissionRate);
+      setIsOwner(snapshot.isOwner);
+      setBarberAppointments(sortAppointmentsChronologically(snapshot.appointments));
+      setBarberTips(snapshot.tips);
+      setBarberCharges(snapshot.manualCharges);
     } catch (err: any) {
-      setExpenseFeedback({kind: 'error', message: err?.message || 'No se pudo confirmar el gasto. Reintentá sin cambiar los datos.'});
+      // Ante una lectura incompleta no mostrar cifras vacías como reales.
+      setIsUnlocked(false);
+      setErrorMsg(err?.message || 'No se pudo ingresar al panel.');
     } finally {
-      if (expenseAttempt.current) expenseAttempt.current.pending = false;
-      setSavingExpense(false);
+      setLoading(false);
+      setPanelLoading(false);
     }
   };
 
-  const handleRemoveExpense = async (id: string) => {
-    if (removingExpenseId) return;
-    setRemovingExpenseId(id);
-    setExpenseFeedback(null);
-    setAdminError('');
+  // Mantener la sesión privada y actualizar sin tener que volver a ingresar PIN.
+  const {syncState: agendaSyncState, lastUpdatedAt: agendaUpdatedAt, refresh: refreshAgenda} =
+    useAgendaAutoSync({
+      enabled: isUnlocked && !panelLoading,
+      refreshData: async () => {
+        const snapshot = await getBarberDashboardSnapshot();
+        setBarberAppointments(sortAppointmentsChronologically(snapshot.appointments));
+        setBarberTips(snapshot.tips);
+        setBarberCharges(snapshot.manualCharges);
+        setCashOpen(snapshot.cashOpen);
+        setCommissionRate(snapshot.commissionRate);
+        setIsOwner(snapshot.isOwner);
+      },
+      onUnauthorized: () => {
+        setIsUnlocked(false);
+        setErrorMsg('Tu sesión venció. Ingresá tu PIN nuevamente.');
+      },
+    });
+
+  const handleStatusChange = async (appointmentId: string, status: AppointmentItem['status']) => {
     try {
-      const deletedId = await deleteExpense(id);
-      setExpenses(current => current.filter(exp => exp.id !== deletedId));
-      setExpenseFeedback({kind: 'success', message: 'Gasto eliminado correctamente.'});
+      setErrorMsg('');
+      const persisted = await updateAppointmentStatus(appointmentId, status);
+      setBarberAppointments((current) => current.map((appointment) =>
+        appointment.id === appointmentId ? {...appointment, ...persisted} : appointment
+      ));
     } catch (err: any) {
-      try {
-        const fresh = await getExpenses();
-        setExpenses(fresh);
-        if (!fresh.some(exp => exp.id === id)) {
-          setExpenseFeedback({kind: 'success', message: 'El gasto ya no figura en el registro.'});
-        } else {
-          setExpenseFeedback({kind: 'error', message: err?.message || 'No se pudo eliminar el gasto.'});
-        }
-      } catch {
-        setExpenseFeedback({kind: 'error', message: 'No se pudo verificar la eliminación. Actualizá antes de repetir.'});
-      }
-    } finally {
-      setRemovingExpenseId(null);
+      setErrorMsg(err?.message || 'No se pudo actualizar el estado del turno.');
     }
   };
 
-  const handleAddTipAdmin = async (e: React.FormEvent) => {
+  const handleAddMyTip = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!tipBarberId || !tipAmount || Number(tipAmount) <= 0) return;
-    const fingerprint = JSON.stringify([tipBarberId, Number(tipAmount), tipNote.trim()]);
+    if (!selectedBarberId || !newTipAmount || Number(newTipAmount) <= 0) return;
+    const fingerprint = JSON.stringify([selectedBarberId, Number(newTipAmount), newTipNote.trim()]);
     if (tipAttempt.current?.pending) return;
     if (tipAttempt.current?.fingerprint !== fingerprint) {
       tipAttempt.current = {fingerprint, id: generateUUID(), pending: false};
@@ -716,39 +194,39 @@ const handleAddBarber = async () => {
     tipAttempt.current!.pending = true;
     try {
       setSavingTip(true);
-      setAdminError('');
-      const updated = await createTip({
-        barberId: tipBarberId,
-        amount: Number(tipAmount),
-        note: tipNote.trim() || 'Agregada por Admin',
+      setErrorMsg('');
+      const updatedTips = await createTip({
+        barberId: selectedBarberId,
+        amount: Number(newTipAmount),
+        note: newTipNote.trim(),
         requestId: tipAttempt.current!.id,
       });
-      setTips(Array.isArray(updated) ? updated : []);
-      setTipAmount('');
-      setTipNote('');
+      setBarberTips(Array.isArray(updatedTips) ? updatedTips : []);
+      setNewTipAmount('');
+      setNewTipNote('');
       tipAttempt.current = null;
     } catch (err: any) {
-      setAdminError(err?.message || 'Error al registrar la propina.');
+      setErrorMsg(err?.message || 'No se pudo guardar la propina.');
     } finally {
       if (tipAttempt.current) tipAttempt.current.pending = false;
       setSavingTip(false);
     }
   };
 
-  const handleRemoveTipAdmin = async (id: string) => {
+  const handleDeleteMyTip = async (tipId: string) => {
     try {
-      setAdminError('');
-      const updated = await deleteTip(id);
-      setTips(Array.isArray(updated) ? updated : []);
+      setErrorMsg('');
+      const updatedTips = await deleteTip(tipId);
+      setBarberTips(Array.isArray(updatedTips) ? updatedTips : []);
     } catch (err: any) {
-      setAdminError(err?.message || 'Error al eliminar la propina.');
+      setErrorMsg(err?.message || 'No se pudo borrar la propina.');
     }
   };
 
-  const handleAddChargeAdmin = async (e: React.FormEvent) => {
+  const handleAddMyCharge = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!chargeBarberId || !chargeAmount || Number(chargeAmount) <= 0) return;
-    const fingerprint = JSON.stringify([chargeBarberId, Number(chargeAmount), chargeNote.trim()]);
+    if (!selectedBarberId || !newChargeAmount || Number(newChargeAmount) <= 0) return;
+    const fingerprint = JSON.stringify([selectedBarberId, Number(newChargeAmount), newChargeNote.trim()]);
     if (chargeAttempt.current?.pending) return;
     if (chargeAttempt.current?.fingerprint !== fingerprint) {
       chargeAttempt.current = {fingerprint, id: generateUUID(), pending: false};
@@ -756,1119 +234,373 @@ const handleAddBarber = async () => {
     chargeAttempt.current!.pending = true;
     try {
       setSavingCharge(true);
-      setAdminError('');
-      const updated = await createManualCharge({
-        barberId: chargeBarberId,
-        amount: Number(chargeAmount),
-        note: chargeNote.trim() || 'Cobro manual extra',
+      setErrorMsg('');
+      const updatedCharges = await createManualCharge({
+        barberId: selectedBarberId,
+        amount: Number(newChargeAmount),
+        note: newChargeNote.trim() || 'Corte extra sin turno',
         requestId: chargeAttempt.current!.id,
       });
-      setManualCharges(Array.isArray(updated) ? updated : []);
-      setChargeAmount('');
-      setChargeNote('');
+      setBarberCharges(Array.isArray(updatedCharges) ? updatedCharges : []);
+      setNewChargeAmount('');
+      setNewChargeNote('');
       chargeAttempt.current = null;
     } catch (err: any) {
-      setAdminError(err?.message || 'Error al registrar el cobro manual.');
+      setErrorMsg(err?.message || 'No se pudo registrar el cobro.');
     } finally {
       if (chargeAttempt.current) chargeAttempt.current.pending = false;
       setSavingCharge(false);
     }
   };
 
-  const handleRemoveChargeAdmin = async (id: string) => {
+  const handleDeleteMyCharge = async (chargeId: string) => {
     try {
-      setAdminError('');
-      const updated = await deleteManualCharge(id);
-      setManualCharges(Array.isArray(updated) ? updated : []);
+      setErrorMsg('');
+      const updatedCharges = await deleteManualCharge(chargeId);
+      setBarberCharges(Array.isArray(updatedCharges) ? updatedCharges : []);
     } catch (err: any) {
-      setAdminError(err?.message || 'Error al eliminar el cobro manual.');
+      setErrorMsg(err?.message || 'No se pudo borrar el cobro.');
     }
   };
 
-  const handleSaveBrand = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      setAdminError('');
-      const configToSave: ShopConfig = {
-        ...shopConfig,
-        name: shopConfig.name.trim(),
-        phone: shopConfig.phone.trim(),
-        address: shopConfig.address.trim(),
-        city: shopConfig.city ? shopConfig.city.trim() : 'Montevideo',
-        schedule: shopConfig.schedule || DEFAULT_SHOP_CONFIG.schedule,
-      };
-      await saveShopConfig(configToSave);
-      setSavedBanner(true);
-      setTimeout(() => setSavedBanner(false), 2500);
-    } catch (err: any) {
-      setSavedBanner(false);
-      setAdminError(err?.message || 'Error al guardar la configuración del local.');
-    }
-  };
+  const selectedBarberObj = barbers.find((b) => b.id === selectedBarberId);
 
-  const safeAppointments = sortAppointmentsChronologically(
-    Array.isArray(appointments) ? appointments : []
-  );
-  const safeExpenses = Array.isArray(expenses) ? expenses : [];
-  const safeTips = Array.isArray(tips) ? tips : [];
-  const safeManualCharges = Array.isArray(manualCharges) ? manualCharges : [];
-  const safeBarbers = Array.isArray(barbers) ? barbers : [];
-
-  const filteredAppointments = safeAppointments.filter((apt) => {
-    if (apt.status !== 'completado') return false;
-    return isWithinPeriod(apt.completedAt || apt.createdAt, period, selectedMonth);
-  });
-
-  const filteredExpenses = safeExpenses.filter((exp) =>
-    isWithinPeriod(exp.createdAt || exp.date, period, selectedMonth)
+  const completedAppointments = barberAppointments.filter(
+    (a) => a.status === 'completado' && isWithinSelectedMonth(a.completedAt || a.createdAt, selectedMonth)
   );
 
-  const filteredTips = safeTips.filter((t) =>
-    isWithinPeriod(t.createdAt, period, selectedMonth)
+  const monthlyTips = barberTips.filter((t) =>
+    isWithinSelectedMonth(t.createdAt, selectedMonth)
   );
 
-  const filteredManualCharges = safeManualCharges.filter((c) => {
-    return isWithinPeriod(c.createdAt, period, selectedMonth);
-  });
+  const monthlyCharges = barberCharges.filter((c) =>
+    isWithinSelectedMonth(c.createdAt, selectedMonth)
+  );
 
-  const auditedAppointments = safeAppointments.filter((apt) => {
-    if (apt.status !== 'completado') return false;
+  const grossFromAppointments = completedAppointments.reduce(
+    (sum, a) => sum + Number(a.priceSnapshot ?? a.servicePrice),
+    0
+  );
+
+  const grossFromCharges = monthlyCharges.reduce((sum, c) => sum + Number(c.amount), 0);
+  const totalGrossMonthly = grossFromAppointments + grossFromCharges;
+
+  const totalEarned = completedAppointments.reduce((sum, a) => sum + splitBusinessRevenue(Number(a.priceSnapshot ?? a.servicePrice), {commissionRate, isOwner}, a).barber, 0) +
+    monthlyCharges.reduce((sum, c) => sum + splitBusinessRevenue(Number(c.amount), {commissionRate, isOwner}, c).barber, 0);
+  const totalToBusiness = totalGrossMonthly - totalEarned;
+  const totalTipsAmount = monthlyTips.reduce((sum, t) => sum + Number(t.amount), 0);
+
+  const dailyAppointments = barberAppointments.filter((a) => {
+    if (a.status !== 'completado') return false;
     if (auditDate) {
-      const aptDate = getMontevideoDateKey(apt.completedAt || apt.createdAt);
-      if (aptDate !== auditDate) return false;
+      const aDate = getMontevideoDateKey(a.completedAt || a.createdAt);
+      if (aDate !== auditDate) return false;
     }
-    if (auditBarberId !== 'todos' && apt.barberId !== auditBarberId) return false;
     return true;
   });
 
-  const auditedManualCharges = safeManualCharges.filter((c) => {
+  const dailyCharges = barberCharges.filter((c) => {
     if (auditDate) {
       const cDate = getMontevideoDateKey(c.createdAt);
       if (cDate !== auditDate) return false;
     }
-    if (auditBarberId !== 'todos' && c.barberId !== auditBarberId) return false;
     return true;
   });
 
-  const auditedTips = safeTips.filter((t) => {
+  const dailyTips = barberTips.filter((t) => {
     if (auditDate) {
       const tDate = getMontevideoDateKey(t.createdAt);
       if (tDate !== auditDate) return false;
     }
-    if (auditBarberId !== 'todos' && t.barberId !== auditBarberId) return false;
     return true;
   });
 
-  const auditedExpenses = safeExpenses.filter((e) => {
-    if (auditDate) {
-      const eDate = (e.createdAt ? getMontevideoDateKey(e.createdAt) : e.date);
-      if (eDate !== auditDate) return false;
-    }
-    return true;
-  });
+  const dailyGross = 
+    dailyAppointments.reduce((sum, a) => sum + Number(a.priceSnapshot ?? a.servicePrice), 0) +
+    dailyCharges.reduce((sum, c) => sum + Number(c.amount), 0);
 
-  const auditedGrossTotal = 
-    auditedAppointments.reduce((sum, a) => sum + Number(a.priceSnapshot ?? a.servicePrice), 0) +
-    auditedManualCharges.reduce((sum, c) => sum + Number(c.amount), 0);
-
-  const auditedTipsTotal = auditedTips.reduce((sum, t) => sum + Number(t.amount), 0);
-  const auditedExpensesTotal = auditedExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
-  const auditedOldRows = [...auditedAppointments, ...auditedManualCharges].filter(
+  const dailyCommission = dailyAppointments.reduce((sum, a) => sum + splitBusinessRevenue(Number(a.priceSnapshot ?? a.servicePrice), {commissionRate, isOwner}, a).barber, 0) +
+    dailyCharges.reduce((sum, c) => sum + splitBusinessRevenue(Number(c.amount), {commissionRate, isOwner}, c).barber, 0);
+  const dailyTipsTotal = dailyTips.reduce((sum, t) => sum + Number(t.amount), 0);
+  const dailyToBusiness = dailyAppointments.reduce((sum, a) =>
+    sum + splitBusinessRevenue(Number(a.priceSnapshot ?? a.servicePrice), {commissionRate,isOwner}, a).business, 0)
+    + dailyCharges.reduce((sum, c) =>
+      sum + splitBusinessRevenue(Number(c.amount), {commissionRate,isOwner}, c).business, 0);
+  const historicEstimateCount = [...completedAppointments,...monthlyCharges].filter(
     item => item.barberEarningsSnapshot == null || item.businessEarningsSnapshot == null
   ).length;
-
-  const auditedBarbersBreakdown = safeBarbers
-    .filter((b) => auditBarberId === 'todos' || b.id === auditBarberId)
-    .map((barber) => {
-      const brbApts = auditedAppointments.filter((a) => a.barberId === barber.id);
-      const brbCharges = auditedManualCharges.filter((c) => c.barberId === barber.id);
-      const brbTips = auditedTips.filter((t) => t.barberId === barber.id);
-
-      const cutsGen = brbApts.reduce((sum, a) => sum + Number(a.priceSnapshot ?? a.servicePrice), 0);
-      const manualGen = brbCharges.reduce((sum, c) => sum + Number(c.amount), 0);
-      const totalGen = cutsGen + manualGen;
-      const commissionEarned = brbApts.reduce((sum, a) => sum + splitBusinessRevenue(Number(a.priceSnapshot ?? a.servicePrice), barber, a).barber, 0) +
-        brbCharges.reduce((sum, c) => sum + splitBusinessRevenue(Number(c.amount), barber, c).barber, 0);
-      const tipsEarned = brbTips.reduce((sum, t) => sum + Number(t.amount), 0);
-
-      return {
-        barber,
-        cutsCount: brbApts.length,
-        totalGen,
-        commissionEarned,
-        tipsEarned,
-      };
-    });
-
-  const barberFinancials = safeBarbers.map((barber) => {
-    const barberApts = filteredAppointments.filter((apt) => apt.barberId === barber.id);
-    const cutsCount = barberApts.length;
-    
-    const grossFromAppointments = barberApts.reduce(
-      (sum, apt) => sum + Number(apt.priceSnapshot ?? apt.servicePrice),
-      0
-    );
-
-    const barberManualChargesTotal = filteredManualCharges
-      .filter((c) => c.barberId === barber.id)
-      .reduce((sum, c) => sum + Number(c.amount), 0);
-
-    const grossGenerated = grossFromAppointments + barberManualChargesTotal;
-
-    const allocated = [
-      ...barberApts.map(a => splitBusinessRevenue(Number(a.priceSnapshot ?? a.servicePrice), barber, a)),
-      ...filteredManualCharges.filter(c => c.barberId === barber.id).map(c => splitBusinessRevenue(Number(c.amount), barber, c)),
-    ];
-    const barberTakeHome = allocated.reduce((sum, row) => sum + row.barber, 0);
-    const leftForOwner = allocated.reduce((sum, row) => sum + row.business, 0);
-
-    const barberTipsTotal = filteredTips
-      .filter((t) => t.barberId === barber.id)
-      .reduce((sum, t) => sum + Number(t.amount), 0);
-
-    return {
-      barber,
-      cutsCount,
-      grossGenerated,
-      barberTakeHome,
-      leftForOwner,
-      barberTipsTotal,
-      barberManualChargesTotal,
-    };
-  });
-
-  const totalGrossAppointments = barberFinancials.reduce((sum, b) => sum + (b.grossGenerated - b.barberManualChargesTotal), 0);
-  const totalManualChargesAll = filteredManualCharges.reduce((sum, c) => sum + Number(c.amount), 0);
-  const grossRevenueTotal = totalGrossAppointments + totalManualChargesAll;
-
-  const staffCommissionsToPay = barberFinancials.reduce((sum, b) => sum + b.barberTakeHome, 0);
-  const ownerTotalGrossIncome = barberFinancials.reduce((sum, b) => sum + b.leftForOwner, 0);
-  const totalExpensesAmount = filteredExpenses.reduce((sum, exp) => sum + Number(exp.amount), 0);
-  const ownerFinalNetPocket = ownerTotalGrossIncome - totalExpensesAmount;
-  // Las comisiones anteriores a la migración no tienen un reparto histórico verificable.
-  const legacyFinancialRows = [...filteredAppointments, ...filteredManualCharges].filter(
-    (item) => item.barberEarningsSnapshot == null || item.businessEarningsSnapshot == null
-  ).length;
-
-  const getClientWhatsAppLink = (apt: AppointmentItem) => {
-    const rawDigits = (apt.clientPhone || '098509376').replace(/\D/g, '');
-    const formattedPhone = rawDigits.startsWith('0')
-      ? '598' + rawDigits.slice(1)
-      : rawDigits.startsWith('598')
-      ? rawDigits
-      : '598' + rawDigits;
-    const msg = `Hola ${apt.clientName}, te escribimos de ${shopConfig.name} por tu turno de ${apt.serviceName} el día ${apt.dateString} a las ${apt.timeSlot} hs.`;
-    return `https://wa.me/${formattedPhone}?text=${encodeURIComponent(msg)}`;
-  };
-
-  const bgImage = shopConfig.backgroundImageUrl || DEFAULT_SHOP_CONFIG.backgroundImageUrl;
-  const logoImage = shopConfig.logoUrl || DEFAULT_SHOP_CONFIG.logoUrl;
-
-  const todayStr = getMontevideoDateKey();
-  const isTodayClosed = cashStatus === 'cerrada' && lastClosedDate === todayStr;
-  // El modo de pruebas se habilita únicamente cuando esta web usa la base staging.
-  // Producción mantiene el bloqueo de reapertura tras el cierre del mismo día.
-  const isStagingTest = process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://vjtwvhdiypfxgodhnjiw.supabase.co';
-  const canOpenCash = cashStatus === 'cerrada' && (!isTodayClosed || isStagingTest);
-
-  if (initialLoad === 'loading') {
-    return (
-      <>
-        <InitialShopSkeleton variant="admin" label="Cargando agenda, barberos y caja..." />
-        {loadingTooLong && (
-          <div role="status" className="fixed z-50 bottom-24 sm:bottom-6 left-4 right-4 mx-auto max-w-md rounded-2xl border border-zinc-700 bg-zinc-900 p-4 shadow-xl flex items-center justify-between gap-3">
-            <p className="text-sm text-zinc-300">La carga está demorando más de lo normal.</p>
-            <button
-              type="button"
-              onClick={() => window.location.reload()}
-              className="shrink-0 bg-zinc-100 text-zinc-950 text-xs font-semibold px-3 py-2 rounded-xl"
-            >
-              Reintentar
-            </button>
-          </div>
-        )}
-      </>
-    );
-  }
-  if (initialLoad === 'error') {
-    return <InitialShopError label={adminError || 'No se pudieron cargar los datos del administrador. Intentá de nuevo.'} />;
-  }
+  const visibleAppointments = barberAppointments.filter(apt =>
+    appointmentsView === 'pendientes' ? apt.status === 'confirmado' : apt.status !== 'confirmado'
+  );
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 pb-28 sm:pb-16 relative">
-      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
-        {bgImage ? (
-          <img
-            src={bgImage}
-            alt="Fondo"
-            className="w-full h-full object-cover object-center grayscale opacity-[0.11]"
-          />
-        ) : null}
-        <div className="absolute inset-0 bg-gradient-to-b from-zinc-950/85 via-zinc-950/75 to-zinc-950/95" />
-      </div>
-
-      <div className="relative z-10">
-        <header className="sticky top-0 z-30 bg-zinc-950/90 backdrop-blur-md border-b border-zinc-800/80 px-4 pt-[max(0.75rem,calc(env(safe-area-inset-top)+0.5rem))] pb-3">
-          <div className="max-w-5xl mx-auto flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center space-x-2.5">
-              {logoImage ? (
-                <div className="w-9 h-9 rounded-xl overflow-hidden border border-zinc-700 bg-zinc-950 shrink-0">
-                  <img src={logoImage} alt={shopConfig.name} className="w-full h-full object-cover" />
-                </div>
-              ) : (
-                <div className="w-9 h-9 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-100 shrink-0">
-                  <Scissors className="w-4 h-4" />
-                </div>
-              )}
-              <div>
-                <h1 className="font-bold text-sm sm:text-base tracking-tight">
-                  {shopConfig.name} • Admin
-                </h1>
-              </div>
+      <header className="sticky top-0 z-30 bg-zinc-950/90 backdrop-blur-md border-b border-zinc-800/80 px-4 pt-[max(0.75rem,calc(env(safe-area-inset-top)+0.5rem))] pb-3">
+        <div className="max-w-4xl mx-auto flex items-center justify-between gap-2">
+          <div className="flex items-center space-x-2.5">
+            <div className="w-9 h-9 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-100 shrink-0">
+              <Scissors className="w-4 h-4" />
             </div>
-
-            <div className="flex items-center space-x-1.5">
-              <Link
-                href="/barbero"
-                prefetch={true}
-                className="px-2.5 py-2 rounded-xl bg-zinc-900 border border-zinc-700 hover:bg-zinc-800 active:scale-95 transition-transform text-zinc-100 text-xs font-semibold flex items-center space-x-1 touch-manipulation"
-              >
-                <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Barberos</span>
-              </Link>
-
-              <Link
-                href="/"
-                prefetch={true}
-                className="px-3 py-2 rounded-xl bg-zinc-100 hover:bg-white active:scale-95 transition-transform text-zinc-950 text-xs font-bold flex items-center space-x-1 touch-manipulation"
-              >
-                <ArrowLeft className="w-3.5 h-3.5" />
-                <span>Inicio</span>
-              </Link>
-
-              <button
-                type="button"
-                onClick={handleLogout}
-                className="p-2 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-rose-400 text-xs font-medium cursor-pointer touch-manipulation active:scale-95"
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
+            <div>
+              <h1 className="font-bold text-sm sm:text-base tracking-tight">
+                {shopConfig.name} • Portal de Barberos
+              </h1>
             </div>
           </div>
-        </header>
 
-        <main className="max-w-5xl mx-auto p-4 space-y-6 pt-5">
-          {adminError && (
-            <div className="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-semibold flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
+          <Link
+            href="/"
+            prefetch={true}
+            className="px-3 py-2 rounded-xl bg-zinc-100 hover:bg-white active:scale-95 transition-transform text-zinc-950 text-xs font-bold flex items-center space-x-1 touch-manipulation"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Inicio</span>
+          </Link>
+        </div>
+      </header>
+
+      <main className="max-w-4xl mx-auto p-4 space-y-6 pt-6">
+        {!isUnlocked ? (
+          <div className="max-w-xl mx-auto bg-zinc-900/90 border border-zinc-800 rounded-3xl p-6 sm:p-8 space-y-6 shadow-xl backdrop-blur-sm">
+            <div className="text-center space-y-2">
+              <div className="w-12 h-12 rounded-2xl bg-zinc-950 border border-zinc-800 flex items-center justify-center mx-auto text-emerald-400">
+                <KeyRound className="w-6 h-6" />
+              </div>
+              <h2 className="text-xl font-extrabold tracking-tight">Acceso Barbero</h2>
+              <p className="text-xs text-zinc-400">
+                Seleccioná tu tarjeta e ingresá tu PIN de 4 a 6 dígitos para ver tus turnos, comisiones y propinas.
+              </p>
+            </div>
+
+            {errorMsg && (
+              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-semibold flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{adminError}</span>
+                <span>{errorMsg}</span>
               </div>
-              <button
-                type="button"
-                onClick={() => setAdminError('')}
-                className="text-rose-300 hover:text-white text-xs underline cursor-pointer"
-              >
-                Cerrar
-              </button>
-            </div>
-          )}
+            )}
 
-          {/* SNOSERVICE_PRESET_V1 */}
-          <div className="grid grid-cols-3 gap-2 rounded-2xl border border-zinc-800 bg-zinc-900/90 p-2 sm:grid-cols-6">
-            {([
-              {id:'inicio',label:'Inicio',icon:BarChart3},
-              {id:'agenda',label:'Agenda',icon:CalendarIcon},
-              {id:'caja',label:'Caja',icon:Wallet},
-              {id:'facturacion',label:'Informes',icon:TrendingUp},
-              {id:'barberos',label:'Equipo',icon:Users},
-              {id:'configuracion',label:'Configuración',icon:Settings},
-            ] as const).map(({id,label,icon:Icon}) => {
-              const active = activeTab===id || (id==='agenda' && activeTab==='turnos') || (id==='configuracion' && (activeTab==='servicios'||activeTab==='marca'));
-              return <button type="button" key={id} onClick={() => setActiveTab(id)}
-                className={'flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl p-2 text-[11px] font-bold sm:flex-row ' + (active?'bg-zinc-100 text-zinc-950':'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100')}>
-                <Icon className="h-4 w-4"/>{label}</button>;
-            })}
-          </div>
-          {(activeTab==='agenda'||activeTab==='turnos') && <div className="flex flex-wrap gap-2 rounded-xl border border-zinc-800 bg-zinc-900 p-2">
-            <button type="button" onClick={() => setActiveTab('agenda')} className={'rounded-lg px-4 py-2 text-xs '+(activeTab==='agenda'?'bg-emerald-400 text-zinc-950':'bg-zinc-800 text-zinc-200')}>Calendario</button>
-            <button type="button" onClick={() => setActiveTab('turnos')} className={'rounded-lg px-4 py-2 text-xs '+(activeTab==='turnos'?'bg-emerald-400 text-zinc-950':'bg-zinc-800 text-zinc-200')}>Listado de reservas</button>
-          </div>}
-          {(activeTab==='configuracion'||activeTab==='servicios'||activeTab==='marca') && <div className="flex flex-wrap gap-2 rounded-xl border border-zinc-800 bg-zinc-900 p-2">
-            <button type="button" onClick={() => setActiveTab('servicios')} className={'rounded-lg px-4 py-2 text-xs '+(activeTab==='servicios'?'bg-emerald-400 text-zinc-950':'bg-zinc-800 text-zinc-200')}>Servicios y precios</button>
-            <button type="button" onClick={() => setActiveTab('marca')} className={'rounded-lg px-4 py-2 text-xs '+(activeTab==='marca'?'bg-emerald-400 text-zinc-950':'bg-zinc-800 text-zinc-200')}>Datos del local</button>
-          </div>}
-          {activeTab==='configuracion' && <div className="grid gap-3 sm:grid-cols-2">
-            <button type="button" onClick={() => setActiveTab('servicios')} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6 text-left hover:border-emerald-400"><Scissors className="mb-3 h-7 w-7 text-emerald-400"/><strong>Servicios y precios</strong><p className="mt-2 text-xs text-zinc-400">Precios, duración y disponibilidad.</p></button>
-            <button type="button" onClick={() => setActiveTab('marca')} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6 text-left hover:border-emerald-400"><Settings className="mb-3 h-7 w-7 text-emerald-400"/><strong>Datos de la barbería</strong><p className="mt-2 text-xs text-zinc-400">Horarios, contacto y marca.</p></button>
-          </div>}
-          {activeTab==='inicio' && <div className="space-y-5">
-            <div><span className="text-xs font-bold uppercase tracking-widest text-emerald-400">Control del negocio</span><h2 className="mt-1 text-2xl font-extrabold">Resumen de {shopConfig.name}</h2><p className="mt-1 text-xs text-zinc-400">Resumen {period==='hoy'?'de hoy':period==='semana'?'de la semana':'del mes seleccionado'}. El fondo común no es el efectivo de caja.</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {([{id:'hoy',label:'Hoy'},{id:'semana',label:'Semana'},{id:'mes',label:'Mes'}] as const).map(option => (
-                  <button type="button" key={option.id} onClick={() => setPeriod(option.id)}
-                    className={'rounded-lg px-3 py-2 text-xs font-bold '+(period===option.id?'bg-emerald-400 text-zinc-950':'border border-zinc-700 bg-zinc-900 text-zinc-200')}>{option.label}</button>
-                ))}
-              </div></div>
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-              {([
-                {k:'Facturación',v:grossRevenueTotal,sub:'Cortes y cobros completados',color:'text-white'},
-                {k:'Comisiones generadas',v:staffCommissionsToPay,sub:'Importes del equipo',color:'text-amber-400'},
-                {k:'Gastos',v:totalExpensesAmount,sub:'Egresos del período',color:'text-white'},
-                {k:'Resultado del negocio',v:ownerFinalNetPocket,sub:'Después de gastos y comisiones. No es saldo acumulado.',color:'text-emerald-400'},
-              ] as const).map(m=><div key={m.k} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4"><p className="text-xs text-zinc-400">{m.k}</p><p className={'mt-2 text-2xl font-extrabold '+m.color}>{'$'+Number(m.v).toLocaleString('es-UY')}</p><p className="mt-2 text-[11px] text-zinc-500">{m.sub}</p></div>)}
-            </div>
-            <div className="grid gap-3 lg:grid-cols-2"><div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5"><h3 className="mb-4 font-bold">Accesos rápidos</h3><div className="flex flex-col gap-2">
-              <button type="button" onClick={() => setActiveTab('agenda')} className="rounded-xl border border-zinc-700 p-3 text-left text-sm hover:bg-zinc-800">📅 Agenda y clientes →</button>
-              <button type="button" onClick={() => setActiveTab('caja')} className="rounded-xl border border-zinc-700 p-3 text-left text-sm hover:bg-zinc-800">💳 Caja y movimientos →</button>
-              <button type="button" onClick={() => setActiveTab('facturacion')} className="rounded-xl border border-zinc-700 p-3 text-left text-sm hover:bg-zinc-800">📊 Ganancias por barbero →</button>
-            </div></div><div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5"><h3 className="mb-3 font-bold">Caja actual</h3><span className={'rounded-full px-3 py-1 text-xs font-bold '+(cashStatus==='abierta'?'bg-emerald-500/20 text-emerald-300':'bg-rose-500/20 text-rose-300')}>{cashStatus}</span><p className="mt-4 text-sm text-zinc-400">{filteredAppointments.length} turnos completados en el período consultado.</p><p className="mt-2 text-xs text-zinc-500">Las ganancias del negocio no equivalen al efectivo contado ni a retiros de propietarios.</p><button type="button" onClick={() => setActiveTab('caja')} className="mt-5 w-full rounded-xl bg-emerald-400 p-3 text-xs font-bold text-zinc-950">Ir a caja →</button></div></div>
-          </div>}
-
-          {activeTab === 'caja' && (
-            <div className="space-y-6">
-              {cashStatus !== 'abierta' && (
-                <div role="status" className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
-                  La caja está cerrada. Podés consultar el historial, pero no agregar ni borrar gastos, propinas o cobros manuales hasta abrir la próxima caja.
-                </div>
-              )}
-              <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-6 space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div>
-                    <h3 className="font-bold text-base flex items-center gap-2">
-                      <Wallet className="w-5 h-5 text-emerald-400" />
-                      Estado de Caja: <span className={cashStatus === 'abierta' ? 'text-emerald-400 uppercase' : 'text-rose-400 uppercase'}>{cashStatus}</span>
-                    </h3>
-                    <p className="text-xs text-zinc-400 mt-1">
-                      {isTodayClosed
-                        ? (isStagingTest
-                            ? 'Caja cerrada hoy. En staging podés abrir una nueva sesión de prueba; el cierre anterior queda guardado.'
-                            : 'La caja de hoy ya fue cerrada. Podrás abrir otra en la próxima jornada.')
-                        : 'Abrí y cerrá sesiones de caja. Una caja cerrada conserva sus movimientos; no retira dinero del fondo común.'}
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    {canOpenCash && (
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          if (isTodayClosed && isStagingTest && !window.confirm(
-                            '¿Abrir una nueva caja de PRUEBA? La caja que cerraste hoy quedará guardada y esta nueva empezará desde $0.'
-                          )) return;
-                          const res = await fetch('/api/admin', {
-                            method: 'POST', headers: {'Content-Type':'application/json'},
-                            body: JSON.stringify({operation:'OPEN_CASH', initialAmount:0}),
-                          });
-                          if (!res.ok) {
-                            const payload = await res.json().catch(() => ({}));
-                            alert(payload.error || 'No se pudo abrir la caja.');
-                            return;
-                          }
-                          setCashStatus('abierta');
-                          alert('¡Caja abierta con éxito!');
-                        }}
-                        className="px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs cursor-pointer"
-                      >
-                        {isTodayClosed && isStagingTest ? '🧪 Abrir nueva caja de prueba' : '🟢 Abrir Caja'}
-                      </button>
-                    )}
-
-                    {cashStatus === 'abierta' && (
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          const todayIso = new Date().toISOString();
-                          const res = await fetch('/api/admin', {
-                            method: 'POST', headers: {'Content-Type':'application/json'},
-                            body: JSON.stringify({operation:'CLOSE_CASH'}),
-                          });
-                          if (!res.ok) {
-                            const payload = await res.json().catch(() => ({}));
-                            alert(payload.error || 'No se pudo cerrar la caja.');
-                            return;
-                          }
-                          const payload = await res.json();
-                          setCashStatus('cerrada');
-                          setLastClosedDate(getMontevideoDateKey(todayIso));
-                          const closing = payload.summary;
-                          alert(`¡Caja cerrada! Facturación: ${closing.grossSales}. Comisiones: ${closing.barberCommissions}. Gastos: ${closing.expenses}. Fondo común neto: ${closing.fundNet}.`);
-                        }}
-                        className="px-4 py-2.5 rounded-xl bg-rose-500 hover:bg-rose-400 text-white font-bold text-xs cursor-pointer"
-                      >
-                        Cerrar esta caja
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5 space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <h3 className="text-sm font-bold">Cierres anteriores</h3>
-                    <p className="text-xs text-zinc-400">Cada caja se guarda por separado. Un cierre no reinicia las ganancias acumuladas del negocio.</p>
-                  </div>
-                  <button type="button" onClick={toggleCashHistory}
-                    className="rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-xs font-bold hover:border-emerald-400">
-                    {cashHistoryOpen ? 'Ocultar cierres' : 'Ver cierres anteriores'}
-                  </button>
-                </div>
-                {cashHistoryOpen && (
-                  <div className="space-y-2">
-                    {cashHistoryLoading && <p className="text-xs text-zinc-400">Cargando cierres...</p>}
-                    {cashHistoryError && <p role="alert" className="text-xs text-rose-300">{cashHistoryError}</p>}
-                    {!cashHistoryLoading && !cashHistoryError && cashHistory.length === 0 &&
-                      <p className="text-xs text-zinc-400">Todavía no hay sesiones registradas.</p>}
-                    {!cashHistoryLoading && !cashHistoryError && cashHistory.map(item => {
-                      const olderClose = item.status === 'cerrada' &&
-                        Number(item.total_sales) === 0 && Number(item.final_amount) !== 0;
-                      const label = (value: string | null) => value ? new Date(value).toLocaleString('es-UY', {
-                        timeZone:'America/Montevideo',day:'2-digit',month:'2-digit',
-                        year:'numeric',hour:'2-digit',minute:'2-digit',
-                      }) : 'En curso';
-                      return <div key={item.id} className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-xs">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <strong className="text-zinc-100">{label(item.opened_at)}</strong>
-                          <span className={item.status === 'abierta'?'text-emerald-400':'text-zinc-400'}>
-                            {item.status === 'abierta'?'Abierta':'Cerrada: '+label(item.closed_at)}
-                          </span>
-                        </div>
-                        <div className="mt-2 grid grid-cols-2 gap-2 text-zinc-300 sm:grid-cols-3">
-                          <span>Facturación: <strong>${Number(item.total_sales).toLocaleString('es-UY')}</strong></span>
-                          <span>Gastos: <strong>${Number(item.total_expenses).toLocaleString('es-UY')}</strong></span>
-                          <span>Resultado registrado: <strong>${Number(item.final_amount).toLocaleString('es-UY')}</strong></span>
-                        </div>
-                        {olderClose && <p className="mt-2 text-amber-300">
-                          Cierre anterior a la nueva contabilidad: cifras pendientes de conciliación.
-                        </p>}
-                        <p className="mt-1 text-zinc-500">Resultado económico; no significa efectivo contado ni saldo del fondo común.</p>
-                      </div>;
-                    })}
-                  </div>
-                )}
-              </div>
-
-              <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-4">
-                <div>
-                  <h3 className="font-bold text-base flex items-center gap-2">
-                    <Coins className="w-4 h-4 text-emerald-400" />
-                    Ingresar Cobros Manuales / Cortes Extra
-                  </h3>
-                </div>
-
-                <form onSubmit={handleAddChargeAdmin} className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
-                  <select
-                    value={chargeBarberId}
-                    onChange={(e) => setChargeBarberId(e.target.value)}
-                    className="sm:col-span-3 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none text-zinc-200 font-semibold"
-                  >
-                    {safeBarbers.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.name}
-                      </option>
-                    ))}
-                  </select>
-
-                  <input
-                    type="number"
-                    placeholder="Monto $"
-                    value={chargeAmount}
-                    onChange={(e) => setChargeAmount(e.target.value)}
-                    className="sm:col-span-3 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
-                  />
-
-                  <input
-                    type="text"
-                    placeholder="Nota..."
-                    value={chargeNote}
-                    onChange={(e) => setChargeNote(e.target.value)}
-                    className="sm:col-span-4 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
-                  />
-
-                  <button
-                    type="submit"
-                    disabled={savingCharge || cashStatus !== 'abierta'}
-                    className="sm:col-span-2 py-2.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs cursor-pointer flex items-center justify-center gap-1 touch-manipulation disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>{savingCharge ? 'Guardando...' : 'Registrar'}</span>
-                  </button>
-                </form>
-
-                <div className="space-y-2">
-                  {filteredManualCharges.length === 0 ? (
-                    <p className="text-xs text-zinc-500 italic py-2">
-                      No hay cobros manuales registrados en este período.
-                    </p>
-                  ) : (
-                    filteredManualCharges.map((chg) => {
-                      const brbName =
-                        safeBarbers.find((b) => b.id === chg.barberId)?.name || 'Barbero';
-                      return (
-                        <div
-                          key={chg.id}
-                          className="bg-zinc-950/70 border border-zinc-800/80 rounded-xl p-3 flex items-center justify-between gap-3"
-                        >
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="px-2.5 py-0.5 rounded-md text-xs font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                              {brbName}
-                            </span>
-                            <span className="text-xs text-zinc-400">{chg.dateString}</span>
-                            {chg.note && (
-                              <span className="text-xs text-zinc-300 font-medium">• {chg.note}</span>
-                            )}
-                          </div>
-
-                          <div className="flex items-center space-x-3">
-                            <span className="font-bold text-sm text-emerald-400">+${chg.amount}</span>
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveChargeAdmin(chg.id)}
-                              disabled={cashStatus !== 'abierta'}
-                              className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-rose-400 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-
-              <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-4">
-                <h3 className="font-bold text-base flex items-center gap-2">
-                  <Coins className="w-4 h-4 text-emerald-400" />
-                  Propinas del Equipo
-                </h3>
-
-                <form onSubmit={handleAddTipAdmin} className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
-                  <select
-                    value={tipBarberId}
-                    onChange={(e) => setTipBarberId(e.target.value)}
-                    className="sm:col-span-3 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none text-zinc-200 font-semibold"
-                  >
-                    {safeBarbers.map((b) => (
-                      <option key={b.id} value={b.id}>
-                        {b.name}
-                      </option>
-                    ))}
-                  </select>
-
-                  <input
-                    type="number"
-                    placeholder="Monto propina $"
-                    value={tipAmount}
-                    onChange={(e) => setTipAmount(e.target.value)}
-                    className="sm:col-span-3 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
-                  />
-
-                  <input
-                    type="text"
-                    placeholder="Nota opcional..."
-                    value={tipNote}
-                    onChange={(e) => setTipNote(e.target.value)}
-                    className="sm:col-span-4 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
-                  />
-
-                  <button
-                    type="submit"
-                    disabled={savingTip || cashStatus !== 'abierta'}
-                    className="sm:col-span-2 py-2.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs cursor-pointer flex items-center justify-center gap-1 touch-manipulation disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>{savingTip ? 'Guardando...' : 'Sumar'}</span>
-                  </button>
-                </form>
-
-                <div className="space-y-2">
-                  {filteredTips.length === 0 ? (
-                    <p className="text-xs text-zinc-500 italic py-2">
-                      No hay propinas registradas en este período.
-                    </p>
-                  ) : (
-                    filteredTips.map((tp) => {
-                      const brbName =
-                        tp.barberName ||
-                        safeBarbers.find((b) => b.id === tp.barberId)?.name ||
-                        'Barbero';
-                      return (
-                        <div
-                          key={tp.id}
-                          className="bg-zinc-950/70 border border-zinc-800/80 rounded-xl p-3 flex items-center justify-between gap-3"
-                        >
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="px-2.5 py-0.5 rounded-md text-xs font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                              {brbName}
-                            </span>
-                            <span className="text-xs text-zinc-400">{tp.dateString}</span>
-                            {tp.note && (
-                              <span className="text-xs text-zinc-300 font-medium">• {tp.note}</span>
-                            )}
-                          </div>
-
-                          <div className="flex items-center space-x-3">
-                            <span className="font-bold text-sm text-emerald-400">+${tp.amount}</span>
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveTipAdmin(tp.id)}
-                              disabled={cashStatus !== 'abierta'}
-                              className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-rose-400 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-
-              <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-4">
-                <h3 className="font-bold text-base flex items-center gap-2">
-                  <Receipt className="w-4 h-4 text-rose-400" />
-                  Gastos del Local
-                </h3>
-
-                <p className="text-xs text-zinc-400">Registrá aquí insumos, alquiler y otros gastos del local. No registres pagos de comisiones: ya están descontados del resultado del negocio.</p>
-                <form onSubmit={handleAddExpense} noValidate className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
-                  <input
-                    type="text"
-                    placeholder="Descripción del gasto..."
-                    value={expenseDesc}
-                    onChange={(e) => setExpenseDesc(e.target.value)}
-                    className="sm:col-span-5 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
-                  />
-                  <select
-                    value={expenseCategory}
-                    onChange={(e) => setExpenseCategory(e.target.value as ExpenseCategory)}
-                    className="sm:col-span-3 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none text-zinc-200"
-                  >
-                    <option value="Insumos">Insumos</option>
-                    <option value="Alquiler / Servicios">Alquiler / Luz</option>
-                    {/* Los pagos de comisiones requieren liquidaciones propias. No descontarlos dos veces. */}
-                    <option value="Otros">Otros</option>
-                  </select>
-                  <input
-                    type="number"
-                    placeholder="Monto $"
-                    min="0.01"
-                    step="0.01"
-                    value={expenseAmount}
-                    onChange={(e) => setExpenseAmount(e.target.value)}
-                    className="sm:col-span-2 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
-                  />
-                  <button
-                    type="submit"
-                    disabled={savingExpense || cashStatus !== 'abierta'}
-                    className="sm:col-span-2 py-2.5 px-4 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-bold text-xs cursor-pointer flex items-center justify-center gap-1 touch-manipulation disabled:opacity-50 disabled:cursor-wait"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>{savingExpense ? 'Guardando...' : 'Agregar'}</span>
-                  </button>
-                </form>
-                {expenseFeedback && (
-                  <p
-                    role={expenseFeedback.kind === 'error' ? 'alert' : 'status'}
-                    className={expenseFeedback.kind === 'error'
-                      ? 'text-xs text-rose-400'
-                      : 'text-xs text-emerald-400'}
-                  >
-                    {expenseFeedback.message}
-                  </p>
-                )}
-
-                <div className="space-y-2">
-                  {filteredExpenses.map((exp) => (
-                    <div
-                      key={exp.id}
-                      className="bg-zinc-950/70 border border-zinc-800/80 rounded-xl p-3.5 flex items-center justify-between gap-3"
-                    >
-                      <div>
-                        <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-zinc-800 text-zinc-300 mr-2">
-                          {exp.category}
-                        </span>
-                        <span className="text-sm font-medium text-zinc-200">{exp.description}</span>
-                      </div>
-
-                      <div className="flex items-center space-x-3">
-                        <span className="font-bold text-sm text-rose-400">-${exp.amount}</span>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveExpense(exp.id)}
-                          disabled={cashStatus !== 'abierta' || removingExpenseId === exp.id}
-                          aria-label={'Eliminar gasto ' + exp.description}
-                          className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-rose-400 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'facturacion' && (
-            <div className="space-y-6">
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
-                <h2 className="text-xl font-extrabold">Informes del negocio</h2>
-                <p className="mt-1 text-xs text-zinc-400">Consultá períodos y jornadas anteriores. El resultado económico no es dinero físico en caja.</p>
-              </div>
-              <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 sm:p-6 space-y-5">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800 pb-4">
-                  <div>
-                    <h3 className="font-bold text-base flex items-center gap-2">
-                      <BarChart3 className="w-5 h-5 text-emerald-400" />
-                      Detalle de ingresos por día
-                    </h3>
-                    <p className="text-xs text-zinc-400">Seleccioná una fecha y consultá los ingresos, gastos y propinas de esa jornada.</p>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button type="button" onClick={() => setAuditDate(getMontevideoDateKey())}
-                      className="rounded-lg border border-zinc-700 px-3 py-2 text-xs font-bold hover:border-emerald-400">Hoy</button>
-                    <button type="button" onClick={() => setAuditDate(getMontevideoDateKey(new Date(Date.now() - 86400000)))}
-                      className="rounded-lg border border-zinc-700 px-3 py-2 text-xs font-bold hover:border-emerald-400">Ayer</button>
-                  <input
-                    type="date"
-                    value={auditDate}
-                    onChange={(e) => setAuditDate(e.target.value)}
-                    className="px-3.5 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-xs font-bold text-emerald-400 outline-none cursor-pointer"
-                  />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setAuditBarberId('todos')}
-                    className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex items-center space-x-2.5 ${
-                      auditBarberId === 'todos'
-                        ? 'bg-zinc-100 text-zinc-950 border-white font-bold shadow-md'
-                        : 'bg-zinc-950/80 border-zinc-800 text-zinc-300 hover:border-zinc-700'
-                    }`}
-                  >
-                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${auditBarberId === 'todos' ? 'bg-zinc-950 text-white' : 'bg-zinc-800 text-zinc-200'}`}>
-                      ⚡
-                    </div>
-                    <span className="text-xs truncate">Todos (Total)</span>
-                  </button>
-
-                  {safeBarbers.map((b) => {
-                    const isSelected = auditBarberId === b.id;
+            <form onSubmit={handleUnlock} className="space-y-5">
+              <div>
+                <label className="block text-xs font-medium text-zinc-400 mb-2">Elegí tu perfil</label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {barbers.map((b) => {
+                    const isSelected = selectedBarberId === b.id;
                     return (
                       <button
                         key={b.id}
                         type="button"
-                        onClick={() => setAuditBarberId(b.id)}
-                        className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex items-center space-x-2.5 ${
+                        onClick={() => setSelectedBarberId(b.id)}
+                        className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex items-center space-x-3 ${
                           isSelected
                             ? 'bg-zinc-100 text-zinc-950 border-white font-bold shadow-md'
-                            : 'bg-zinc-950/80 border-zinc-800 text-zinc-300 hover:border-zinc-700'
+                            : 'bg-zinc-950/80 border-zinc-800 text-zinc-200 hover:border-zinc-700'
                         }`}
                       >
-                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 ${isSelected ? 'bg-zinc-950 text-white' : 'bg-zinc-800 text-zinc-200'}`}>
-                          {b.name.charAt(0)}
-                        </div>
-                        <span className="text-xs truncate">{b.name}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-                  <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 space-y-1">
-                    <span className="text-xs text-zinc-400">Facturación del día</span>
-                    <p className="text-2xl font-extrabold text-emerald-400">${auditedGrossTotal}</p>
-                    <span className="text-[11px] text-zinc-500">{auditedAppointments.length} turnos + {auditedManualCharges.length} extras</span>
-                  </div>
-                  <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 space-y-1">
-                    <span className="text-xs text-zinc-400">Propinas por separado</span>
-                    <p className="text-2xl font-extrabold text-amber-400">+${auditedTipsTotal}</p>
-                  </div>
-                  <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 space-y-1">
-                    <span className="text-xs text-zinc-400">Gastos registrados</span>
-                    <p className="text-2xl font-extrabold text-rose-400">-${auditedExpensesTotal}</p>
-                  </div>
-                </div>
-
-                {auditedOldRows > 0 && (
-                  <div role="status" className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
-                    {auditedOldRows} movimientos de esta fecha son anteriores al registro de comisiones. El reparto mostrado es estimado.
-                  </div>
-                )}
-                {auditBarberId === 'todos' && auditedBarbersBreakdown.length > 0 && (
-                  <div className="pt-2 space-y-2">
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-400">Ingresos por barbero</h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {auditedBarbersBreakdown.map((item) => (
-                        <div key={item.barber.id} className="bg-zinc-950/70 border border-zinc-800/80 rounded-xl p-3 space-y-1 text-xs">
-                          <div className="flex justify-between font-bold text-sm text-zinc-100">
-                            <span>{item.barber.name}</span>
-                            <span className="text-emerald-400">${item.totalGen}</span>
-                          </div>
-                          <p className="text-zinc-400">{item.cutsCount} cortes • {item.barber.isOwner ? <>Al fondo común: <strong className="text-emerald-300">${item.totalGen - item.commissionEarned}</strong></> : <>Comisión generada: <strong className="text-zinc-200">${item.commissionEarned}</strong></>}</p>
-                          {item.tipsEarned > 0 && <p className="text-amber-400 font-medium">Propinas: +${item.tipsEarned}</p>}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-
-              <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="flex items-center space-x-1.5 bg-zinc-950 p-1 rounded-xl border border-zinc-800">
-                    {(
-                      [
-                        { id: 'hoy', label: 'Hoy' },
-                        { id: 'semana', label: 'Semana' },
-                        { id: 'mes', label: 'Por Mes' },
-                      ] as { id: PeriodFilter; label: string }[]
-                    ).map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => setPeriod(item.id)}
-                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors cursor-pointer touch-manipulation ${
-                          period === item.id
-                            ? 'bg-zinc-100 text-zinc-950'
-                            : 'text-zinc-400 hover:text-zinc-200'
-                        }`}
-                      >
-                        {item.label}
-                      </button>
-                    ))}
-                  </div>
-
-                  {period === 'mes' && (
-                    <select
-                      value={selectedMonth}
-                      onChange={(e) => setSelectedMonth(e.target.value)}
-                      className="px-3.5 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-xs font-bold text-emerald-400 outline-none cursor-pointer"
-                    >
-                      {availableMonths.map((m) => (
-                        <option key={m.value} value={m.value}>
-                          📅 {m.label}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-              </div>
-
-              {legacyFinancialRows > 0 && (
-                <div role="status" className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
-                  Hay {legacyFinancialRows} operaciones antiguas sin comisión histórica guardada. Su reparto es estimado; no lo uses para liquidar pagos definitivos.
-                </div>
-              )}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-                <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 space-y-1">
-                  <div className="flex items-center justify-between text-xs text-zinc-400">
-                    <span>Facturación Total</span>
-                    <TrendingUp className="w-4 h-4 text-zinc-200" />
-                  </div>
-                  <p className="text-2xl font-extrabold text-white">${grossRevenueTotal}</p>
-                  <p className="text-[11px] text-zinc-500">{filteredAppointments.length} turnos completados</p>
-                </div>
-
-                <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 space-y-1">
-                  <div className="flex items-center justify-between text-xs text-zinc-400">
-                    <span>Comisiones generadas</span>
-                    <Users className="w-4 h-4 text-amber-400" />
-                  </div>
-                  <p className="text-2xl font-extrabold text-amber-400">-${staffCommissionsToPay}</p>
-                  <p className="text-[11px] text-zinc-500">Comisiones equipo</p>
-                </div>
-
-                <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 space-y-1">
-                  <div className="flex items-center justify-between text-xs text-zinc-300 font-semibold">
-                    <span>Para el negocio antes de gastos</span>
-                    <Crown className="w-4 h-4 text-emerald-400" />
-                  </div>
-                  <p className="text-2xl font-extrabold text-emerald-400">${ownerTotalGrossIncome}</p>
-                  <p className="text-[11px] text-zinc-400">Ingresos del local menos comisiones, antes de gastos</p>
-                </div>
-
-                <div
-                  className={`border rounded-2xl p-4 space-y-1 ${
-                    ownerFinalNetPocket >= 0
-                      ? 'bg-emerald-950/30 border-emerald-500/40'
-                      : 'bg-rose-950/30 border-rose-500/40'
-                  }`}
-                >
-                  <div className="flex items-center justify-between text-xs font-bold text-emerald-300">
-                    <span>Resultado del negocio</span>
-                    <DollarSign className="w-4 h-4 text-emerald-400" />
-                  </div>
-                  <p
-                    className={`text-2xl font-extrabold ${
-                      ownerFinalNetPocket >= 0 ? 'text-emerald-400' : 'text-rose-400'
-                    }`}
-                  >
-                    ${ownerFinalNetPocket}
-                  </p>
-                  <p className="text-[11px] text-zinc-400">Gastos: -${totalExpensesAmount}</p>
-                </div>
-              </div>
-
-              <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-4">
-                <h3 className="font-bold text-base">Liquidación por Barbero</h3>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-                  {barberFinancials.map((item) => {
-                    const isOwner = item.barber.isOwner === true;
-                    const totalBarberPocket = item.barberTakeHome + item.barberTipsTotal;
-
-                    return (
-                      <div
-                        key={item.barber.id}
-                        className="bg-zinc-950/80 border border-zinc-800 rounded-2xl p-4 space-y-3"
-                      >
-                        <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-                          <div className="flex items-center space-x-2.5">
-                            <div className="w-9 h-9 rounded-xl bg-zinc-800 text-zinc-100 flex items-center justify-center font-bold text-sm">
-                              {item.barber.name.charAt(0)}
-                            </div>
-                            <div>
-                              <h4 className="font-bold text-sm">{item.barber.name}</h4>
-                              <span className="text-[11px] text-zinc-400">
-                                {isOwner ? 'Propietario: 100% al fondo común' : <>Comisión: <strong>{item.barber.commissionRate}%</strong></>}
-                              </span>
-                            </div>
-                          </div>
-                          <span className="px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-xs font-semibold">
-                            {item.cutsCount} turnos
-                          </span>
-                        </div>
-
-                        <div className="space-y-2 text-xs">
-                          <div className="flex justify-between">
-                            <span className="text-zinc-400">Cortes completados:</span>
-                            <span className="font-semibold">${item.grossGenerated - item.barberManualChargesTotal}</span>
-                          </div>
-                          {item.barberManualChargesTotal > 0 && (
-                            <div className="flex justify-between text-emerald-400 font-medium">
-                              <span>Cobros manuales extra:</span>
-                              <span>+${item.barberManualChargesTotal}</span>
-                            </div>
-                          )}
-                          <div className="flex justify-between">
-                            <span className="text-zinc-400">Comisión total:</span>
-                            <span className="font-medium text-zinc-300">${item.barberTakeHome}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-zinc-400">Propinas personales:</span>
-                            <span className="font-bold text-emerald-400">+${item.barberTipsTotal}</span>
-                          </div>
-
-                          <div className="flex justify-between pt-2 border-t border-zinc-800/80 text-amber-400 font-bold">
-                            <span>Total para barbero:</span>
-                            <span>${totalBarberPocket}</span>
-                          </div>
-
-                          <div className="flex justify-between pt-1 text-emerald-400 font-bold">
-                            <span>Al fondo común:</span>
-                            <span>+${item.leftForOwner}</span>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'agenda' && (
-            <AgendaCalendar
-              mode="admin"
-              appointments={safeAppointments}
-              barbers={safeBarbers}
-              canComplete={cashStatus === 'abierta'}
-              onComplete={(appointment) => {void handleStatusChange(appointment.id, 'completado');}}
-              onCancel={(appointment) => {void handleStatusChange(appointment.id, 'cancelado');}}
-              getWhatsAppLink={getClientWhatsAppLink}
-            />
-          )}
-
-          {activeTab === 'turnos' && (
-            <div className="space-y-3">
-              {safeAppointments.length === 0 ? (
-                <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-10 text-center space-y-2">
-                  <CalendarIcon className="w-8 h-8 text-zinc-600 mx-auto" />
-                  <h3 className="font-semibold text-sm">Sin turnos agendados</h3>
-                </div>
-              ) : (
-                safeAppointments.map((apt) => (
-                  <div
-                    key={apt.id}
-                    className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
-                  >
-                    <div className="space-y-1">
-                      <div className="flex items-center space-x-2">
-                        <span className="px-2.5 py-0.5 rounded-md text-xs font-medium bg-zinc-800 text-zinc-200">
-                          {apt.dateString} • {apt.timeSlot} hs
-                        </span>
-                        <span
-                          className={`px-2 py-0.5 rounded-md text-[11px] font-medium capitalize ${
-                            apt.status === 'confirmado'
-                              ? 'bg-amber-500/10 text-amber-400'
-                              : apt.status === 'completado'
-                              ? 'bg-emerald-500/15 text-emerald-400'
-                              : 'bg-rose-500/10 text-rose-400 line-through'
+                        <div
+                          className={`w-9 h-9 rounded-xl overflow-hidden flex items-center justify-center font-bold text-sm shrink-0 ${
+                            isSelected ? 'bg-zinc-950 text-white' : 'bg-zinc-800 text-zinc-100'
                           }`}
                         >
-                          {apt.status}
-                        </span>
+                          {b.imageUrl ? (
+                            <img src={b.imageUrl} alt={'Foto de ' + b.name} loading="lazy" className="w-full h-full object-cover" />
+                          ) : b.name.charAt(0)}
+                        </div>
+                        <div className="truncate">
+                          <p className="text-sm font-bold truncate">{b.name}</p>
+                          <p
+                            className={`text-[11px] truncate ${
+                              isSelected ? 'text-zinc-700' : 'text-zinc-400'
+                            }`}
+                          >
+                            Barbero
+                          </p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-zinc-400 mb-1.5">PIN de Acceso</label>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={6}
+                  placeholder="PIN de 4 a 6 dígitos"
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  className="w-full px-3.5 py-3 rounded-xl bg-zinc-950 border border-zinc-800 text-center font-mono text-lg tracking-widest outline-none text-zinc-100"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-3.5 px-4 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-extrabold text-xs tracking-wide uppercase transition-transform active:scale-[0.98] cursor-pointer"
+              >
+                {loading ? 'Verificando...' : 'Ingresar a mi Panel'}
+              </button>
+            </form>
+          </div>
+        ) : panelLoading ? (
+          <PanelLoading label="PIN validado. Preparando tus turnos y finanzas..." />
+        ) : (
+          <div className="space-y-6">
+            {!cashOpen && (
+              <div role="status" className="p-3.5 rounded-xl border border-amber-500/30 bg-amber-500/10 text-sm text-amber-300">
+                Caja cerrada: podés consultar tus turnos e historial, pero no registrar ni eliminar cobros o propinas, ni completar turnos. Al abrir una nueva caja, volvé a ingresar para actualizar el estado.
+              </div>
+            )}
+            {errorMsg && (
+              <div className="p-3.5 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-semibold flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{errorMsg}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setErrorMsg('')}
+                  className="text-rose-300 hover:text-white text-xs underline cursor-pointer"
+                >
+                  Cerrar
+                </button>
+              </div>
+            )}
+
+            <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center space-x-3.5">
+                <div className="w-12 h-12 rounded-2xl overflow-hidden bg-zinc-950 border border-zinc-800 flex items-center justify-center font-extrabold text-lg text-emerald-400 shrink-0">
+                  {selectedBarberObj?.imageUrl ? (
+                    <img src={selectedBarberObj.imageUrl} alt={'Foto de ' + selectedBarberObj.name} className="w-full h-full object-cover" />
+                  ) : (selectedBarberObj?.name.charAt(0) || 'B')}
+                </div>
+                <div>
+                  <h2 className="text-lg font-extrabold">{selectedBarberObj?.name}</h2>
+                  <p className="text-xs text-zinc-400">{isOwner ? 'Sos dueño: el dinero de tus cortes va al negocio, no a una comisión personal.' : `Tu comisión configurada es del ${commissionRate}%`}</p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(e.target.value)}
+                  className="px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-700 text-xs font-bold text-emerald-400 outline-none cursor-pointer"
+                >
+                  {availableMonths.map((m) => (
+                    <option key={m.value} value={m.value}>
+                      📅 {m.label}
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  type="button"
+                  onClick={() => setIsUnlocked(false)}
+                  className="px-4 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-rose-400 text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span>Salir</span>
+                </button>
+              </div>
+            </div>
+
+            {historicEstimateCount > 0 && (
+              <div role="status" className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
+                {historicEstimateCount} movimientos anteriores no guardaron su comisión histórica. Estos importes son estimados.
+              </div>
+            )}
+            <AgendaCalendar
+              mode="barber"
+              appointments={barberAppointments.filter(appointment => appointment.barberId === selectedBarberId)}
+              barbers={selectedBarberObj ? [{id: selectedBarberObj.id, name: selectedBarberObj.name}] : []}
+              canComplete={cashOpen}
+              onComplete={(appointment) => {void handleStatusChange(appointment.id, 'completado');}}
+              onCancel={(appointment) => {void handleStatusChange(appointment.id, 'cancelado');}}
+              syncState={agendaSyncState}
+              lastUpdatedAt={agendaUpdatedAt}
+              onRefresh={refreshAgenda}
+            />
+
+            <details className="rounded-3xl border border-zinc-800 bg-zinc-900/90">
+              <summary className="cursor-pointer px-5 py-4 text-sm font-bold text-zinc-200 hover:text-emerald-400">
+                Ver listado de turnos e historial
+              </summary>
+            <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 sm:p-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold text-base flex items-center gap-2">
+                  <CalendarIcon className="w-4 h-4 text-emerald-400" />
+                  Mis turnos
+                </h3>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={() => setAppointmentsView('pendientes')}
+                  className={'rounded-xl px-4 py-2 text-xs font-bold '+(appointmentsView==='pendientes'?'bg-emerald-400 text-zinc-950':'border border-zinc-700 bg-zinc-950 text-zinc-300')}>
+                  Pendientes ({barberAppointments.filter(a => a.status === 'confirmado').length})
+                </button>
+                <button type="button" onClick={() => setAppointmentsView('historial')}
+                  className={'rounded-xl px-4 py-2 text-xs font-bold '+(appointmentsView==='historial'?'bg-emerald-400 text-zinc-950':'border border-zinc-700 bg-zinc-950 text-zinc-300')}>
+                  Historial
+                </button>
+              </div>
+              {visibleAppointments.length === 0 ? (
+                <div className="p-12 text-center bg-zinc-950 border border-zinc-800 rounded-2xl space-y-2">
+                  <CalendarIcon className="w-8 h-8 text-zinc-600 mx-auto" />
+                  <p className="text-xs text-zinc-400">{appointmentsView === 'pendientes' ? 'No tenés turnos pendientes.' : 'Todavía no hay turnos en el historial.'}</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {visibleAppointments.map((apt) => (
+                    <div
+                      key={apt.id}
+                      className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-xs font-bold text-emerald-400">
+                            {apt.dateString} • {apt.timeSlot} hs
+                          </span>
+                          <span
+                            className={`text-[11px] font-bold px-2 py-0.5 rounded capitalize ${
+                              apt.status === 'completado'
+                                ? 'bg-emerald-500/15 text-emerald-400'
+                                : 'bg-amber-500/15 text-amber-400'
+                            }`}
+                          >
+                            {apt.status}
+                          </span>
+                        </div>
+                        <h4 className="font-bold text-sm sm:text-base">
+                          {apt.clientName}{' '}
+                          <span className="font-normal text-xs text-zinc-400">
+                            ({apt.clientPhone})
+                          </span>
+                        </h4>
+                        <p className="text-xs text-zinc-400">
+                          {apt.serviceName} (${apt.priceSnapshot ?? apt.servicePrice})
+                        </p>
                       </div>
-                      <h3 className="font-semibold text-sm sm:text-base pt-1">
-                        {apt.clientName}{' '}
-                        <span className="text-xs font-normal text-zinc-400">
-                          ({apt.clientPhone})
-                        </span>
-                      </h3>
-                      <p className="text-xs text-zinc-400">
-                        {apt.serviceName} (${apt.priceSnapshot ?? apt.servicePrice}) • <strong className="text-zinc-200">{apt.barberName}</strong>
-                      </p>
-                    </div>
 
-                    <div className="flex flex-wrap items-center gap-2">
-                      <a
-                        href={getClientWhatsAppLink(apt)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 hover:bg-zinc-800 text-zinc-200 text-xs font-medium flex items-center space-x-1.5"
-                      >
-                        <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>WhatsApp</span>
-                      </a>
-
-                      {apt.status === 'confirmado' && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (appointmentTimeState(apt) !== 'started') {
-                              alert('Podés completar el turno cuando llegue su hora de inicio.');
-                              return;
-                            }
-                            handleStatusChange(apt.id, 'completado');
-                          }}
-                          disabled={cashStatus !== 'abierta'}
-                          className="px-3 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 text-xs font-semibold flex items-center space-x-1 cursor-pointer"
-                        >
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>Completar</span>
-                        </button>
-                      )}
-
-                      {apt.status === 'confirmado' && (
+                      <div className="flex items-center gap-2">
+                        {apt.status === 'confirmado' && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (appointmentTimeState(apt) !== 'started') {
+                                alert('Podés completar el turno cuando llegue su hora de inicio.');
+                                return;
+                              }
+                              handleStatusChange(apt.id, 'completado');
+                            }}
+                            disabled={!cashOpen}
+                            className="px-3.5 py-2 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-bold flex items-center gap-1 cursor-pointer"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>Completar</span>
+                          </button>
+                        )}
+                        {apt.status === 'confirmado' && (
                         <button
                           type="button"
                           onClick={() => {
@@ -1878,422 +610,215 @@ const handleAddBarber = async () => {
                             }
                             handleStatusChange(apt.id, 'cancelado');
                           }}
-                          className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-rose-400 hover:bg-rose-500/10 text-xs font-medium flex items-center space-x-1 cursor-pointer"
+                          className="px-3.5 py-2 rounded-xl bg-zinc-900 border border-zinc-800 text-rose-400 text-xs font-semibold flex items-center gap-1 cursor-pointer"
                         >
                           <XCircle className="w-3.5 h-3.5" />
                           <span>Cancelar</span>
                         </button>
-                      )}
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))
+                  ))}
+                </div>
               )}
             </div>
-          )}
+            </details>
 
-          {activeTab === 'barberos' && (
-            <div className="space-y-5">
-              <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-4">
-                <h3 className="font-semibold text-sm flex items-center gap-1.5">
-                  <Plus className="w-4 h-4" /> Agregar Barbero
+            <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800 pb-3">
+                <h3 className="font-bold text-sm flex items-center gap-2">
+                  <BarChart3 className="w-4 h-4 text-emerald-400" />
+                  {isOwner ? 'Mis ingresos para el negocio' : 'Mis ganancias por día'}
                 </h3>
-
-                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
-                  <input
-                    type="text"
-                    placeholder="Nombre"
-                    value={newBarberName}
-                    onChange={(e) => setNewBarberName(e.target.value)}
-                    className="sm:col-span-6 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
-                  />
-                  <div className="sm:col-span-2 flex items-center bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2">
-                    <Percent className="w-3.5 h-3.5 text-zinc-500 mr-1.5 shrink-0" />
-                    <input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={newBarberCommission}
-                      onChange={(e) => setNewBarberCommission(e.target.value)}
-                      className="w-full bg-transparent text-base sm:text-sm outline-none"
-                    />
-                  </div>
-                  <div className="sm:col-span-2 flex items-center bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2">
-                    <KeyRound className="w-3.5 h-3.5 text-zinc-500 mr-1.5 shrink-0" />
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      maxLength={6}
-                      placeholder="PIN de 4 a 6 dígitos"
-                      value={newBarberPin}
-                      onChange={(e) => setNewBarberPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                      className="w-full bg-transparent text-base sm:text-sm outline-none"
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleAddBarber}
-                    className="sm:col-span-2 py-2.5 px-3 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-bold text-xs cursor-pointer touch-manipulation"
-                  >
-                    Sumar
-                  </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button type="button" onClick={() => setAuditDate(getMontevideoDateKey())}
+                    className="rounded-lg border border-zinc-700 px-3 py-2 text-xs font-bold hover:border-emerald-400">Hoy</button>
+                  <button type="button" onClick={() => setAuditDate(getMontevideoDateKey(new Date(Date.now() - 86400000)))}
+                    className="rounded-lg border border-zinc-700 px-3 py-2 text-xs font-bold hover:border-emerald-400">Ayer</button>
+                <input
+                  type="date"
+                  value={auditDate}
+                  onChange={(e) => setAuditDate(e.target.value)}
+                  className="px-3.5 py-2 rounded-xl bg-zinc-950 border border-zinc-700 text-xs font-bold text-emerald-400 outline-none cursor-pointer"
+                />
                 </div>
-                <label className="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
-                  <input type="checkbox" checked={newBarberIsOwner} onChange={(e) => setNewBarberIsOwner(e.target.checked)} className="accent-emerald-500 size-4" />
-                  Es propietario: 100% de sus cortes al fondo común (sin comisión)
-                </label>
               </div>
 
-              <div className="grid grid-cols-1 gap-4">
-                {safeBarbers.map((brb) => {
-                  const isLocked = Boolean(blockedBarbers[brb.id]);
-                  return (
-                    <div
-                      key={brb.id}
-                      className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-4"
-                    >
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                        <div className="flex items-center space-x-3">
-                          <div className="flex flex-col items-center gap-1.5">
-                            <div className="w-14 h-14 rounded-xl overflow-hidden bg-zinc-950 border border-zinc-800 flex items-center justify-center font-bold text-base text-zinc-100">
-                              {brb.imageUrl ? (
-                                <img src={brb.imageUrl} alt={'Foto de ' + brb.name} className="w-full h-full object-cover" />
-                              ) : brb.name.charAt(0)}
-                            </div>
-                            <label htmlFor={'foto-barbero-' + brb.id}
-                              className="text-[11px] font-semibold text-emerald-300 cursor-pointer hover:underline text-center">
-                              {barberPhotoBusyId === brb.id ? 'Procesando...' : brb.imageUrl ? 'Cambiar foto' : 'Agregar foto'}
-                            </label>
-                            <input id={'foto-barbero-' + brb.id} type="file" className="sr-only"
-                              accept="image/jpeg,image/png,image/webp"
-                              aria-label={'Seleccionar foto de ' + brb.name}
-                              disabled={barberPhotoBusyId === brb.id}
-                              onChange={event => {
-                                const file = event.currentTarget.files?.[0];
-                                event.currentTarget.value = '';
-                                void handleBarberPhotoUpload(brb.id,file);
-                              }} />
-                            {brb.imageUrl && (
-                              <button type="button" disabled={barberPhotoBusyId === brb.id}
-                                onClick={() => void handleBarberPhotoRemove(brb.id)}
-                                className="text-[10px] text-zinc-400 hover:text-rose-300 cursor-pointer disabled:opacity-50">
-                                Quitar foto
-                              </button>
-                            )}
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <h4 className="font-bold text-base">{brb.name}</h4>
-                              {isLocked && (
-                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30">
-                                  <Lock className="w-3 h-3" /> Bloqueado por PIN
-                                </span>
-                              )}
-                              <Link
-                                href={`/barbero?perfil=${brb.slug || brb.name.toLowerCase()}`}
-                                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-200"
-                              >
-                                <span>Ver Perfil</span>
-                                <ExternalLink className="w-3 h-3" />
-                              </Link>
-                            </div>
-                            <p className="text-xs text-zinc-400">{brb.isOwner ? 'Propietario · fondo común' : 'Barbero · comisión'}</p>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-2.5">
-                          <label className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-zinc-800 bg-zinc-950 text-xs text-zinc-300 cursor-pointer">
-                            <input type="checkbox" className="size-4 accent-emerald-500" checked={brb.isOwner === true} onChange={(e) => handleUpdateBarberField(brb.id, 'isOwner', e.target.checked)} />
-                            Propietario
-                          </label>
-                          <label className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-zinc-800 bg-zinc-950 text-xs text-zinc-300 cursor-pointer">
-                            <input type="checkbox" className="size-4 accent-emerald-500" checked={brb.active !== false} onChange={(e) => handleUpdateBarberField(brb.id, 'active', e.target.checked)} />
-                            Habilitado
-                          </label>
-                          <div className="flex items-center space-x-1.5 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-1.5">
-                            <span className="text-xs text-zinc-400">{brb.isOwner ? 'Comisión no aplica:' : 'Comisión:'}</span>
-                            <input
-                              type="number"
-                              min={0}
-                              max={100}
-                              value={brb.commissionRate}
-                              disabled={brb.isOwner === true}
-                              onChange={(e) =>
-                                handleUpdateBarberField(brb.id, 'commissionRate', e.target.value)
-                              }
-                              className="w-12 bg-transparent font-bold text-amber-400 outline-none text-sm text-right"
-                            />
-                            <span className="text-xs font-bold text-amber-400">%</span>
-                          </div>
-
-                          <div className="flex items-center space-x-1.5 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-1.5">
-                            <KeyRound className="w-3.5 h-3.5 text-zinc-400" />
-                            <span className="text-xs text-zinc-400">Cambiar PIN:</span>
-                            <input
-                              type="password"
-                              inputMode="numeric"
-                              autoComplete="new-password"
-                              placeholder="Nuevo PIN"
-                              maxLength={6}
-                              value={barberPinDrafts[brb.id] ?? ''}
-                              onChange={(e) => setBarberPinDrafts((prev) => ({
-                                ...prev,
-                                [brb.id]: e.target.value.replace(/\D/g, '').slice(0, 6),
-                              }))}
-                              onBlur={() => handleBarberPinBlur(brb.id, brb.pin)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  e.preventDefault();
-                                  e.currentTarget.blur();
-                                }
-                              }}
-                              className="w-20 bg-transparent font-mono font-bold text-zinc-100 outline-none text-sm"
-                            />
-                          </div>
-
-                          {isLocked && (
-                            <button
-                              type="button"
-                              onClick={() => handleUnblockBarberPin(brb.id, brb.name)}
-                              className="px-3.5 py-2 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-bold hover:bg-amber-500/30 transition-colors cursor-pointer flex items-center gap-1.5 animate-pulse"
-                            >
-                              <ShieldCheck className="w-4 h-4 text-amber-400" />
-                              <span>Desbloquear PIN</span>
-                            </button>
-                          )}
-
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteBarber(brb.id)}
-                            className="p-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-rose-400 cursor-pointer"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="pt-3 border-t border-zinc-800/80 space-y-3">
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs text-zinc-400 font-medium">
-                            Servicios habilitados para {brb.name}:
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() => handleSaveBarberChanges(brb.id)}
-                            className="px-3.5 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/40 hover:bg-emerald-500/25 text-emerald-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
-                          >
-                            <Save className="w-3.5 h-3.5" />
-                            <span>
-                              {savingBarberId === brb.id ? '¡Guardado!' : 'Guardar Servicios'}
-                            </span>
-                          </button>
-                        </div>
-
-                        <div className="flex flex-wrap gap-2">
-                          {services.map((srv) => {
-                            const enabled = (brb.serviceIds || []).includes(srv.id);
-                            return (
-                              <button
-                                key={srv.id}
-                                type="button"
-                                onClick={() => handleToggleBarberService(brb.id, srv.id)}
-                                className={`px-3 py-1.5 rounded-xl text-xs font-semibold border flex items-center gap-1.5 cursor-pointer transition-all ${
-                                  enabled
-                                    ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
-                                    : 'bg-zinc-950 border-zinc-800 text-zinc-500 line-through'
-                                }`}
-                              >
-                                {enabled && <Check className="w-3 h-3" />}
-                                <span>
-                                  {srv.name} (${srv.price})
-                                </span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 space-y-1">
+                  <span className="text-xs text-zinc-400">{isOwner ? 'Aporte al negocio en esta fecha' : 'Comisión generada en esta fecha'}</span>
+                  <p className="text-2xl font-extrabold text-emerald-400">${isOwner ? dailyToBusiness : dailyCommission}</p>
+                  <span className="text-[11px] text-zinc-500">{dailyAppointments.length} turnos completados + {dailyCharges.length} cobros extra</span>
+                </div>
+                <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 space-y-1">
+                  <span className="text-xs text-zinc-400">Propinas de la fecha</span>
+                  <p className="text-2xl font-extrabold text-amber-400">+${dailyTipsTotal}</p>
+                </div>
               </div>
             </div>
-          )}
 
-          {activeTab === 'servicios' && (
-            <div className="space-y-5">
-              <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-3.5">
-                <h3 className="font-semibold text-sm flex items-center gap-1.5">
-                  <Plus className="w-4 h-4" /> Nuevo servicio
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
-                  <input
-                    type="text"
-                    placeholder="Nombre (ej: Corte)"
-                    value={newServiceName}
-                    onChange={(e) => setNewServiceName(e.target.value)}
-                    className="sm:col-span-5 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
-                  />
-                  <input
-                    type="number"
-                    placeholder="Precio $"
-                    value={newServicePrice}
-                    onChange={(e) => setNewServicePrice(e.target.value)}
-                    className="sm:col-span-3 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
-                  />
-                  <input
-                    type="number"
-                    placeholder="Minutos"
-                    value={newServiceDuration}
-                    onChange={(e) => setNewServiceDuration(e.target.value)}
-                    className="sm:col-span-2 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleAddService}
-                    className="sm:col-span-2 py-2.5 px-4 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-bold text-xs cursor-pointer"
-                  >
-                    Agregar
-                  </button>
-                </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-1">
+                <span className="text-xs text-zinc-400">Turnos realizados este mes</span>
+                <p className="text-3xl font-extrabold text-white">{completedAppointments.length}</p>
               </div>
 
-              <div className="space-y-2.5">
-                {services.map((srv) => (
-                  <div
-                    key={srv.id}
-                    className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                  >
-                    <div>
-                      <h4 className="font-bold text-sm sm:text-base">{srv.name}</h4>
-                      <span className="text-[11px] text-zinc-400 flex items-center mt-0.5">
-                        <Clock className="w-3 h-3 mr-1" /> Bloquea {srv.durationMinutes} min en agenda
-                      </span>
-                    </div>
+              <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-1">
+                <span className="text-xs text-emerald-400 font-bold">{isOwner ? 'Total generado con mis servicios (mes)' : 'Mis comisiones generadas (mes)'}</span>
+                <p className="text-3xl font-extrabold text-emerald-400">${isOwner ? totalGrossMonthly : totalEarned}</p>
+                {isOwner
+                  ? <p className="text-xs text-zinc-400">Al fondo común: ${totalToBusiness}. No es un pago ni retiro personal.</p>
+                  : <p className="text-xs text-zinc-400">Comisión generada, no necesariamente pagada.</p>}
+              </div>
 
-                    <div className="flex flex-wrap items-center gap-2.5">
-                      <label className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-xs text-zinc-300 cursor-pointer">
-                        <input type="checkbox" className="size-4 accent-emerald-500" checked={srv.active !== false} onChange={(e) => handleToggleServiceActive(srv.id, e.target.checked)} />
-                        Habilitado
-                      </label>
-                      <div className="flex items-center bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-1.5">
-                        <Clock className="w-3.5 h-3.5 text-zinc-500 mr-1.5" />
-                        <input
-                          type="number"
-                          min={15}
-                          step={15}
-                          value={srv.durationMinutes}
-                          onChange={(e) =>
-                            handleUpdateServiceDuration(srv.id, Number(e.target.value))
-                          }
-                          className="w-12 bg-transparent font-bold text-emerald-400 outline-none text-sm text-right"
-                        />
-                        <span className="text-xs text-zinc-400 ml-1">min</span>
-                      </div>
-
-                      <div className="flex items-center bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-1.5">
-                        <span className="text-xs text-zinc-500 mr-1">$</span>
-                        <input
-                          type="number"
-                          value={srv.price}
-                          onChange={(e) => handleUpdateServicePrice(srv.id, Number(e.target.value))}
-                          className="w-16 bg-transparent font-bold text-zinc-100 outline-none text-sm"
-                        />
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteService(srv.id)}
-                        className="p-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-400 hover:text-rose-400 cursor-pointer"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
+              <div className="bg-zinc-900/90 border border-emerald-500/30 rounded-2xl p-5 space-y-1">
+                <span className="text-xs text-amber-400 font-bold flex items-center gap-1.5">
+                  <Coins className="w-3.5 h-3.5" />
+                  Propinas del mes
+                </span>
+                <p className="text-3xl font-extrabold text-amber-400">+${totalTipsAmount}</p>
               </div>
             </div>
-          )}
 
-          {activeTab === 'marca' && (
-            <form
-              onSubmit={handleSaveBrand}
-              className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-5"
-            >
-              <h3 className="font-semibold text-base">Datos de {shopConfig.name}</h3>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-zinc-400 mb-1.5">Nombre del Local</label>
-                  <input
-                    type="text"
-                    value={shopConfig.name}
-                    onChange={(e) => setShopConfig({ ...shopConfig, name: e.target.value })}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-zinc-400 mb-1.5">Teléfono de Contacto</label>
-                  <input
-                    type="text"
-                    value={shopConfig.phone}
-                    onChange={(e) => setShopConfig({ ...shopConfig, phone: e.target.value })}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-zinc-400 mb-1.5">Ciudad</label>
-                  <input
-                    type="text"
-                    value={shopConfig.city || ''}
-                    onChange={(e) => setShopConfig({ ...shopConfig, city: e.target.value })}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
-                  />
-                </div>
-
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-medium text-zinc-400 mb-1.5">Dirección</label>
-                  <input
-                    type="text"
-                    value={shopConfig.address}
-                    onChange={(e) => setShopConfig({ ...shopConfig, address: e.target.value })}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
-                  />
-                </div>
-
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-medium text-zinc-400 mb-1.5 flex items-center gap-1.5">
-                    <ImageIcon className="w-3.5 h-3.5" /> URL del Logo
-                  </label>
-                  <input
-                    type="url"
-                    value={shopConfig.logoUrl || ''}
-                    onChange={(e) => setShopConfig({ ...shopConfig, logoUrl: e.target.value })}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
-                  />
-                </div>
+            <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 sm:p-6 space-y-4">
+              <div>
+                <h3 className="font-bold text-base flex items-center gap-2">
+                  <Coins className="w-4 h-4 text-emerald-400" />
+                  Registrar Cobro Manual (Corte sin turno previo)
+                </h3>
               </div>
 
-              <div className="flex items-center justify-between pt-2">
-                {savedBanner ? (
-                  <span className="text-xs text-emerald-400 font-medium flex items-center gap-1.5">
-                    <CheckCircle2 className="w-4 h-4" /> Guardado
-                  </span>
-                ) : (
-                  <span />
-                )}
-
+              <form onSubmit={handleAddMyCharge} className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+                <input
+                  type="number"
+                  placeholder="Monto $"
+                  value={newChargeAmount}
+                  onChange={(e) => setNewChargeAmount(e.target.value)}
+                  className="sm:col-span-4 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
+                />
+                <input
+                  type="text"
+                  placeholder="Nota..."
+                  value={newChargeNote}
+                  onChange={(e) => setNewChargeNote(e.target.value)}
+                  className="sm:col-span-6 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
+                />
                 <button
                   type="submit"
-                  className="px-6 py-2.5 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-bold text-xs cursor-pointer"
+                  disabled={savingCharge || !cashOpen}
+                  className="sm:col-span-2 py-2.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-extrabold text-xs cursor-pointer flex items-center justify-center gap-1 touch-manipulation"
                 >
-                  Guardar cambios
+                  <Plus className="w-4 h-4" />
+                  <span>{savingCharge ? '...' : 'Sumar'}</span>
                 </button>
+              </form>
+
+              {monthlyCharges.length > 0 && (
+                <div className="space-y-2 pt-2">
+                  {monthlyCharges.map((chg) => (
+                    <div
+                      key={chg.id}
+                      className="bg-zinc-950 border border-zinc-800/80 rounded-xl p-3 flex items-center justify-between gap-3"
+                    >
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="text-zinc-400 font-medium">{chg.dateString}</span>
+                        {chg.note && <span className="text-zinc-200">• {chg.note}</span>}
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="font-bold text-sm text-emerald-400">+${chg.amount}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteMyCharge(chg.id)}
+                          disabled={!cashOpen}
+                          className="p-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-rose-400 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 sm:p-6 space-y-4">
+              <div>
+                <h3 className="font-bold text-base flex items-center gap-2">
+                  <Coins className="w-4 h-4 text-amber-400" />
+                  Cuenta de Propinas ({selectedBarberObj?.name})
+                </h3>
               </div>
-            </form>
-          )}
-        </main>
-      </div>
+
+              <form onSubmit={handleAddMyTip} className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+                <input
+                  type="number"
+                  placeholder="Monto propina $"
+                  value={newTipAmount}
+                  onChange={(e) => setNewTipAmount(e.target.value)}
+                  className="sm:col-span-4 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
+                />
+                <input
+                  type="text"
+                  placeholder="Nota opcional..."
+                  value={newTipNote}
+                  onChange={(e) => setNewTipNote(e.target.value)}
+                  className="sm:col-span-6 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
+                />
+                <button
+                  type="submit"
+                  disabled={savingTip || !cashOpen}
+                  className="sm:col-span-2 py-2.5 px-4 rounded-xl bg-amber-400 hover:bg-amber-300 text-zinc-950 font-extrabold text-xs cursor-pointer flex items-center justify-center gap-1 touch-manipulation"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>{savingTip ? '...' : 'Sumar'}</span>
+                </button>
+              </form>
+
+              {monthlyTips.length > 0 && (
+                <div className="space-y-2 pt-2">
+                  {monthlyTips.map((tp) => (
+                    <div
+                      key={tp.id}
+                      className="bg-zinc-950 border border-zinc-800/80 rounded-xl p-3 flex items-center justify-between gap-3"
+                    >
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="text-zinc-400 font-medium">{tp.dateString}</span>
+                        {tp.note && <span className="text-zinc-200">• {tp.note}</span>}
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="font-bold text-sm text-amber-400">+${tp.amount}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteMyTip(tp.id)}
+                          disabled={!cashOpen}
+                          className="p-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-rose-400 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+          </div>
+        )}
+      </main>
     </div>
+  );
+}
+
+export default function BarberClient({initialShop}: {initialShop: PublicShopData}) {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-zinc-950 text-zinc-100 flex items-center justify-center">
+          Cargando...
+        </div>
+      }
+    >
+      <BarberPortalContent initialShop={initialShop} />
+    </Suspense>
   );
 }
