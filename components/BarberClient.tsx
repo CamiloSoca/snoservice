@@ -640,7 +640,14 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
                                 alert('Podés completar el turno cuando llegue su hora de inicio.');
                                 return;
                               }
-                              handleStatusChange(apt.id, 'completado');
+                              const answer = window.prompt('¿Cómo pagó en el local? Escribí EFECTIVO o TRANSFERENCIA.');
+                              if (answer === null) return;
+                              const method = answer.trim().toLowerCase();
+                              if (method !== 'efectivo' && method !== 'transferencia') {
+                                alert('Elegí efectivo o transferencia para completar el turno.');
+                                return;
+                              }
+                              void handleStatusChange(apt.id, 'completado', method === 'efectivo' ? 'cash' : 'transfer');
                             }}
                             disabled={!cashOpen}
                             className="px-3.5 py-2 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-bold flex items-center gap-1 cursor-pointer"
