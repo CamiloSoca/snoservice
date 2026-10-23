@@ -168,6 +168,36 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
       },
     });
 
+  // No traer todas las finanzas cada 4,5 s. Actualizar el estado contable del
+  // barbero regularmente y al volver a su panel, sin cambiar turnos pendientes.
+  useEffect(() => {
+    if (!isUnlocked || panelLoading) return;
+    let mounted = true;
+    let busy = false;
+    const reconcile = async () => {
+      if (!mounted || busy || document.visibilityState === 'hidden') return;
+      busy = true;
+      try {
+        const financial = await getBarberDashboardSnapshot();
+        if (!mounted) return;
+        setBarberAppointments(sortAppointmentsChronologically(financial.appointments));
+        setBarberTips(financial.tips);
+        setBarberCharges(financial.manualCharges);
+        setCashOpen(financial.cashOpen);
+        setCommissionRate(financial.commissionRate);
+        setIsOwner(financial.isOwner);
+      } catch {
+        console.warn('No se pudieron actualizar las finanzas del barbero.');
+      } finally {
+        busy = false;
+      }
+    };
+    const timer = window.setInterval(() => {void reconcile();}, 60_000);
+    const focus = () => {void reconcile();};
+    window.addEventListener('focus', focus);
+    return () => {mounted = false; window.clearInterval(timer); window.removeEventListener('focus', focus);};
+  }, [isUnlocked, panelLoading]);
+
   const handleStatusChange = async (appointmentId: string, status: AppointmentItem['status']) => {
     try {
       setErrorMsg('');
