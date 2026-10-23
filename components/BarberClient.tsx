@@ -24,6 +24,7 @@ import {
   ManualChargeItem,
   unlockBarberPanelWithPin,
   getBarberDashboardSnapshot,
+  getLiveAgendaSnapshot,
   getMontevideoDateKey,
   updateAppointmentStatus,
   createTip,
@@ -157,13 +158,9 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
     useAgendaAutoSync({
       enabled: isUnlocked && !panelLoading,
       refreshData: async () => {
-        const snapshot = await getBarberDashboardSnapshot();
-        setBarberAppointments(sortAppointmentsChronologically(snapshot.appointments));
-        setBarberTips(snapshot.tips);
-        setBarberCharges(snapshot.manualCharges);
-        setCashOpen(snapshot.cashOpen);
-        setCommissionRate(snapshot.commissionRate);
-        setIsOwner(snapshot.isOwner);
+        const live = await getLiveAgendaSnapshot();
+        setBarberAppointments(sortAppointmentsChronologically(live.appointments));
+        setCashOpen(live.cashOpen);
       },
       onUnauthorized: () => {
         setIsUnlocked(false);
@@ -178,6 +175,11 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
       setBarberAppointments((current) => current.map((appointment) =>
         appointment.id === appointmentId ? {...appointment, ...persisted} : appointment
       ));
+      const fresh = await getBarberDashboardSnapshot();
+      setBarberAppointments(sortAppointmentsChronologically(fresh.appointments));
+      setBarberTips(fresh.tips);
+      setBarberCharges(fresh.manualCharges);
+      setCashOpen(fresh.cashOpen);
       refreshAgenda();
       return {ok: true, cancellationEmailStatus: persisted.cancellationEmailStatus};
     } catch (err: any) {
