@@ -89,11 +89,20 @@ export async function GET() {
   if (!admin && !staff) return NextResponse.json({error: 'No autorizado'}, {status: 401});
   const supabase = getSupabaseServer();
   let query = supabase.from('appointments')
-    .select('id,code,service_id,barber_id,date_string,time_slot,duration_minutes,client_name,client_phone,client_email,client_notes,price_snapshot,status,created_at,services(name,price,duration_minutes),barbers(name)')
+    .select('id,code,service_id,barber_id,date_string,time_slot,duration_minutes,client_name,client_phone,client_email,client_notes,price_snapshot,status,created_at,completed_at,commission_rate_snapshot,barber_earnings_snapshot,business_earnings_snapshot,completed_cash_register_id,services(name,price,duration_minutes),barbers(name)')
     .eq('shop_id', SHOP_UUID).order('created_at', {ascending: false});
   if (!admin && staff) query = query.eq('barber_id', staff.sub);
-  const {data, error} = await query;
-  if (error) return NextResponse.json({error: 'No se pudo cargar la agenda'}, {status: 500});
+  const [appointmentsResult, cashResult] = await Promise.all([
+    query,
+    supabase.from('cash_registers').select('id').eq('shop_id', SHOP_UUID)
+      .eq('status', 'abierta').limit(1),
+  ]);
+  const {data, error} = appointmentsResult;
+  if (error || cashResult.error) {
+    return NextResponse.json({error: 'No se pudo cargar la agenda'}, {
+      status: 503, headers: {'Cache-Control': 'private, no-store'},
+    });
+  }
   const appointments = (data || []).map((apt: any) => ({
     id: apt.id, code: apt.code || '',
     serviceId: apt.service_id, serviceName: apt.services?.name || 'Servicio',
@@ -105,8 +114,15 @@ export async function GET() {
     clientName: apt.client_name, clientPhone: apt.client_phone,
     clientEmail: apt.client_email || '', clientNotes: apt.client_notes || '',
     status: apt.status, createdAt: apt.created_at,
+    completedAt: apt.completed_at,
+    commissionRateSnapshot: apt.commission_rate_snapshot == null ? null : Number(apt.commission_rate_snapshot),
+    barberEarningsSnapshot: apt.barber_earnings_snapshot == null ? null : Number(apt.barber_earnings_snapshot),
+    businessEarningsSnapshot: apt.business_earnings_snapshot == null ? null : Number(apt.business_earnings_snapshot),
+    completedCashRegisterId: apt.completed_cash_register_id ?? null,
   }));
-  return NextResponse.json({appointments});
+  return NextResponse.json({appointments, cashOpen: (cashResult.data?.length || 0) > 0}, {
+    headers: {'Cache-Control': 'private, no-store'},
+  });
 }
 
 export async function PATCH(request: Request) {
