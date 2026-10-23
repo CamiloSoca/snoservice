@@ -150,6 +150,7 @@ export default function AdminDashboard() {
   const [loadingTooLong, setLoadingTooLong] = useState(false);
 
   const [cashStatus, setCashStatus] = useState<'abierta' | 'cerrada'>('cerrada');
+  const [cashView, setCashView] = useState<'overview'|'pay'|'owner'|'movements'>('overview');
   const [lastClosedDate, setLastClosedDate] = useState<string>('');
   const [cashHistoryOpen, setCashHistoryOpen] = useState(false);
   const [cashHistoryLoading, setCashHistoryLoading] = useState(false);
@@ -1122,9 +1123,42 @@ const handleAddBarber = async () => {
           </div>}
 
           {activeTab === 'caja' && (
-            <div className="space-y-6">
-              <CashDrawerCard />
-              <FinanceLedgerCard mode="admin" />
+            <div className="space-y-4">
+              <section className="rounded-3xl border border-zinc-800 bg-zinc-900/90 p-4 sm:p-6 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-xl font-extrabold text-zinc-100">Dinero de la barbería</h2>
+                    <p className="mt-1 text-sm text-zinc-400">Elegí qué necesitás hacer. Cada movimiento queda registrado.</p>
+                  </div>
+                  <span className={'rounded-full px-3 py-1.5 text-xs font-bold '+
+                    (cashStatus==='abierta'?'bg-emerald-500/15 text-emerald-300':'bg-amber-500/15 text-amber-300')}>
+                    Caja {cashStatus}
+                  </span>
+                </div>
+                <div role="tablist" aria-label="Qué hacer con el dinero" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {([
+                    {id:'overview',number:'01',label:'Ver caja',detail:'Saldos y cierre'},
+                    {id:'pay',number:'02',label:'Pagar barbero',detail:'Comisiones'},
+                    {id:'owner',number:'03',label:'Retirar dinero',detail:'Dueño'},
+                    {id:'movements',number:'04',label:'Otros movimientos',detail:'Gastos y extras'},
+                  ] as const).map(item=>(
+                    <button key={item.id} type="button" role="tab"
+                      aria-selected={cashView===item.id}
+                      onClick={()=>setCashView(item.id)}
+                      className={'min-h-[90px] rounded-2xl border p-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-emerald-400 '+
+                        (cashView===item.id?'border-emerald-400 bg-emerald-500/15':'border-zinc-700 bg-zinc-950 hover:border-zinc-500')}>
+                      <span className="text-[10px] font-bold text-emerald-400">{item.number}</span>
+                      <span className="mt-1 block text-sm font-extrabold text-zinc-100">{item.label}</span>
+                      <span className="mt-0.5 block text-[11px] text-zinc-400">{item.detail}</span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+              {cashView==='pay'&&<FinanceLedgerCard mode="admin" display="pay" />}
+              {cashView==='owner'&&<CashDrawerCard view="owner" />}
+              {cashView==='overview'&&<>
+                <CashDrawerCard view="overview" key={cashStatus} />
+                <FinanceLedgerCard mode="admin" display="summary" />
               {cashStatus !== 'abierta' && (
                 <div role="status" className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
                   La caja está cerrada. Podés consultar el historial, pero no agregar ni borrar gastos, propinas o cobros manuales hasta abrir la próxima caja.
@@ -1266,6 +1300,12 @@ const handleAddBarber = async () => {
                 )}
               </div>
 
+              </>}
+              {cashView==='movements'&&<>
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 sm:p-5">
+                <h3 className="text-base font-bold text-zinc-100">Gastos, propinas y cobros extras</h3>
+                <p className="mt-1 text-xs text-zinc-400">Registrá cada ingreso o salida con su medio de pago. Efectivo afecta el cajón; transferencia no.</p>
+              </div>
               <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-4">
                 <div>
                   <h3 className="font-bold text-base flex items-center gap-2">
@@ -1545,6 +1585,7 @@ const handleAddBarber = async () => {
                   ))}
                 </div>
               </div>
+              </>}
             </div>
           )}
 
