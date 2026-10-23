@@ -51,7 +51,6 @@ import {
   deleteServiceFromDb,
   getAdminBarbers,
   getAdminDashboardSnapshot,
-  getAgendaRevision,
   getMontevideoDateKey,
   saveBarbers,
   deleteBarberFromDb,
@@ -72,6 +71,7 @@ import { splitBusinessRevenue } from '@/lib/financial-allocations';
 import { invalidatePublicShopData } from '@/lib/public-shop-data';
 import { MAX_BARBER_PHOTO_BYTES } from '@/lib/barber-photo';
 import AgendaCalendar from '@/components/AgendaCalendar';
+import {useAgendaAutoSync} from '@/hooks/useAgendaAutoSync';
 
 type PeriodFilter = 'hoy' | 'semana' | 'mes';
 type CashHistoryEntry = {
@@ -237,68 +237,19 @@ export default function AdminDashboard() {
     loadAdminData();
   }, []);
 
-  // Detectar nuevas reservas/cancelaciones mediante una señal muy liviana.
-  // Sin cambios, no descargar la contabilidad completa innecesariamente.
-  useEffect(() => {
-    if (initialLoad !== 'ready') return;
-    let disposed = false;
-    let refreshing = false;
-    let checking = false;
-    let lastRevision: number | null = null;
-
-    const refreshOperations = async (): Promise<boolean> => {
-      if (disposed || refreshing || document.visibilityState === 'hidden') return false;
-      refreshing = true;
-      try {
+  const {syncState: agendaSyncState, lastUpdatedAt: agendaUpdatedAt, refresh: refreshAgenda} =
+    useAgendaAutoSync({
+      enabled: initialLoad === 'ready',
+      refreshData: async () => {
         const snapshot = await getAdminDashboardSnapshot();
-        if (disposed) return false;
         setAppointments(sortAppointmentsChronologically(snapshot.appointments));
         setExpenses(snapshot.expenses);
         setTips(snapshot.tips);
         setManualCharges(snapshot.manualCharges);
         setCashStatus(snapshot.cashStatus);
         setLastClosedDate(snapshot.lastClosedDate);
-        return true;
-      } catch (error) {
-        console.warn('No se pudo actualizar el panel de administración.', error);
-        return false;
-      } finally {
-        refreshing = false;
-      }
-    };
-
-    const checkAgenda = async () => {
-      if (disposed || checking || refreshing || document.visibilityState === 'hidden') return;
-      checking = true;
-      try {
-        const revision = await getAgendaRevision();
-        if (disposed) return;
-        if (lastRevision === null) {
-          lastRevision = revision;
-        } else if (revision !== lastRevision) {
-          if (await refreshOperations()) lastRevision = revision;
-        }
-      } catch (error) {
-        console.warn('No se pudo comprobar si cambió la agenda.', error);
-      } finally {
-        checking = false;
-      }
-    };
-
-    void checkAgenda();
-    const quickInterval = window.setInterval(() => void checkAgenda(), 6_000);
-    const fullInterval = window.setInterval(() => void refreshOperations(), 60_000);
-    const onFocus = () => void refreshOperations();
-    window.addEventListener('focus', onFocus);
-    document.addEventListener('visibilitychange', onFocus);
-    return () => {
-      disposed = true;
-      window.clearInterval(quickInterval);
-      window.clearInterval(fullInterval);
-      window.removeEventListener('focus', onFocus);
-      document.removeEventListener('visibilitychange', onFocus);
-    };
-  }, [initialLoad]);
+      },
+    });
 
   const toggleCashHistory = async () => {
     if (cashHistoryOpen) { setCashHistoryOpen(false); return; }
@@ -1795,6 +1746,9 @@ const handleAddBarber = async () => {
               onComplete={(appointment) => {void handleStatusChange(appointment.id, 'completado');}}
               onCancel={(appointment) => {void handleStatusChange(appointment.id, 'cancelado');}}
               getWhatsAppLink={getClientWhatsAppLink}
+              syncState={agendaSyncState}
+              lastUpdatedAt={agendaUpdatedAt}
+              onRefresh={refreshAgenda}
             />
           )}
 

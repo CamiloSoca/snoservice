@@ -24,7 +24,6 @@ import {
   ManualChargeItem,
   unlockBarberPanelWithPin,
   getBarberDashboardSnapshot,
-  getAgendaRevision,
   getMontevideoDateKey,
   updateAppointmentStatus,
   createTip,
@@ -39,6 +38,7 @@ import { InitialShopSkeleton, PanelLoading } from '@/components/InitialShopState
 import type { PublicShopData } from '@/lib/public-shop-data';
 import { splitBusinessRevenue } from '@/lib/financial-allocations';
 import AgendaCalendar from '@/components/AgendaCalendar';
+import {useAgendaAutoSync} from '@/hooks/useAgendaAutoSync';
 
 const MONTH_NAMES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -152,79 +152,23 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
     }
   };
 
-  // Consultas livianas cada 6 s para actualizar turnos nuevos/cancelados.
-  // Los datos completos se descargan solo cuando cambia la versión de agenda,
-  // al regresar a la pantalla o en la sincronización general cada minuto.
-  useEffect(() => {
-    if (!isUnlocked || panelLoading) return;
-    let disposed = false;
-    let refreshing = false;
-    let checking = false;
-    let lastRevision: number | null = null;
-
-    const refreshOperations = async (): Promise<boolean> => {
-      if (disposed || refreshing || document.visibilityState === 'hidden') return false;
-      refreshing = true;
-      try {
+  const {syncState: agendaSyncState, lastUpdatedAt: agendaUpdatedAt, refresh: refreshAgenda} =
+    useAgendaAutoSync({
+      enabled: isUnlocked && !panelLoading,
+      refreshData: async () => {
         const snapshot = await getBarberDashboardSnapshot();
-        if (disposed) return false;
         setBarberAppointments(sortAppointmentsChronologically(snapshot.appointments));
         setBarberTips(snapshot.tips);
         setBarberCharges(snapshot.manualCharges);
         setCashOpen(snapshot.cashOpen);
         setCommissionRate(snapshot.commissionRate);
         setIsOwner(snapshot.isOwner);
-        return true;
-      } catch (error: any) {
-        if (!disposed && error?.status === 401) {
-          setIsUnlocked(false);
-          setErrorMsg('Tu sesión venció. Ingresá tu PIN nuevamente.');
-        } else {
-          console.warn('No se pudieron actualizar los turnos del barbero.', error);
-        }
-        return false;
-      } finally {
-        refreshing = false;
-      }
-    };
-
-    const checkAgenda = async () => {
-      if (disposed || checking || refreshing || document.visibilityState === 'hidden') return;
-      checking = true;
-      try {
-        const revision = await getAgendaRevision();
-        if (disposed) return;
-        if (lastRevision === null) {
-          lastRevision = revision;
-        } else if (revision !== lastRevision) {
-          if (await refreshOperations()) lastRevision = revision;
-        }
-      } catch (error: any) {
-        if (!disposed && error?.status === 401) {
-          setIsUnlocked(false);
-          setErrorMsg('Tu sesión venció. Ingresá tu PIN nuevamente.');
-        } else {
-          console.warn('No se pudo comprobar si cambió la agenda.', error);
-        }
-      } finally {
-        checking = false;
-      }
-    };
-
-    void checkAgenda();
-    const quickInterval = window.setInterval(() => void checkAgenda(), 6_000);
-    const fullInterval = window.setInterval(() => void refreshOperations(), 60_000);
-    const onFocus = () => void refreshOperations();
-    window.addEventListener('focus', onFocus);
-    document.addEventListener('visibilitychange', onFocus);
-    return () => {
-      disposed = true;
-      window.clearInterval(quickInterval);
-      window.clearInterval(fullInterval);
-      window.removeEventListener('focus', onFocus);
-      document.removeEventListener('visibilitychange', onFocus);
-    };
-  }, [isUnlocked, panelLoading]);
+      },
+      onUnauthorized: () => {
+        setIsUnlocked(false);
+        setErrorMsg('Tu sesión venció. Ingresá tu PIN nuevamente.');
+      },
+    });
 
   const handleStatusChange = async (appointmentId: string, status: AppointmentItem['status']) => {
     try {
@@ -572,6 +516,9 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
               canComplete={cashOpen}
               onComplete={(appointment) => {void handleStatusChange(appointment.id, 'completado');}}
               onCancel={(appointment) => {void handleStatusChange(appointment.id, 'cancelado');}}
+              syncState={agendaSyncState}
+              lastUpdatedAt={agendaUpdatedAt}
+              onRefresh={refreshAgenda}
             />
 
             <details className="rounded-3xl border border-zinc-800 bg-zinc-900/90">

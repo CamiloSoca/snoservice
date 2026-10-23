@@ -524,11 +524,20 @@ export function getMontevideoDateKey(value: Date | string = new Date()): string 
 
 // Una consulta de una columna detecta cambios de reservas sin cargar finanzas.
 export async function getAgendaRevision(): Promise<number> {
-  const {revision} = await apiRequest('/api/agenda-revision', {cache: 'no-store'});
-  if (!Number.isSafeInteger(revision) || revision < 0) {
-    throw new Error('La señal de actualización de agenda no es válida.');
+  // Una conexión interrumpida no debe detener el polling indefinidamente.
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 7_000);
+  try {
+    const {revision} = await apiRequest('/api/agenda-revision', {
+      cache: 'no-store', signal: controller.signal,
+    });
+    if (!Number.isSafeInteger(revision) || revision < 0) {
+      throw new Error('La señal de actualización de agenda no es válida.');
+    }
+    return revision;
+  } finally {
+    clearTimeout(timeout);
   }
-  return revision;
 }
 
 export async function getAdminDashboardSnapshot(): Promise<AdminDashboardSnapshot> {
@@ -762,7 +771,16 @@ export interface BarberDashboardSnapshot {
 }
 
 export async function getBarberDashboardSnapshot(): Promise<BarberDashboardSnapshot> {
-  const response = await apiRequest('/api/barber/bootstrap', {cache: 'no-store'});
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12_000);
+  let response: Awaited<ReturnType<typeof apiRequest>>;
+  try {
+    response = await apiRequest('/api/barber/bootstrap', {
+      cache: 'no-store', signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
   return {
     appointments: (response.appointments || []) as AppointmentItem[],
     tips: (response.tips || []) as TipItem[],

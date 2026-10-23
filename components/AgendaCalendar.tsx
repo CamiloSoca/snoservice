@@ -1,7 +1,7 @@
 'use client';
 
-import {useMemo, useState} from 'react';
-import {CalendarDays, ChevronLeft, ChevronRight, CheckCircle2, XCircle, MessageCircle, Clock3} from 'lucide-react';
+import {useMemo, useState, useEffect} from 'react';
+import {CalendarDays, ChevronLeft, ChevronRight, CheckCircle2, XCircle, MessageCircle, Clock3, RefreshCw, WifiOff} from 'lucide-react';
 import type {AppointmentItem, BarberItem} from '@/lib/booking-store';
 import {appointmentTimeState} from '@/lib/appointment-rules';
 import {
@@ -21,6 +21,9 @@ interface AgendaCalendarProps {
   onComplete: (appointment: AppointmentItem) => void;
   onCancel: (appointment: AppointmentItem) => void;
   getWhatsAppLink?: (appointment: AppointmentItem) => string;
+  syncState: 'connecting' | 'updating' | 'connected' | 'error';
+  lastUpdatedAt: number | null;
+  onRefresh: () => void;
 }
 
 interface AppointmentPosition {
@@ -72,6 +75,7 @@ const formatMoney = (amount: number) => '$' + new Intl.NumberFormat('es-UY', {
 
 export default function AgendaCalendar({
   mode, appointments, barbers, canComplete, onComplete, onCancel, getWhatsAppLink,
+  syncState, lastUpdatedAt, onRefresh,
 }: AgendaCalendarProps) {
   const [view, setView] = useState<CalendarView>('dia');
   const [selectedDate, setSelectedDate] = useState<string>(() => todayInMontevideo());
@@ -79,6 +83,11 @@ export default function AgendaCalendar({
   const [selectedAppointmentId, setSelectedAppointmentId] = useState<string | null>(null);
 
   const today = todayInMontevideo();
+  const syncLabel = syncState === 'error' ? 'Sin sincronizar'
+    : syncState === 'updating' || syncState === 'connecting' ? 'Actualizando…'
+    : lastUpdatedAt ? 'Actualizado ' + new Intl.DateTimeFormat('es-UY', {
+      timeZone: 'America/Montevideo', hour: '2-digit', minute: '2-digit',
+    }).format(new Date(lastUpdatedAt)) : 'Al día';
   const filteredBarbers = useMemo(() => (
     mode === 'admin' && selectedBarber !== 'todos'
       ? barbers.filter(barber => barber.id === selectedBarber)
@@ -111,6 +120,16 @@ export default function AgendaCalendar({
     appointment => appointment.id === selectedAppointmentId
   ) || null;
 
+  // El detalle siempre debe poder cerrarse desde el teclado.
+  useEffect(() => {
+    if (!selectedAppointmentId) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSelectedAppointmentId(null);
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
+  }, [selectedAppointmentId]);
+
   const serviceAmount = calendarAppointments.reduce(
     (sum, appointment) => sum + Number(appointment.priceSnapshot ?? appointment.servicePrice ?? 0), 0
   );
@@ -128,6 +147,7 @@ export default function AgendaCalendar({
     (_, index) => firstMinute + index * 60);
 
   const columns = filteredBarbers.length;
+  const noAppointments = dayAppointments.length === 0;
   const gridStyle = {
     gridTemplateColumns: '66px repeat(' + Math.max(1, columns) + ', minmax(190px, 1fr))',
     minWidth: 66 + Math.max(1, columns) * 190,
@@ -158,6 +178,7 @@ export default function AgendaCalendar({
       window.alert('Este turno ya comenzó o pasó y no se puede cancelar.');
       return;
     }
+    if (!window.confirm('¿Seguro que querés cancelar este turno?')) return;
     onCancel(appointment);
     setSelectedAppointmentId(null);
   }
@@ -172,20 +193,20 @@ export default function AgendaCalendar({
           current === appointment.id ? null : appointment.id)}
         className={'w-full rounded-xl border-l-[3px] border px-3 py-2 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 ' +
           (selectedAppointmentId === appointment.id
-            ? 'border-l-blue-600 border-blue-300 bg-blue-50'
+            ? 'border-l-emerald-400 border-emerald-500/50 bg-emerald-500/10'
             : appointment.status === 'completado'
-              ? 'border-l-emerald-600 border-zinc-200 bg-emerald-50/70 hover:bg-emerald-50'
-              : 'border-l-amber-500 border-zinc-200 bg-white hover:bg-slate-50')}
+              ? 'border-l-emerald-600 border-zinc-800 bg-emerald-500/10 hover:bg-emerald-500/10'
+              : 'border-l-amber-500 border-zinc-800 bg-zinc-900 hover:bg-zinc-900')}
       >
         <div className={'flex items-start gap-2 ' + (compact ? 'justify-between' : 'flex-col')}>
-          <span className="text-xs font-extrabold tabular-nums text-slate-700">{appointment.timeSlot}</span>
+          <span className="text-xs font-extrabold tabular-nums text-zinc-200">{appointment.timeSlot}</span>
           {compact && <span className={'text-[10px] font-semibold ' +
-            (appointment.status === 'completado' ? 'text-emerald-700' : 'text-amber-700')}>
+            (appointment.status === 'completado' ? 'text-emerald-300' : 'text-amber-300')}>
             {appointment.status === 'completado' ? 'Completado' : 'Sin marcar'}
           </span>}
         </div>
-        <p className="truncate text-xs font-bold text-slate-900">{appointment.clientName}</p>
-        <p className="truncate text-[11px] text-slate-500">
+        <p className="truncate text-xs font-bold text-zinc-100">{appointment.clientName}</p>
+        <p className="truncate text-[11px] text-zinc-400">
           {appointment.serviceName}{mode === 'admin' && compact ? ' · ' + appointment.barberName : ''}
         </p>
       </button>
@@ -193,46 +214,46 @@ export default function AgendaCalendar({
   }
 
   return (
-    <section className="overflow-hidden rounded-[26px] border border-slate-200 bg-slate-50 text-slate-950 shadow-sm">
-      <div className="space-y-4 border-b border-slate-200 bg-white p-4 sm:p-5">
+    <section className="overflow-hidden rounded-3xl border border-zinc-800 bg-zinc-950 text-zinc-100 shadow-sm">
+      <div className="space-y-4 border-b border-zinc-800 bg-zinc-900/80 p-4 sm:p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-slate-500">
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-zinc-400">
               <CalendarDays className="h-4 w-4" />
               {mode === 'admin' ? 'Agenda de la barbería' : 'Mi agenda'}
             </div>
             <h2 className="mt-1 text-xl font-extrabold tracking-tight sm:text-2xl">
               {view === 'dia' ? readableDay(selectedDate) : readableWeek(selectedDate)}
               {view === 'dia' && selectedDate === today && (
-                <span className="ml-2 text-xs font-semibold text-rose-600">(hoy)</span>
+                <span className="ml-2 text-xs font-semibold text-emerald-400">(hoy)</span>
               )}
             </h2>
           </div>
           <div className="flex items-center gap-1.5">
             <button type="button" onClick={() => navigate(-1)}
               aria-label={view === 'dia' ? 'Día anterior' : 'Semana anterior'}
-              className="rounded-xl border border-slate-200 p-2.5 hover:bg-slate-100"><ChevronLeft className="h-4 w-4" /></button>
+              className="rounded-xl border border-zinc-800 p-2.5 hover:bg-zinc-800"><ChevronLeft className="h-4 w-4" /></button>
             <button type="button" onClick={() => {setSelectedDate(today); setSelectedAppointmentId(null);}}
-              className="rounded-xl border border-slate-300 px-3 py-2.5 text-xs font-bold hover:bg-slate-100">Hoy</button>
+              className="rounded-xl border border-zinc-700 px-3 py-2.5 text-xs font-bold hover:bg-zinc-800">Hoy</button>
             <button type="button" onClick={() => navigate(1)}
               aria-label={view === 'dia' ? 'Día siguiente' : 'Semana siguiente'}
-              className="rounded-xl border border-slate-200 p-2.5 hover:bg-slate-100"><ChevronRight className="h-4 w-4" /></button>
+              className="rounded-xl border border-zinc-800 p-2.5 hover:bg-zinc-800"><ChevronRight className="h-4 w-4" /></button>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="inline-flex rounded-xl border border-slate-200 bg-slate-100 p-1" aria-label="Vista de la agenda">
+          <div className="inline-flex rounded-xl border border-zinc-800 bg-zinc-800 p-1" aria-label="Vista de la agenda">
             <button type="button" onClick={() => selectView('dia')} aria-pressed={view === 'dia'}
               className={'rounded-lg px-4 py-2 text-xs font-bold ' +
-                (view === 'dia' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-600')}>Día</button>
+                (view === 'dia' ? 'bg-emerald-400 text-zinc-950 shadow-sm' : 'text-zinc-400')}>Día</button>
             <button type="button" onClick={() => selectView('semana')} aria-pressed={view === 'semana'}
               className={'rounded-lg px-4 py-2 text-xs font-bold ' +
-                (view === 'semana' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-600')}>Semana</button>
+                (view === 'semana' ? 'bg-emerald-400 text-zinc-950 shadow-sm' : 'text-zinc-400')}>Semana</button>
           </div>
-          <div className="text-xs font-medium text-slate-500">
-            <strong className="text-slate-800">{calendarAppointments.length}</strong> turnos
+          <div className="text-xs font-medium text-zinc-400">
+            <strong className="text-zinc-200">{calendarAppointments.length}</strong> turnos
             <span className="mx-1">·</span>
-            <strong className="text-slate-800">{formatMoney(serviceAmount)}</strong> en servicios
+            <strong className="text-zinc-200">{formatMoney(serviceAmount)}</strong> en servicios
           </div>
         </div>
 
@@ -241,16 +262,16 @@ export default function AgendaCalendar({
             <button type="button" onClick={() => {setSelectedBarber('todos');setSelectedAppointmentId(null);}}
               aria-pressed={selectedBarber === 'todos'}
               className={'shrink-0 rounded-full border px-3.5 py-2 text-xs font-bold ' +
-                (selectedBarber === 'todos' ? 'border-slate-800 bg-slate-800 text-white'
-                  : 'border-slate-200 bg-white text-slate-600 hover:border-slate-400')}>
+                (selectedBarber === 'todos' ? 'border-emerald-400 bg-emerald-400 text-zinc-950'
+                  : 'border-zinc-800 bg-zinc-900 text-zinc-400 hover:border-zinc-600')}>
               Todos
             </button>
             {barbers.map(barber => (
               <button type="button" key={barber.id} aria-pressed={selectedBarber === barber.id}
                 onClick={() => {setSelectedBarber(barber.id);setSelectedAppointmentId(null);}}
                 className={'shrink-0 rounded-full border px-3.5 py-2 text-xs font-semibold ' +
-                  (selectedBarber === barber.id ? 'border-slate-800 bg-slate-800 text-white'
-                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-400')}>
+                  (selectedBarber === barber.id ? 'border-emerald-400 bg-emerald-400 text-zinc-950'
+                    : 'border-zinc-800 bg-zinc-900 text-zinc-400 hover:border-zinc-600')}>
                 {barber.name}
               </button>
             ))}
@@ -258,33 +279,82 @@ export default function AgendaCalendar({
         )}
       </div>
 
+
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800 bg-zinc-900/80 px-4 py-2.5">
+        <div role="status" aria-live="polite" className={'flex items-center gap-1.5 text-[11px] font-semibold ' +
+          (syncState === 'error' ? 'text-amber-300' : 'text-zinc-400')}>
+          {syncState === 'error' ? <WifiOff className="h-3.5 w-3.5" /> :
+            <span className={'h-1.5 w-1.5 rounded-full ' +
+              (syncState === 'connected' ? 'bg-emerald-400' : 'bg-amber-400')} />}
+          {syncLabel}
+        </div>
+        <button type="button" onClick={onRefresh} disabled={syncState === 'updating'}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-1.5 text-[11px] font-semibold text-zinc-200 hover:border-emerald-500 hover:text-emerald-300 disabled:opacity-50"
+          aria-label="Actualizar la agenda ahora">
+          <RefreshCw className={'h-3.5 w-3.5 ' + (syncState === 'updating' ? 'animate-spin' : '')} />
+          Actualizar
+        </button>
+      </div>
+
       {columns === 0 ? (
-        <div className="p-8 text-center text-sm text-slate-500">
+        <div className="p-8 text-center text-sm text-zinc-400">
           {mode === 'admin' ? 'Todavía no hay barberos configurados.' : 'No se encontró tu perfil de barbero.'}
         </div>
       ) : view === 'dia' ? (
         <div>
-          <div className="max-h-[650px] overflow-auto overscroll-contain">
+          <div className="space-y-2 p-3 lg:hidden">
+            {noAppointments ? (
+              <div className="rounded-2xl border border-dashed border-zinc-700 bg-zinc-900 px-4 py-10 text-center">
+                <CalendarDays className="mx-auto h-7 w-7 text-zinc-500" />
+                <p className="mt-2 text-sm font-bold text-zinc-200">Sin turnos para este día</p>
+                <p className="mt-1 text-xs text-zinc-500">Cambiá la fecha con las flechas de arriba.</p>
+              </div>
+            ) : (
+              dayAppointments.map((appointment) => (
+                <button key={appointment.id} type="button"
+                  onClick={() => setSelectedAppointmentId(appointment.id)}
+                  className="flex min-h-[78px] w-full items-center gap-3 rounded-2xl border border-zinc-800 bg-zinc-900 px-3 py-3 text-left active:scale-[0.99] hover:border-zinc-600">
+                  <div className="w-[54px] shrink-0 border-r border-zinc-700 pr-2 text-center">
+                    <span className="block text-sm font-black tabular-nums text-emerald-400">{appointment.timeSlot}</span>
+                    <span className="text-[10px] text-zinc-500">{appointment.durationMinutes || 60} min</span>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-bold text-zinc-100">{appointment.clientName}</p>
+                    <p className="mt-0.5 truncate text-xs text-zinc-400">{appointment.serviceName}</p>
+                    {mode === 'admin' && <p className="mt-1 truncate text-[11px] font-semibold text-emerald-400">
+                      {appointment.barberName}
+                    </p>}
+                  </div>
+                  <span className={'shrink-0 rounded-full px-2 py-1 text-[10px] font-bold ' +
+                    (appointment.status === 'completado'
+                      ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-300')}>
+                    {appointment.status === 'completado' ? 'Hecho' : 'Pendiente'}
+                  </span>
+                </button>
+              ))
+            )}
+          </div>
+          <div className="hidden max-h-[650px] overflow-auto overscroll-contain lg:block">
             <div style={{minWidth: gridStyle.minWidth}}>
-              <div className="sticky top-0 z-20 grid border-b border-slate-200 bg-slate-100"
+              <div className="sticky top-0 z-20 grid border-b border-zinc-800 bg-zinc-800"
                 style={gridStyle}>
-                <div className="border-r border-slate-200 px-2 py-3 text-center text-[11px] font-bold text-slate-500">Hora</div>
+                <div className="border-r border-zinc-800 px-2 py-3 text-center text-[11px] font-bold text-zinc-400">Hora</div>
                 {filteredBarbers.map(barber => (
-                  <div key={barber.id} className="border-r border-slate-200 px-3 py-3 text-center text-xs font-extrabold text-slate-800">
+                  <div key={barber.id} className="border-r border-zinc-800 px-3 py-3 text-center text-xs font-extrabold text-zinc-200">
                     {barber.name}
-                    <span className="ml-1 font-normal text-slate-400">
+                    <span className="ml-1 font-normal text-zinc-500">
                       ({dayAppointments.filter(appointment => appointment.barberId === barber.id).length})
                     </span>
                   </div>
                 ))}
               </div>
               <div className="grid" style={gridStyle}>
-                <div className="relative border-r border-slate-200 bg-slate-50"
+                <div className="relative border-r border-zinc-800 bg-zinc-900"
                   style={{height: timelineHeight}}>
                   {hourLines.map(minute => (
-                    <div key={minute} className="absolute right-0 w-full border-t border-slate-200 text-right"
+                    <div key={minute} className="absolute right-0 w-full border-t border-zinc-800 text-right"
                       style={{top: ((minute - firstMinute) / 60) * HOUR_PX}}>
-                      <span className="relative -top-2.5 pr-2 text-[10px] tabular-nums text-slate-400">
+                      <span className="relative -top-2.5 pr-2 text-[10px] tabular-nums text-zinc-500">
                         {String(Math.floor(minute / 60)).padStart(2, '0')}:00
                       </span>
                     </div>
@@ -293,10 +363,10 @@ export default function AgendaCalendar({
                 {filteredBarbers.map(barber => {
                   const events = positionAppointments(dayAppointments.filter(a => a.barberId === barber.id));
                   return (
-                    <div key={barber.id} className="relative border-r border-slate-200 bg-white"
+                    <div key={barber.id} className="relative border-r border-zinc-800 bg-zinc-900"
                       style={{height: timelineHeight}}>
                       {hourLines.map(minute => (
-                        <div key={minute} className="pointer-events-none absolute left-0 right-0 border-t border-slate-100"
+                        <div key={minute} className="pointer-events-none absolute left-0 right-0 border-t border-zinc-800"
                           style={{top: ((minute - firstMinute) / 60) * HOUR_PX}} />
                       ))}
                       {events.map(event => {
@@ -314,14 +384,14 @@ export default function AgendaCalendar({
                                 ' a las ' + event.appointment.timeSlot}
                               className={'h-full w-full overflow-hidden rounded-lg border-l-[3px] border px-2 py-1 text-left shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 ' +
                                 (selectedAppointmentId === event.appointment.id
-                                  ? 'border-l-blue-600 border-blue-300 bg-blue-50'
+                                  ? 'border-l-emerald-400 border-emerald-500/50 bg-emerald-500/10'
                                   : event.appointment.status === 'completado'
-                                    ? 'border-l-emerald-500 border-emerald-200 bg-emerald-50'
-                                    : 'border-l-amber-500 border-slate-200 bg-slate-50 hover:bg-slate-100')}>
-                              <span className="block truncate text-[11px] font-bold tabular-nums text-slate-700">
+                                    ? 'border-l-emerald-500 border-emerald-600/40 bg-emerald-500/10'
+                                    : 'border-l-amber-500 border-zinc-800 bg-zinc-900 hover:bg-zinc-800')}>
+                              <span className="block truncate text-[11px] font-bold tabular-nums text-zinc-200">
                                 {event.appointment.timeSlot} {event.appointment.clientName}
                               </span>
-                              <span className="block truncate text-[10px] text-slate-500">{event.appointment.serviceName}</span>
+                              <span className="block truncate text-[10px] text-zinc-400">{event.appointment.serviceName}</span>
                             </button>
                           </div>
                         );
@@ -332,16 +402,6 @@ export default function AgendaCalendar({
               </div>
             </div>
           </div>
-          {dayAppointments.length === 0 && (
-            <p className="border-t border-slate-200 px-4 py-3 text-center text-xs text-slate-500">
-              No hay turnos para este día. Deslizá para ver otros profesionales.
-            </p>
-          )}
-          {columns > 1 && (
-            <p className="border-t border-slate-100 px-4 py-2 text-center text-[11px] text-slate-400 sm:hidden">
-              Deslizá horizontalmente para ver todos los barberos.
-            </p>
-          )}
         </div>
       ) : (
         <div className="space-y-3 p-3 sm:p-4">
@@ -350,19 +410,19 @@ export default function AgendaCalendar({
               .filter(appointment => filteredBarbers.some(barber => barber.id === appointment.barberId));
             return (
               <div key={date} className={'overflow-hidden rounded-2xl border ' +
-                (date === today ? 'border-rose-300 bg-rose-50/30' : 'border-slate-200 bg-white')}>
+                (date === today ? 'border-emerald-500/50 bg-emerald-500/5' : 'border-zinc-800 bg-zinc-900')}>
                 <button type="button"
                   onClick={() => {setSelectedDate(date);setView('dia');setSelectedAppointmentId(null);}}
-                  className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left hover:bg-slate-50">
-                  <span className="text-sm font-extrabold text-slate-800">
-                    {readableDay(date)} {date === today && <span className="ml-1 text-xs font-bold text-rose-600">hoy</span>}
+                  className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left hover:bg-zinc-900">
+                  <span className="text-sm font-extrabold text-zinc-200">
+                    {readableDay(date)} {date === today && <span className="ml-1 text-xs font-bold text-emerald-400">hoy</span>}
                   </span>
-                  <span className="text-xs font-medium text-slate-500">
+                  <span className="text-xs font-medium text-zinc-400">
                     {items.length ? String(items.length) + ' turnos' : 'Sin turnos'} →
                   </span>
                 </button>
                 {items.length > 0 && (
-                  <div className="space-y-2 border-t border-slate-100 p-2 sm:p-3">
+                  <div className="space-y-2 border-t border-zinc-800 p-2 sm:p-3">
                     {items.map(item => bookingCard(item, true))}
                   </div>
                 )}
@@ -373,34 +433,38 @@ export default function AgendaCalendar({
       )}
 
       {selectedAppointment && (
-        <div
-          className="fixed inset-x-3 bottom-[max(12px,env(safe-area-inset-bottom))] z-50 max-h-[65vh] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl sm:static sm:max-h-none sm:rounded-none sm:border-x-0 sm:border-b-0 sm:p-5 sm:shadow-none"
-          role="region" aria-label="Detalle del turno seleccionado">
+        <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
+          <button type="button" onClick={() => setSelectedAppointmentId(null)}
+            className="absolute inset-0 w-full cursor-default bg-black/75"
+            aria-label="Cerrar detalle del turno" />
+          <div
+            className="relative z-10 w-full max-w-md max-h-[82vh] overflow-y-auto rounded-t-3xl border border-zinc-700 bg-zinc-900 p-5 shadow-2xl sm:mx-4 sm:rounded-3xl"
+            role="dialog" aria-modal="true" aria-label="Detalle del turno seleccionado">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Detalle del turno</p>
-              <h3 className="mt-1 text-base font-extrabold text-slate-900">{selectedAppointment.clientName}</h3>
-              <p className="mt-1 text-xs text-slate-600">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-zinc-400">Detalle del turno</p>
+              <h3 className="mt-1 text-base font-extrabold text-zinc-100">{selectedAppointment.clientName}</h3>
+              <p className="mt-1 text-xs text-zinc-400">
                 <Clock3 className="mr-1 inline h-3 w-3" />
                 {selectedAppointment.dateString} · {selectedAppointment.timeSlot} hs · {selectedAppointment.durationMinutes} min
               </p>
-              <p className="mt-1 text-xs text-slate-600">
+              <p className="mt-1 text-xs text-zinc-400">
                 {selectedAppointment.serviceName} · {selectedAppointment.barberName} ·
                 {' ' + formatMoney(Number(selectedAppointment.priceSnapshot ?? selectedAppointment.servicePrice ?? 0))}
               </p>
-              <p className="mt-1 text-[11px] font-semibold text-slate-500">
+              <p className="mt-1 text-[11px] font-semibold text-zinc-400">
                 Estado: {selectedAppointment.status === 'completado' ? 'Completado' : 'Sin marcar'}
               </p>
             </div>
             <button type="button" onClick={() => setSelectedAppointmentId(null)}
-              className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-500 hover:bg-slate-50">
+              className="rounded-lg border border-zinc-800 px-2.5 py-1.5 text-xs text-zinc-400 hover:bg-zinc-900">
               Cerrar
             </button>
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
             {getWhatsAppLink && selectedAppointment.clientPhone && (
               <a href={getWhatsAppLink(selectedAppointment)} target="_blank" rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700">
+                className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 px-3 py-2 text-xs font-bold text-zinc-200">
                 <MessageCircle className="h-3.5 w-3.5 text-emerald-600" /> WhatsApp
               </a>
             )}
@@ -408,7 +472,7 @@ export default function AgendaCalendar({
               <>
                 <button type="button" onClick={() => handleComplete(selectedAppointment)}
                   disabled={!canComplete}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-40">
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-400 px-3 py-2 text-xs font-bold text-zinc-950 disabled:cursor-not-allowed disabled:opacity-40">
                   <CheckCircle2 className="h-3.5 w-3.5" /> Completar
                 </button>
                 <button type="button" onClick={() => handleCancel(selectedAppointment)}
@@ -419,7 +483,8 @@ export default function AgendaCalendar({
             )}
           </div>
           {!canComplete && selectedAppointment.status === 'confirmado' &&
-            <p className="mt-2 text-[11px] text-amber-700">Abrí la caja para poder completar turnos.</p>}
+            <p className="mt-2 text-[11px] text-amber-300">Abrí la caja para poder completar turnos.</p>}
+          </div>
         </div>
       )}
     </section>
