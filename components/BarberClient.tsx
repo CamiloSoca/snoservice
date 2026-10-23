@@ -39,6 +39,7 @@ import { InitialShopSkeleton, PanelLoading } from '@/components/InitialShopState
 import type { PublicShopData } from '@/lib/public-shop-data';
 import { splitBusinessRevenue } from '@/lib/financial-allocations';
 import AgendaCalendar from '@/components/AgendaCalendar';
+import type {OnSitePaymentMethod} from '@/lib/payment-method';
 import {customerWhatsAppLink} from '@/lib/customer-contact';
 import {useAgendaAutoSync} from '@/hooks/useAgendaAutoSync';
 
@@ -198,10 +199,10 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
     return () => {mounted = false; window.clearInterval(timer); window.removeEventListener('focus', focus);};
   }, [isUnlocked, panelLoading]);
 
-  const handleStatusChange = async (appointmentId: string, status: AppointmentItem['status']) => {
+  const handleStatusChange = async (appointmentId: string, status: AppointmentItem['status'], paymentMethod?: OnSitePaymentMethod) => {
     try {
       setErrorMsg('');
-      const persisted = await updateAppointmentStatus(appointmentId, status);
+      const persisted = await updateAppointmentStatus(appointmentId, status, paymentMethod);
       setBarberAppointments((current) => current.map((appointment) =>
         appointment.id === appointmentId ? {...appointment, ...persisted} : appointment
       ));
@@ -557,7 +558,7 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
               appointments={barberAppointments.filter(appointment => appointment.barberId === selectedBarberId)}
               barbers={selectedBarberObj ? [{id: selectedBarberObj.id, name: selectedBarberObj.name}] : []}
               canComplete={cashOpen}
-              onComplete={(appointment) => handleStatusChange(appointment.id, 'completado')}
+              onComplete={(appointment, method) => handleStatusChange(appointment.id, 'completado', method)}
               onCancel={(appointment) => handleStatusChange(appointment.id, 'cancelado')}
               getWhatsAppLink={(appointment) => customerWhatsAppLink(
                 appointment.clientPhone, appointment.clientName, "13'Cut"
