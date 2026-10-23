@@ -1154,9 +1154,15 @@ const handleAddBarber = async () => {
                           if (isTodayClosed && isStagingTest && !window.confirm(
                             '¿Abrir una nueva caja de PRUEBA? La caja que cerraste hoy quedará guardada y esta nueva empezará desde $0.'
                           )) return;
+                          const previous=await fetch('/api/finance/cash',{cache:'no-store'}).then(r=>r.json()).catch(()=>({}));
+                          const suggested=previous.drawer?.closingCounted==null?'0':String(previous.drawer.closingCounted);
+                          const entered=window.prompt('Contá el efectivo físico del cajón. ¿Cuánto hay al abrir esta jornada (UYU)?',suggested);
+                          if(entered===null)return;
+                          const initialCash=entered.trim();
+                          if(!/^\d{1,8}(\.\d{1,2})?$/.test(initialCash)){alert('Ingresá efectivo válido, ej. 1000.');return;}
                           const res = await fetch('/api/admin', {
                             method: 'POST', headers: {'Content-Type':'application/json'},
-                            body: JSON.stringify({operation:'OPEN_CASH', initialAmount:0}),
+                            body: JSON.stringify({operation:'OPEN_CASH', initialAmount:initialCash}),
                           });
                           if (!res.ok) {
                             const payload = await res.json().catch(() => ({}));
@@ -1177,9 +1183,20 @@ const handleAddBarber = async () => {
                         type="button"
                         onClick={async () => {
                           const todayIso = new Date().toISOString();
+                          const finance=await fetch('/api/finance/cash',{cache:'no-store'}).then(r=>r.json()).catch(()=>({}));
+                          const drawer=finance.drawer;
+                          const legacy=Boolean(drawer && !drawer.openingVerified);
+                          if(legacy&&!window.confirm('Caja anterior al arqueo: se cerrará económicamente pero SIN efectivo verificado. ¿Confirmás?'))return;
+                          if(!legacy&&(!drawer||!drawer.reliable)){
+                            alert('Revisá el arqueo: falta verificar el saldo inicial o hay movimientos sin clasificar.');return;
+                          }
+                          const counted=window.prompt('Contá el efectivo físico que quedó en caja al cerrar (UYU).',
+                            !legacy&&drawer?.reliable?String(drawer.expectedCash):'0');
+                          if(counted===null)return;
+                          if(!/^\d{1,8}(\.\d{1,2})?$/.test(counted.trim())){alert('Importe contado inválido.');return;}
                           const res = await fetch('/api/admin', {
                             method: 'POST', headers: {'Content-Type':'application/json'},
-                            body: JSON.stringify({operation:'CLOSE_CASH'}),
+                            body: JSON.stringify({operation:'CLOSE_CASH',countedCash:counted.trim(),acknowledgeLegacy:legacy}),
                           });
                           if (!res.ok) {
                             const payload = await res.json().catch(() => ({}));
@@ -1190,7 +1207,9 @@ const handleAddBarber = async () => {
                           setCashStatus('cerrada');
                           setLastClosedDate(getMontevideoDateKey(todayIso));
                           const closing = payload.summary;
-                          alert(`¡Caja cerrada! Facturación: ${closing.grossSales}. Comisiones: ${closing.barberCommissions}. Gastos: ${closing.expenses}. Fondo común neto: ${closing.fundNet}.`);
+                          alert(closing.physicalCashVerified
+                            ? `Caja cerrada. Efectivo esperado: ${closing.expectedCash}. Contado: ${closing.countedCash}. Diferencia: ${closing.difference}. Resultado económico: ${closing.fundNet}.`
+                            : `Cierre histórico SIN efectivo conciliado. Resultado económico: ${closing.fundNet}. Al abrir la próxima caja contá el efectivo real.`);
                         }}
                         className="px-4 py-2.5 rounded-xl bg-rose-500 hover:bg-rose-400 text-white font-bold text-xs cursor-pointer"
                       >
