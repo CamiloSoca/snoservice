@@ -75,7 +75,7 @@ import AgendaCalendar from '@/components/AgendaCalendar';
 import CashDrawerCard from '@/components/CashDrawerCard';
 import FinanceLedgerCard from '@/components/FinanceLedgerCard';
 import type {OnSitePaymentMethod} from '@/lib/payment-method';
-import type {OnSitePaymentMethod} from '@/lib/payment-method';
+
 import {customerWhatsAppLink} from '@/lib/customer-contact';
 import {useAgendaAutoSync} from '@/hooks/useAgendaAutoSync';
 
