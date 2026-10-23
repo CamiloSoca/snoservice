@@ -5,6 +5,7 @@ import { requireAdminSession, verifyCsrfOrigin } from '@/lib/session';
 import { requireOpenCash } from '@/lib/cash-guard';
 import {appointmentTimeState} from '@/lib/appointment-rules';
 import {isOnSitePaymentMethod} from '@/lib/payment-method';
+import {isOnSitePaymentMethod} from '@/lib/payment-method';
 import {sendBookingCancellationNotice} from '@/lib/server-booking-cancellation';
 import {
   generateUUID,
@@ -127,8 +128,9 @@ export async function POST(request: Request) {
         return NextResponse.json({ok: true});
       }
       case 'OPEN_CASH': {
-        const total = Number(body.initialAmount);
-        if (!Number.isFinite(total) || total < 0) {
+        const openingText=String(body.initialAmount??'').trim();
+        const total=Number(openingText);
+        if (!/^\d{1,8}(\.\d{1,2})?$/.test(openingText) || !Number.isFinite(total) || total < 0) {
           return NextResponse.json({error: 'Monto inicial inválido.'}, {status: 400});
         }
         const {data: openRows, error: lookupError} = await supabase.from('cash_registers')
@@ -169,8 +171,8 @@ export async function POST(request: Request) {
         // La verificación anterior mejora UX; el índice único parcial en PostgreSQL
         // es la protección real contra dos aperturas simultáneas.
         const {error} = await supabase.from('cash_registers').insert({
-          shop_id: SHOP_UUID, initial_amount: total,
-          total_sales: total, status: 'abierta',
+          shop_id: SHOP_UUID, initial_amount: total, opening_verified:true,
+          total_sales: 0, status: 'abierta',
         });
         if (error?.code === '23505') {
           return NextResponse.json({error: 'Ya existe una caja abierta para este negocio.'}, {status: 409});
@@ -179,16 +181,27 @@ export async function POST(request: Request) {
         return NextResponse.json({ok: true});
       }
       case 'CLOSE_CASH': {
-        // Calcular el cierre dentro de una transacción SQL bloqueando la caja.
-        // Nunca confiar en importes enviados por el navegador.
-        const {data, error} = await supabase.rpc('close_cash_financial', {
-          p_shop_id: SHOP_UUID,
-        });
-        if (error) {
-          console.error('No se pudo consolidar la caja:', error.code);
-          return NextResponse.json({error: 'No se pudo consolidar la caja. Actualizá e intentá nuevamente.'}, {status: 409});
+        const countedText=String(body.countedCash??'').trim();
+        if(!/^\d{1,8}(\.\d{1,2})?$/.test(countedText)){
+          return NextResponse.json({error:'Ingresá el efectivo contado al cerrar.'},{status:400});
         }
-        return NextResponse.json({ok: true, summary: data});
+        const {data:rows,error:findError}=await supabase.from('cash_registers')
+          .select('id,opening_verified').eq('shop_id',SHOP_UUID).eq('status','abierta').limit(1);
+        if(findError||!rows?.length)return NextResponse.json({error:'No hay caja abierta.'},{status:409});
+        if(!rows[0].opening_verified){
+          if(body.acknowledgeLegacy!==true)return NextResponse.json({error:'Confirmá el cierre histórico no conciliado.'},{status:409});
+          const {data,error}=await supabase.rpc('close_cash_financial',{p_shop_id:SHOP_UUID});
+          if(error)return NextResponse.json({error:'No se pudo cerrar la caja histórica.'},{status:409});
+          return NextResponse.json({ok:true,summary:{...data,physicalCashVerified:false}});
+        }
+        const {data,error}=await supabase.rpc('close_cash_reconciled',{
+          p_shop_id:SHOP_UUID,p_counted_cash:Number(countedText),
+        });
+        if(error){
+          console.warn('Error de conciliación al cerrar:',error.code);
+          return NextResponse.json({error:'Revisá el efectivo inicial y los movimientos sin clasificar.'},{status:409});
+        }
+        return NextResponse.json({ok:true,summary:data});
       }
       case 'SAVE_BARBERS': {
         const items = Array.isArray(body.barbers) ? body.barbers : [];
@@ -452,6 +465,7 @@ export async function POST(request: Request) {
         const description = sanitizeInput(String(exp.description || '')).slice(0, 150);
         const amount = Number(exp.amount);
         const category = VALID_EXPENSE_CATEGORIES.includes(exp.category) ? exp.category : 'Insumos';
+        if(!isOnSitePaymentMethod(exp.paymentMethod))return NextResponse.json({error:'Indicá efectivo o transferencia para el gasto.'},{status:422});
         const expenseDate = sanitizeInput(String(exp.date || getMontevideoDateKey())).slice(0,20);
         const requestId = String(body.requestId || '');
         if (!isValidUUID(requestId)) {
@@ -465,16 +479,17 @@ export async function POST(request: Request) {
 
         const {data: inserted, error} = await supabase.from('expenses').insert({
           id: requestId, shop_id: SHOP_UUID, description, amount, category, expense_date: expenseDate,
-        }).select('id,description,amount,category,expense_date,created_at').single();
+          payment_method:exp.paymentMethod,
+        }).select('id,description,amount,category,expense_date,payment_method,created_at').single();
 
         if (error?.code === '23505') {
           // Si el usuario reintenta por mala conexión, devolver el movimiento previo.
           const {data: previous, error: previousError} = await supabase.from('expenses')
-            .select('id,description,amount,category,expense_date,created_at')
+            .select('id,description,amount,category,expense_date,payment_method,created_at')
             .eq('shop_id', SHOP_UUID).eq('id', requestId).maybeSingle();
           if (!previousError && previous && previous.description === description &&
               Number(previous.amount) === amount && previous.category === category &&
-              previous.expense_date === expenseDate) {
+              previous.expense_date === expenseDate && previous.payment_method === exp.paymentMethod) {
             return NextResponse.json({ok: true, expense: previous, repeated: true});
           }
           return NextResponse.json({error: 'El identificador ya pertenece a otro gasto.'}, {status: 409});
