@@ -1061,7 +1061,7 @@ const handleAddBarber = async () => {
           )}
 
           {/* SNOSERVICE_PRESET_V1 */}
-          <nav aria-label="Secciones de administración" className="flex gap-1.5 overflow-x-auto overscroll-x-contain rounded-2xl border border-zinc-800 bg-zinc-900/90 p-1.5 sm:grid sm:grid-cols-6 sm:gap-2 sm:p-2">
+          <nav aria-label="Secciones de administración" className="grid grid-cols-3 gap-1.5 rounded-2xl border border-zinc-800 bg-zinc-900/90 p-1.5 sm:grid-cols-6 sm:gap-2 sm:p-2">
             {([
               {id:'inicio',label:'Inicio',icon:BarChart3},
               {id:'agenda',label:'Agenda',icon:CalendarIcon},
@@ -1073,7 +1073,7 @@ const handleAddBarber = async () => {
               const active = activeTab===id || (id==='agenda' && activeTab==='turnos') || (id==='configuracion' && (activeTab==='servicios'||activeTab==='marca'));
               return <button type="button" key={id} onClick={() => setActiveTab(id)}
                 aria-current={active ? 'page' : undefined}
-                className={'flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-[11px] font-bold transition-colors focus-visible:outline-2 focus-visible:outline-emerald-400 sm:min-h-14 sm:shrink sm:flex-row sm:p-2 ' + (active?'bg-zinc-100 text-zinc-950':'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100')}>
+                className={'flex min-h-[50px] min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-center text-[10px] font-bold leading-tight transition-colors focus-visible:outline-2 focus-visible:outline-emerald-400 sm:min-h-14 sm:flex-row sm:gap-1.5 sm:p-2 sm:text-[11px] ' + (active?'bg-zinc-100 text-zinc-950':'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100')}>
                 <Icon className="h-4 w-4"/>{label}</button>;
             })}
           </nav>
