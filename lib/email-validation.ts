@@ -1,6 +1,18 @@
 // Detectamos errores frecuentes sin asumir que todo correo debe ser Gmail o Hotmail.
 // Nunca cambiamos el destinatario automáticamente: el cliente decide la corrección.
 const COMMON_EMAIL_DOMAIN_TYPOS: Readonly<Record<string, string>> = {
+  // Variantes que vemos en formularios móviles (incluye gnail.com del QA).
+  'gnail.com': 'gmail.com',
+  'gmaill.com': 'gmail.com',
+  'gmaiil.com': 'gmail.com',
+  'gmajl.com': 'gmail.com',
+  'gmaik.com': 'gmail.com',
+  'gmail.om': 'gmail.com',
+  'gmail.cim': 'gmail.com',
+  'gmail.cpm': 'gmail.com',
+  'gmail.coim': 'gmail.com',
+  'gmail.ocm': 'gmail.com',
+  'gmail.comn': 'gmail.com',
   'gmail.con': 'gmail.com',
   'gmail.cmo': 'gmail.com',
   'gmail.comm': 'gmail.com',
