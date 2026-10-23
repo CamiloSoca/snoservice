@@ -254,7 +254,16 @@ export async function POST(request: Request) {
         {status: 409}
       );
     }
+    if (insertErr?.code === '23514' &&
+        insertErr.message?.includes('Este celular ya tiene un turno activo ese día')) {
+      // Un turno ya atendido no bloquea futuras reservas. Sólo queda bloqueado
+      // cuando existe otra reserva CONFIRMADA con ese celular y esa fecha.
+      return NextResponse.json({
+        error: 'Ya tenés una reserva pendiente para ese día con este celular. Podés elegir otra fecha o cancelar la reserva anterior.',
+      }, {status: 422});
+    }
     if (insertErr || !inserted) {
+      // Nunca mostrar excepciones crudas de la base ni datos del cliente.
       console.error('No se pudo insertar el turno:', insertErr?.code);
       return NextResponse.json(
         { error: 'No se pudo guardar el turno. Intentá nuevamente.' },
