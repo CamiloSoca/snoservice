@@ -49,7 +49,7 @@ function formatTime(minutes: number): string {
 
 function formatMoney(value: number): string {
   return new Intl.NumberFormat('es-UY', {
-    style: 'currency', currency: 'UY', maximumFractionDigits: 0,
+    style: 'currency', currency: 'UYU', maximumFractionDigits: 0,
   }).format(value);
 }
 
