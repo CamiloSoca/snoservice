@@ -186,33 +186,33 @@ export default function AgendaCalendar({
 
   return (
     <section className="overflow-hidden rounded-3xl border border-zinc-800 bg-zinc-950 text-zinc-100 shadow-sm">
-      <div className="space-y-4 border-b border-zinc-800 bg-zinc-900/80 p-4 sm:p-5">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-zinc-400">
+      <div className="space-y-3 border-b border-zinc-800 bg-zinc-900/80 px-3 py-3 sm:p-5">
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.1em] text-zinc-400">
               <CalendarDays className="h-4 w-4" />
               {mode === 'admin' ? 'Agenda de la barbería' : 'Mi agenda'}
             </div>
-            <h2 className="mt-1 text-xl font-extrabold tracking-tight sm:text-2xl">
+            <h2 className="mt-1 text-base font-extrabold tracking-tight sm:text-2xl">
               {view === 'dia' ? readableDay(selectedDate) : readableWeek(selectedDate)}
               {view === 'dia' && selectedDate === today && (
                 <span className="ml-2 text-xs font-semibold text-emerald-400">(hoy)</span>
               )}
             </h2>
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex shrink-0 items-center gap-1">
             <button type="button" onClick={() => navigate(-1)}
               aria-label={view === 'dia' ? 'Día anterior' : 'Semana anterior'}
-              className="rounded-xl border border-zinc-800 p-2.5 hover:bg-zinc-800"><ChevronLeft className="h-4 w-4" /></button>
+              className="rounded-lg border border-zinc-800 p-2 hover:bg-zinc-800"><ChevronLeft className="h-4 w-4" /></button>
             <button type="button" onClick={() => {setSelectedDate(today); setSelectedAppointmentId(null);}}
-              className="rounded-xl border border-zinc-700 px-3 py-2.5 text-xs font-bold hover:bg-zinc-800">Hoy</button>
+              className="rounded-lg border border-zinc-700 px-2.5 py-2 text-xs font-bold hover:bg-zinc-800">Hoy</button>
             <button type="button" onClick={() => navigate(1)}
               aria-label={view === 'dia' ? 'Día siguiente' : 'Semana siguiente'}
-              className="rounded-xl border border-zinc-800 p-2.5 hover:bg-zinc-800"><ChevronRight className="h-4 w-4" /></button>
+              className="rounded-lg border border-zinc-800 p-2 hover:bg-zinc-800"><ChevronRight className="h-4 w-4" /></button>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="inline-flex rounded-xl border border-zinc-800 bg-zinc-800 p-1" aria-label="Vista de la agenda">
             <button type="button" onClick={() => selectView('dia')} aria-pressed={view === 'dia'}
               className={'rounded-lg px-4 py-2 text-xs font-bold ' +
@@ -221,7 +221,7 @@ export default function AgendaCalendar({
               className={'rounded-lg px-4 py-2 text-xs font-bold ' +
                 (view === 'semana' ? 'bg-emerald-400 text-zinc-950 shadow-sm' : 'text-zinc-400')}>Semana</button>
           </div>
-          <div className="text-xs font-medium text-zinc-400">
+          <div className="text-[11px] font-medium text-zinc-400">
             <strong className="text-zinc-200">{calendarAppointments.length}</strong> turnos
             <span className="mx-1">·</span>
             <strong className="text-zinc-200">{formatMoney(serviceAmount)}</strong> en servicios
@@ -251,7 +251,7 @@ export default function AgendaCalendar({
       </div>
 
 
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800 bg-zinc-900/80 px-4 py-2.5">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800 bg-zinc-900/60 px-3 py-1.5 sm:px-4">
         <div role="status" aria-live="polite" className={'flex items-center gap-1.5 text-[11px] font-semibold ' +
           (syncState === 'error' ? 'text-amber-300' : 'text-zinc-400')}>
           {syncState === 'error' ? <WifiOff className="h-3.5 w-3.5" /> :
@@ -292,7 +292,7 @@ export default function AgendaCalendar({
               dayAppointments.map((appointment) => (
                 <button key={appointment.id} type="button"
                   onClick={() => setSelectedAppointmentId(appointment.id)}
-                  className="flex min-h-[78px] w-full items-center gap-3 rounded-2xl border border-zinc-800 bg-zinc-900 px-3 py-3 text-left active:scale-[0.99] hover:border-zinc-600">
+                  className="flex min-h-[66px] w-full items-center gap-2.5 rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2.5 text-left active:scale-[0.99] hover:border-zinc-600">
                   <div className="w-[54px] shrink-0 border-r border-zinc-700 pr-2 text-center">
                     <span className="block text-sm font-black tabular-nums text-emerald-400">{appointment.timeSlot}</span>
                     <span className="text-[10px] text-zinc-500">{appointment.durationMinutes || 60} min</span>

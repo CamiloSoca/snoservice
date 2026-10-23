@@ -24,6 +24,7 @@ import {
   ManualChargeItem,
   unlockBarberPanelWithPin,
   getBarberDashboardSnapshot,
+  getLiveAgendaSnapshot,
   getMontevideoDateKey,
   updateAppointmentStatus,
   createTip,
@@ -157,19 +158,45 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
     useAgendaAutoSync({
       enabled: isUnlocked && !panelLoading,
       refreshData: async () => {
-        const snapshot = await getBarberDashboardSnapshot();
-        setBarberAppointments(sortAppointmentsChronologically(snapshot.appointments));
-        setBarberTips(snapshot.tips);
-        setBarberCharges(snapshot.manualCharges);
-        setCashOpen(snapshot.cashOpen);
-        setCommissionRate(snapshot.commissionRate);
-        setIsOwner(snapshot.isOwner);
+        const live = await getLiveAgendaSnapshot();
+        setBarberAppointments(sortAppointmentsChronologically(live.appointments));
+        setCashOpen(live.cashOpen);
       },
       onUnauthorized: () => {
         setIsUnlocked(false);
         setErrorMsg('Tu sesión venció. Ingresá tu PIN nuevamente.');
       },
     });
+
+  // No traer todas las finanzas cada 4,5 s. Actualizar el estado contable del
+  // barbero regularmente y al volver a su panel, sin cambiar turnos pendientes.
+  useEffect(() => {
+    if (!isUnlocked || panelLoading) return;
+    let mounted = true;
+    let busy = false;
+    const reconcile = async () => {
+      if (!mounted || busy || document.visibilityState === 'hidden') return;
+      busy = true;
+      try {
+        const financial = await getBarberDashboardSnapshot();
+        if (!mounted) return;
+        setBarberAppointments(sortAppointmentsChronologically(financial.appointments));
+        setBarberTips(financial.tips);
+        setBarberCharges(financial.manualCharges);
+        setCashOpen(financial.cashOpen);
+        setCommissionRate(financial.commissionRate);
+        setIsOwner(financial.isOwner);
+      } catch {
+        console.warn('No se pudieron actualizar las finanzas del barbero.');
+      } finally {
+        busy = false;
+      }
+    };
+    const timer = window.setInterval(() => {void reconcile();}, 60_000);
+    const focus = () => {void reconcile();};
+    window.addEventListener('focus', focus);
+    return () => {mounted = false; window.clearInterval(timer); window.removeEventListener('focus', focus);};
+  }, [isUnlocked, panelLoading]);
 
   const handleStatusChange = async (appointmentId: string, status: AppointmentItem['status']) => {
     try {
@@ -178,6 +205,17 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
       setBarberAppointments((current) => current.map((appointment) =>
         appointment.id === appointmentId ? {...appointment, ...persisted} : appointment
       ));
+      // El cambio confirmado nunca debe devolverse como error sólo porque
+      // la recarga financiera haya demorado o perdido conexión.
+      try {
+        const fresh = await getBarberDashboardSnapshot();
+        setBarberAppointments(sortAppointmentsChronologically(fresh.appointments));
+        setBarberTips(fresh.tips);
+        setBarberCharges(fresh.manualCharges);
+        setCashOpen(fresh.cashOpen);
+      } catch {
+        console.warn('Turno guardado; no se pudieron refrescar las finanzas.');
+      }
       refreshAgenda();
       return {ok: true, cancellationEmailStatus: persisted.cancellationEmailStatus};
     } catch (err: any) {
