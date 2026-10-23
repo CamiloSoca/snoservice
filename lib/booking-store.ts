@@ -99,6 +99,7 @@ export interface AppointmentItem {
 export type ExpenseCategory = 'Insumos' | 'Alquiler / Servicios' | 'Adelantos / Sueldos' | 'Marketing' | 'Otros';
 
 export interface ExpenseItem {
+  paymentMethod?: OnSitePaymentMethod | null;
   id: string;
   description: string;
   amount: number;
@@ -108,6 +109,7 @@ export interface ExpenseItem {
 }
 
 export interface TipItem {
+  paymentMethod?: OnSitePaymentMethod | null;
   id: string;
   barberId: string;
   barberName?: string;
@@ -118,6 +120,7 @@ export interface TipItem {
 }
 
 export interface ManualChargeItem {
+  paymentMethod?: OnSitePaymentMethod | null;
   commissionRateSnapshot?: number | null;
   barberEarningsSnapshot?: number | null;
   businessEarningsSnapshot?: number | null;
@@ -593,6 +596,7 @@ export async function getAdminDashboardSnapshot(): Promise<AdminDashboardSnapsho
     description: d.description,
     amount: Number(d.amount) || 0,
     category: d.category || 'Otros',
+    paymentMethod: d.payment_method === 'cash' || d.payment_method === 'transfer' ? d.payment_method : null,
     date: d.expense_date || '',
     createdAt: d.created_at,
   }));
@@ -694,6 +698,7 @@ function expenseFromApi(d: any): ExpenseItem {
     description: d.description,
     amount: Number(d.amount) || 0,
     category: d.category || 'Otros',
+    paymentMethod:d.payment_method === 'cash' || d.payment_method === 'transfer' ? d.payment_method : null,
     date: d.expense_date || '',
     createdAt: d.created_at,
   };
@@ -704,6 +709,7 @@ export async function createExpense(item: {
   amount: number;
   category: ExpenseCategory;
   date: string;
+  paymentMethod: OnSitePaymentMethod;
 }, requestId: string): Promise<ExpenseItem> {
   const {expense} = await apiRequest('/api/admin',
     jsonRequest('POST', {operation: 'CREATE_EXPENSE', expense: item, requestId}));
@@ -727,6 +733,7 @@ function mapFinancialEntry(d: any): TipItem & ManualChargeItem {
     id: d.id, barberId: d.barber_id,
     barberName: d.barbers?.name || 'Barbero',
     amount: Number(d.amount) || 0,
+    paymentMethod:d.payment_method === 'cash' || d.payment_method === 'transfer' ? d.payment_method : null,
     note: d.note || '', dateString: d.date_string || '',
     createdAt: d.created_at,
     commissionRateSnapshot: d.commission_rate_snapshot == null ? null : Number(d.commission_rate_snapshot),
@@ -746,6 +753,7 @@ export async function getTips(barberId?: string): Promise<TipItem[]> {
 export async function createTip(item: {
   barberId: string;
   amount: number;
+  paymentMethod: OnSitePaymentMethod;
   note?: string;
   requestId?: string;
 }): Promise<TipItem[]> {
@@ -770,6 +778,7 @@ export async function getManualCharges(barberId?: string): Promise<ManualChargeI
 export async function createManualCharge(item: {
   barberId: string;
   amount: number;
+  paymentMethod: OnSitePaymentMethod;
   note?: string;
   requestId?: string;
 }): Promise<ManualChargeItem[]> {
