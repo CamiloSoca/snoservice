@@ -39,6 +39,7 @@ import { InitialShopSkeleton, PanelLoading } from '@/components/InitialShopState
 import type { PublicShopData } from '@/lib/public-shop-data';
 import { splitBusinessRevenue } from '@/lib/financial-allocations';
 import AgendaCalendar from '@/components/AgendaCalendar';
+import FinanceLedgerCard from '@/components/FinanceLedgerCard';
 import type {OnSitePaymentMethod} from '@/lib/payment-method';
 import {customerWhatsAppLink} from '@/lib/customer-contact';
 import {useAgendaAutoSync} from '@/hooks/useAgendaAutoSync';
@@ -103,11 +104,13 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
 
   const [newTipAmount, setNewTipAmount] = useState<string>('');
   const [newTipNote, setNewTipNote] = useState<string>('');
+  const [newTipPayment,setNewTipPayment] = useState<OnSitePaymentMethod | ''>('');
   const [savingTip, setSavingTip] = useState<boolean>(false);
   const tipAttempt = useRef<{fingerprint: string; id: string; pending: boolean} | null>(null);
 
   const [newChargeAmount, setNewChargeAmount] = useState<string>('');
   const [newChargeNote, setNewChargeNote] = useState<string>('');
+  const [newChargePayment,setNewChargePayment] = useState<OnSitePaymentMethod | ''>('');
   const [savingCharge, setSavingCharge] = useState<boolean>(false);
   const chargeAttempt = useRef<{fingerprint: string; id: string; pending: boolean} | null>(null);
 
@@ -228,8 +231,8 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
 
   const handleAddMyTip = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedBarberId || !newTipAmount || Number(newTipAmount) <= 0) return;
-    const fingerprint = JSON.stringify([selectedBarberId, Number(newTipAmount), newTipNote.trim()]);
+    if (!selectedBarberId || !newTipAmount || Number(newTipAmount) <= 0 || !newTipPayment) return;
+    const fingerprint = JSON.stringify([selectedBarberId, Number(newTipAmount), newTipNote.trim(), newTipPayment]);
     if (tipAttempt.current?.pending) return;
     if (tipAttempt.current?.fingerprint !== fingerprint) {
       tipAttempt.current = {fingerprint, id: generateUUID(), pending: false};
@@ -241,6 +244,7 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
       const updatedTips = await createTip({
         barberId: selectedBarberId,
         amount: Number(newTipAmount),
+        paymentMethod:newTipPayment,
         note: newTipNote.trim(),
         requestId: tipAttempt.current!.id,
       });
@@ -268,8 +272,8 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
 
   const handleAddMyCharge = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedBarberId || !newChargeAmount || Number(newChargeAmount) <= 0) return;
-    const fingerprint = JSON.stringify([selectedBarberId, Number(newChargeAmount), newChargeNote.trim()]);
+    if (!selectedBarberId || !newChargeAmount || Number(newChargeAmount) <= 0 || !newChargePayment) return;
+    const fingerprint = JSON.stringify([selectedBarberId, Number(newChargeAmount), newChargeNote.trim(), newChargePayment]);
     if (chargeAttempt.current?.pending) return;
     if (chargeAttempt.current?.fingerprint !== fingerprint) {
       chargeAttempt.current = {fingerprint, id: generateUUID(), pending: false};
@@ -281,6 +285,7 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
       const updatedCharges = await createManualCharge({
         barberId: selectedBarberId,
         amount: Number(newChargeAmount),
+        paymentMethod:newChargePayment,
         note: newChargeNote.trim() || 'Corte extra sin turno',
         requestId: chargeAttempt.current!.id,
       });
@@ -553,6 +558,8 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
                 {historicEstimateCount} movimientos anteriores no guardaron su comisión histórica. Estos importes son estimados.
               </div>
             )}
+            <FinanceLedgerCard mode="barber" />
+
             <AgendaCalendar
               mode="barber"
               appointments={barberAppointments.filter(appointment => appointment.barberId === selectedBarberId)}
@@ -756,7 +763,12 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
                   onChange={(e) => setNewChargeNote(e.target.value)}
                   className="sm:col-span-6 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
                 />
-                <button
+                <label className="sm:col-span-2 text-[11px] text-zinc-400">Cobro local
+                  <select required value={newChargePayment} onChange={e=>setNewChargePayment(e.target.value as OnSitePaymentMethod | '')}
+                    className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 p-2.5 text-sm text-white">
+                    <option value="">Elegir</option><option value="cash">Efectivo</option><option value="transfer">Transferencia</option>
+                  </select></label>
+                  <button
                   type="submit"
                   disabled={savingCharge || !cashOpen}
                   className="sm:col-span-2 py-2.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-extrabold text-xs cursor-pointer flex items-center justify-center gap-1 touch-manipulation"
@@ -817,7 +829,12 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
                   onChange={(e) => setNewTipNote(e.target.value)}
                   className="sm:col-span-6 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
                 />
-                <button
+                <label className="sm:col-span-2 text-[11px] text-zinc-400">Cobro local
+                  <select required value={newTipPayment} onChange={e=>setNewTipPayment(e.target.value as OnSitePaymentMethod | '')}
+                    className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 p-2.5 text-sm text-white">
+                    <option value="">Elegir</option><option value="cash">Efectivo</option><option value="transfer">Transferencia</option>
+                  </select></label>
+                  <button
                   type="submit"
                   disabled={savingTip || !cashOpen}
                   className="sm:col-span-2 py-2.5 px-4 rounded-xl bg-amber-400 hover:bg-amber-300 text-zinc-950 font-extrabold text-xs cursor-pointer flex items-center justify-center gap-1 touch-manipulation"
