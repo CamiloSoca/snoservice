@@ -54,6 +54,6 @@ test('el panel de barbero solo ve saldo, admin registra el dinero efectivamente 
   assert.match(ui,/mode==='admin'&&data/);
   assert.match(ui,/method==='cash'\?'Efectivo':'Transferencia'/);
   assert.match(ui,/onFocus/);
-  assert.match(ui,/Consultá el historial antes de repetir/);
+  assert.match(ui,/consultá el historial antes de repetir/i);
   assert.match(ui,/physicalCashVerified/); // revisado, nunca mostrar cifra de caja física inventada
 });
