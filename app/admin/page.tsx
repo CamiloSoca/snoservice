@@ -51,6 +51,7 @@ import {
   deleteServiceFromDb,
   getAdminBarbers,
   getAdminDashboardSnapshot,
+  getLiveAgendaSnapshot,
   getMontevideoDateKey,
   saveBarbers,
   deleteBarberFromDb,
@@ -242,13 +243,9 @@ export default function AdminDashboard() {
     useAgendaAutoSync({
       enabled: initialLoad === 'ready',
       refreshData: async () => {
-        const snapshot = await getAdminDashboardSnapshot();
-        setAppointments(sortAppointmentsChronologically(snapshot.appointments));
-        setExpenses(snapshot.expenses);
-        setTips(snapshot.tips);
-        setManualCharges(snapshot.manualCharges);
-        setCashStatus(snapshot.cashStatus);
-        setLastClosedDate(snapshot.lastClosedDate);
+        const live = await getLiveAgendaSnapshot();
+        setAppointments(sortAppointmentsChronologically(live.appointments));
+        setCashStatus(live.cashOpen ? 'abierta' : 'cerrada');
       },
     });
 
@@ -284,6 +281,12 @@ export default function AdminDashboard() {
       setAppointments((current) => current.map((appointment) =>
         appointment.id === id ? {...appointment, ...persisted} : appointment
       ));
+      const fresh = await getAdminDashboardSnapshot();
+      setAppointments(sortAppointmentsChronologically(fresh.appointments));
+      setExpenses(fresh.expenses);
+      setTips(fresh.tips);
+      setManualCharges(fresh.manualCharges);
+      setCashStatus(fresh.cashStatus);
       refreshAgenda();
       return {ok: true, cancellationEmailStatus: persisted.cancellationEmailStatus};
     } catch (err: any) {
