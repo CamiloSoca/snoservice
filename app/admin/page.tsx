@@ -1022,7 +1022,7 @@ const handleAddBarber = async () => {
           )}
 
           {/* SNOSERVICE_PRESET_V1 */}
-          <div className="grid grid-cols-3 gap-2 rounded-2xl border border-zinc-800 bg-zinc-900/90 p-2 sm:grid-cols-6">
+          <nav aria-label="Secciones de administración" className="flex gap-1.5 overflow-x-auto overscroll-x-contain rounded-2xl border border-zinc-800 bg-zinc-900/90 p-1.5 sm:grid sm:grid-cols-6 sm:gap-2 sm:p-2">
             {([
               {id:'inicio',label:'Inicio',icon:BarChart3},
               {id:'agenda',label:'Agenda',icon:CalendarIcon},
@@ -1033,13 +1033,14 @@ const handleAddBarber = async () => {
             ] as const).map(({id,label,icon:Icon}) => {
               const active = activeTab===id || (id==='agenda' && activeTab==='turnos') || (id==='configuracion' && (activeTab==='servicios'||activeTab==='marca'));
               return <button type="button" key={id} onClick={() => setActiveTab(id)}
-                className={'flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl p-2 text-[11px] font-bold sm:flex-row ' + (active?'bg-zinc-100 text-zinc-950':'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100')}>
+                aria-current={active ? 'page' : undefined}
+                className={'flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-[11px] font-bold transition-colors focus-visible:outline-2 focus-visible:outline-emerald-400 sm:min-h-14 sm:shrink sm:flex-row sm:p-2 ' + (active?'bg-zinc-100 text-zinc-950':'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100')}>
                 <Icon className="h-4 w-4"/>{label}</button>;
             })}
-          </div>
-          {(activeTab==='agenda'||activeTab==='turnos') && <div className="flex flex-wrap gap-2 rounded-xl border border-zinc-800 bg-zinc-900 p-2">
-            <button type="button" onClick={() => setActiveTab('agenda')} className={'rounded-lg px-4 py-2 text-xs '+(activeTab==='agenda'?'bg-emerald-400 text-zinc-950':'bg-zinc-800 text-zinc-200')}>Calendario</button>
-            <button type="button" onClick={() => setActiveTab('turnos')} className={'rounded-lg px-4 py-2 text-xs '+(activeTab==='turnos'?'bg-emerald-400 text-zinc-950':'bg-zinc-800 text-zinc-200')}>Listado de reservas</button>
+          </nav>
+          {(activeTab==='agenda'||activeTab==='turnos') && <div role="group" aria-label="Modo de agenda" className="flex gap-1 rounded-xl border border-zinc-800 bg-zinc-900 p-1">
+            <button type="button" onClick={() => setActiveTab('agenda')} aria-pressed={activeTab==='agenda'} className={'min-w-0 flex-1 rounded-lg px-3 py-2 text-xs font-bold sm:flex-none '+(activeTab==='agenda'?'bg-emerald-400 text-zinc-950':'bg-zinc-800 text-zinc-200')}>Calendario</button>
+            <button type="button" onClick={() => setActiveTab('turnos')} aria-pressed={activeTab==='turnos'} className={'min-w-0 flex-1 rounded-lg px-3 py-2 text-xs font-bold sm:flex-none '+(activeTab==='turnos'?'bg-emerald-400 text-zinc-950':'bg-zinc-800 text-zinc-200')}>Listado</button>
           </div>}
           {(activeTab==='configuracion'||activeTab==='servicios'||activeTab==='marca') && <div className="flex flex-wrap gap-2 rounded-xl border border-zinc-800 bg-zinc-900 p-2">
             <button type="button" onClick={() => setActiveTab('servicios')} className={'rounded-lg px-4 py-2 text-xs '+(activeTab==='servicios'?'bg-emerald-400 text-zinc-950':'bg-zinc-800 text-zinc-200')}>Servicios y precios</button>
