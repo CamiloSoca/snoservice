@@ -23,7 +23,7 @@ interface Payload {
 }
 const money=(value:number|string)=>'$'+Number(value).toLocaleString('es-UY',{minimumFractionDigits:0,maximumFractionDigits:2});
 
-export default function FinanceLedgerCard({mode}:{mode:'admin'|'barber'}) {
+export default function FinanceLedgerCard({mode,display='summary'}:{mode:'admin'|'barber';display?:'summary'|'pay'}) {
   const [data,setData]=useState<Payload|null>(null);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState('');
@@ -109,10 +109,12 @@ export default function FinanceLedgerCard({mode}:{mode:'admin'|'barber'}) {
       <div className="flex items-start justify-between gap-2">
         <div>
           <h3 className="text-base font-extrabold text-zinc-100">
-            {mode==='admin'?'Liquidaciones del equipo':'Mis comisiones y retiros'}
+            {mode==='admin'?(display==='summary'?'¿Cuánto le debemos al equipo?':'Pagarle a un barbero'):'Mis ganancias y retiros'}
           </h3>
           <p className="mt-1 text-xs leading-relaxed text-zinc-400">
-            Generado, efectivamente pagado y pendiente. Los retiros no modifican nuevamente la ganancia del negocio.
+            {mode==='admin'&&display==='pay'
+              ?'Elegí a quién le entregaste dinero y cuánto. El saldo pendiente bajará automáticamente.'
+              :'Generado es lo que ganó el barbero. Pagado es lo que ya recibió. Pendiente es lo que falta entregarle.'}
           </p>
         </div>
         <button type="button" onClick={()=>{void load();}}
@@ -120,10 +122,9 @@ export default function FinanceLedgerCard({mode}:{mode:'admin'|'barber'}) {
           Actualizar
         </button>
       </div>
-      <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-        Saldo histórico calculado. Antes de operar con dinero real verificá las comisiones,
-        propinas y cualquier adelanto entregado anteriormente.
-      </p>
+      {display==='pay'&&mode==='admin'&&<p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+        Antes de confirmar, comprobá el saldo pendiente y cualquier adelanto anterior. El pago no se puede deshacer desde esta pantalla.
+      </p>}
       {loading&&<p className="text-sm text-zinc-400">Consultando movimientos…</p>}
       {error&&<p role="alert" className="rounded-lg border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-200">{error}</p>}
       {feedback&&<p role="status" className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-200">{feedback}</p>}
@@ -153,7 +154,7 @@ export default function FinanceLedgerCard({mode}:{mode:'admin'|'barber'}) {
         </div>
       ))}
 
-      {mode==='admin'&&data&&(
+      {mode==='admin'&&display==='pay'&&data&&(
         <form className="space-y-3 rounded-xl border border-zinc-700 bg-zinc-950 p-4"
           onSubmit={event=>{void registerPayout(event);}}>
           <h4 className="font-bold text-sm">Registrar retiro entregado en el local</h4>
@@ -193,8 +194,8 @@ export default function FinanceLedgerCard({mode}:{mode:'admin'|'barber'}) {
           </button>
         </form>
       )}
-      {data&&<div className="space-y-2">
-        <h4 className="font-bold text-sm">Últimos pagos</h4>
+      {(mode==='barber'||display==='pay')&&data&&<div className="space-y-2">
+        <h4 className="font-bold text-sm">Pagos ya registrados</h4>
         {data.payouts.length===0
           ? <p className="text-xs text-zinc-500">Todavía no se registraron retiros.</p>
           : data.payouts.map(p=><div key={p.id} className="flex justify-between gap-2 border-b border-zinc-800 py-2 text-xs">
