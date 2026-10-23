@@ -71,6 +71,7 @@ import { splitBusinessRevenue } from '@/lib/financial-allocations';
 import { invalidatePublicShopData } from '@/lib/public-shop-data';
 import { MAX_BARBER_PHOTO_BYTES } from '@/lib/barber-photo';
 import AgendaCalendar from '@/components/AgendaCalendar';
+import {customerWhatsAppLink} from '@/lib/customer-contact';
 import {useAgendaAutoSync} from '@/hooks/useAgendaAutoSync';
 
 type PeriodFilter = 'hoy' | 'semana' | 'mes';
@@ -280,12 +281,15 @@ export default function AdminDashboard() {
     try {
       setAdminError('');
       const persisted = await updateAppointmentStatus(id, status);
-      // La API confirmó el cambio: modificar solo el turno afectado.
       setAppointments((current) => current.map((appointment) =>
         appointment.id === id ? {...appointment, ...persisted} : appointment
       ));
+      refreshAgenda();
+      return {ok: true, cancellationEmailStatus: persisted.cancellationEmailStatus};
     } catch (err: any) {
-      setAdminError(err?.message || 'No se pudo actualizar el estado del turno.');
+      const message = err?.message || 'No se pudo actualizar el estado del turno.';
+      setAdminError(message);
+      return {ok: false, error: message};
     }
   };
 
@@ -901,16 +905,8 @@ const handleAddBarber = async () => {
     (item) => item.barberEarningsSnapshot == null || item.businessEarningsSnapshot == null
   ).length;
 
-  const getClientWhatsAppLink = (apt: AppointmentItem) => {
-    const rawDigits = (apt.clientPhone || '098509376').replace(/\D/g, '');
-    const formattedPhone = rawDigits.startsWith('0')
-      ? '598' + rawDigits.slice(1)
-      : rawDigits.startsWith('598')
-      ? rawDigits
-      : '598' + rawDigits;
-    const msg = `Hola ${apt.clientName}, te escribimos de ${shopConfig.name} por tu turno de ${apt.serviceName} el día ${apt.dateString} a las ${apt.timeSlot} hs.`;
-    return `https://wa.me/${formattedPhone}?text=${encodeURIComponent(msg)}`;
-  };
+  const getClientWhatsAppLink = (apt: AppointmentItem) =>
+    customerWhatsAppLink(apt.clientPhone, apt.clientName, shopConfig.name);
 
   const bgImage = shopConfig.backgroundImageUrl || DEFAULT_SHOP_CONFIG.backgroundImageUrl;
   const logoImage = shopConfig.logoUrl || DEFAULT_SHOP_CONFIG.logoUrl;
@@ -1743,8 +1739,8 @@ const handleAddBarber = async () => {
               appointments={safeAppointments}
               barbers={safeBarbers}
               canComplete={cashStatus === 'abierta'}
-              onComplete={(appointment) => {void handleStatusChange(appointment.id, 'completado');}}
-              onCancel={(appointment) => {void handleStatusChange(appointment.id, 'cancelado');}}
+              onComplete={(appointment) => handleStatusChange(appointment.id, 'completado')}
+              onCancel={(appointment) => handleStatusChange(appointment.id, 'cancelado')}
               getWhatsAppLink={getClientWhatsAppLink}
               syncState={agendaSyncState}
               lastUpdatedAt={agendaUpdatedAt}
@@ -1795,7 +1791,7 @@ const handleAddBarber = async () => {
 
                     <div className="flex flex-wrap items-center gap-2">
                       <a
-                        href={getClientWhatsAppLink(apt)}
+                        href={getClientWhatsAppLink(apt) || undefined}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 hover:bg-zinc-800 text-zinc-200 text-xs font-medium flex items-center space-x-1.5"
