@@ -4,6 +4,7 @@ import { getSupabaseServer, SHOP_UUID } from '@/lib/supabase-server';
 import { requireAdminSession, verifyCsrfOrigin } from '@/lib/session';
 import { requireOpenCash } from '@/lib/cash-guard';
 import {appointmentTimeState} from '@/lib/appointment-rules';
+import {isOnSitePaymentMethod} from '@/lib/payment-method';
 import {sendBookingCancellationNotice} from '@/lib/server-booking-cancellation';
 import {
   generateUUID,
@@ -374,6 +375,7 @@ export async function POST(request: Request) {
       case 'UPDATE_APPOINTMENT_STATUS': {
         const id = String(body.id || '');
         const status = body.status;
+        const paymentMethod = body.paymentMethod;
         if (!isValidUUID(id) || !['completado', 'cancelado'].includes(status)) {
           return NextResponse.json({ error: 'Datos de turno inválidos.' }, { status: 400 });
         }
@@ -398,6 +400,9 @@ export async function POST(request: Request) {
         if (status === 'completado' && timeState !== 'started') {
           return NextResponse.json({error: 'No se puede completar un turno futuro o con fecha inválida.'}, {status: 409});
         }
+        if (status === 'completado' && !isOnSitePaymentMethod(paymentMethod)) {
+          return NextResponse.json({error: 'Indicá efectivo o transferencia antes de completar.'}, {status: 422});
+        }
         if (status === 'completado') {
           const cashDenied = await requireOpenCash();
           if (cashDenied) return cashDenied;
@@ -405,7 +410,7 @@ export async function POST(request: Request) {
 
         const { data, error } = await supabase
           .from('appointments')
-          .update({ status })
+          .update(status === 'completado' ? {status, payment_method: paymentMethod} : {status})
           .eq('id', id)
           .eq('shop_id', SHOP_UUID)
           .eq('status', 'confirmado')
