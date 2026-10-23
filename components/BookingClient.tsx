@@ -35,6 +35,7 @@ import {
 import { InitialShopSkeleton } from '@/components/InitialShopState';
 import type { PublicShopData } from '@/lib/public-shop-data';
 import {businessDayOptions, validateBookingTime} from '@/lib/appointment-rules';
+import {suggestEmailCorrection} from '@/lib/email-validation';
 
 const BOOKING_COOLDOWN_MS = 60 * 1000;
 const BOOKING_STORAGE_KEY = '13cut_last_booking_ts';
@@ -283,6 +284,8 @@ function AgendarContent({initialShop}: {initialShop: PublicShopData}) {
     return matched;
   })();
 
+  const bookingEmailSuggestion = suggestEmailCorrection(clientEmail);
+
   const canProceed = () => {
     if (step === 1) return selectedService !== null;
     if (step === 2) return selectedBarber !== null;
@@ -293,7 +296,7 @@ function AgendarContent({initialShop}: {initialShop: PublicShopData}) {
         && !checkSlotBooked(selectedBarber.id, selectedDate, selectedTime);
     }
     if (step === 4) {
-      return !isSubmitting && clientName.trim().length >= 3 && /^09[1-9][0-9]{6}$/.test(clientPhone.replace(/\D/g, '')) && isValidEmail(clientEmail);
+      return !isSubmitting && clientName.trim().length >= 3 && /^09[1-9][0-9]{6}$/.test(clientPhone.replace(/\D/g, '')) && isValidEmail(clientEmail) && !bookingEmailSuggestion;
     }
     return false;
   };
@@ -329,6 +332,8 @@ function AgendarContent({initialShop}: {initialShop: PublicShopData}) {
       } else if (step === 3 && selectedBarber && selectedTime && checkSlotBooked(selectedBarber.id, selectedDate, selectedTime)) {
         setSelectedTime(null);
         setFormError('El horario acaba de ocuparse. Elegí otro horario.');
+      } else if (step === 4 && bookingEmailSuggestion) {
+        setFormError(`Revisá el correo: ¿quisiste escribir ${bookingEmailSuggestion}?`);
       } else if (step === 4 && !isSubmitting) {
         setFormError('Ingresá tu nombre, un celular uruguayo (09X XXX XXX) y un correo válido.');
       }
@@ -1053,6 +1058,22 @@ function AgendarContent({initialShop}: {initialShop: PublicShopData}) {
                               className="w-full pl-10 pr-4 py-3.5 rounded-xl border text-base outline-none bg-zinc-950 border-zinc-800 text-zinc-100 focus:border-zinc-500"
                             />
                           </div>
+                          {bookingEmailSuggestion && (
+                            <p className="mt-2 text-xs text-amber-300" role="alert">
+                              ¿Quisiste escribir{' '}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setClientEmail(bookingEmailSuggestion);
+                                  setFormError('');
+                                }}
+                                className="font-bold underline underline-offset-2 hover:text-amber-100"
+                              >
+                                {bookingEmailSuggestion}
+                              </button>
+                              ? Tocá la dirección para corregirla antes de confirmar.
+                            </p>
+                          )}
                         </div>
 
                         {formError && (
