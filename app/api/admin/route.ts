@@ -4,6 +4,7 @@ import { getSupabaseServer, SHOP_UUID } from '@/lib/supabase-server';
 import { requireAdminSession, verifyCsrfOrigin } from '@/lib/session';
 import { requireOpenCash } from '@/lib/cash-guard';
 import {appointmentTimeState} from '@/lib/appointment-rules';
+import {sendBookingCancellationNotice} from '@/lib/server-booking-cancellation';
 import {
   generateUUID,
   isValidUUID,
@@ -378,7 +379,7 @@ export async function POST(request: Request) {
         }
         const {data: current, error: lookupError} = await supabase
           .from('appointments')
-          .select('status,date_string,time_slot,created_at')
+          .select('status,date_string,time_slot,created_at,client_name,client_email,code,services(name),barbers(name)')
           .eq('id', id)
           .eq('shop_id', SHOP_UUID)
           .maybeSingle();
@@ -413,7 +414,32 @@ export async function POST(request: Request) {
           return NextResponse.json({ error: error.message }, { status: 400 });
         }
         if (!data?.length) return NextResponse.json({error: 'El turno ya cambió de estado.'}, {status: 409});
-        return NextResponse.json({ ok: true });
+        let cancellationEmailStatus: string | undefined;
+        if (status === 'cancelado') {
+          const booked = current as typeof current & {
+            services?: {name?: string} | {name?: string}[] | null;
+            barbers?: {name?: string} | {name?: string}[] | null;
+          };
+          const service = Array.isArray(booked.services) ? booked.services[0] : booked.services;
+          const barber = Array.isArray(booked.barbers) ? booked.barbers[0] : booked.barbers;
+          try {
+            cancellationEmailStatus = await sendBookingCancellationNotice({
+              appointmentId: id,
+              clientEmail: current.client_email,
+              clientName: current.client_name || 'Cliente',
+              barberName: barber?.name || 'Tu barbero',
+              serviceName: service?.name || 'Servicio',
+              dateString: current.date_string,
+              timeSlot: current.time_slot,
+              code: current.code || '',
+              cancelledBy: 'admin',
+            });
+          } catch {
+            cancellationEmailStatus = 'failed';
+            console.error('La cancelación se guardó, pero el correo no pudo procesarse.');
+          }
+        }
+        return NextResponse.json({ok: true, ...(cancellationEmailStatus ? {cancellationEmailStatus} : {})});
       }
 
       case 'CREATE_EXPENSE': {

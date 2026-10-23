@@ -38,6 +38,7 @@ import { InitialShopSkeleton, PanelLoading } from '@/components/InitialShopState
 import type { PublicShopData } from '@/lib/public-shop-data';
 import { splitBusinessRevenue } from '@/lib/financial-allocations';
 import AgendaCalendar from '@/components/AgendaCalendar';
+import {customerWhatsAppLink} from '@/lib/customer-contact';
 import {useAgendaAutoSync} from '@/hooks/useAgendaAutoSync';
 
 const MONTH_NAMES = [
@@ -177,8 +178,12 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
       setBarberAppointments((current) => current.map((appointment) =>
         appointment.id === appointmentId ? {...appointment, ...persisted} : appointment
       ));
+      refreshAgenda();
+      return {ok: true, cancellationEmailStatus: persisted.cancellationEmailStatus};
     } catch (err: any) {
-      setErrorMsg(err?.message || 'No se pudo actualizar el estado del turno.');
+      const message = err?.message || 'No se pudo actualizar el estado del turno.';
+      setErrorMsg(message);
+      return {ok: false, error: message};
     }
   };
 
@@ -514,8 +519,11 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
               appointments={barberAppointments.filter(appointment => appointment.barberId === selectedBarberId)}
               barbers={selectedBarberObj ? [{id: selectedBarberObj.id, name: selectedBarberObj.name}] : []}
               canComplete={cashOpen}
-              onComplete={(appointment) => {void handleStatusChange(appointment.id, 'completado');}}
-              onCancel={(appointment) => {void handleStatusChange(appointment.id, 'cancelado');}}
+              onComplete={(appointment) => handleStatusChange(appointment.id, 'completado')}
+              onCancel={(appointment) => handleStatusChange(appointment.id, 'cancelado')}
+              getWhatsAppLink={(appointment) => customerWhatsAppLink(
+                appointment.clientPhone, appointment.clientName, "13'Cut"
+              )}
               syncState={agendaSyncState}
               lastUpdatedAt={agendaUpdatedAt}
               onRefresh={refreshAgenda}

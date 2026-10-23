@@ -115,3 +115,63 @@ export function buildBookingConfirmationEmail(input: BookingConfirmationEmail) {
 
   return {subject, html, text};
 }
+
+
+// Notificación cuando administración o el barbero cancelan una reserva.
+// Se escapan TODOS los campos recibidos de usuarios para evitar HTML inyectado.
+export interface BookingCancellationEmail {
+  clientName: string;
+  barberName: string;
+  serviceName: string;
+  dateString: string;
+  timeSlot: string;
+  code: string;
+  shopName?: string;
+  cancelledBy: 'barber' | 'admin';
+}
+
+export function buildBookingCancellationEmail(input: BookingCancellationEmail) {
+  const shopName = input.shopName || "13'Cut";
+  const actor = input.cancelledBy === 'barber' ? 'tu barbero' : 'la barbería';
+  const subject = 'Tu reserva fue cancelada | ' + shopName;
+  const text = [
+    'Hola ' + input.clientName + ',',
+    '',
+    'Te avisamos que ' + actor + ' canceló tu reserva en ' + shopName + '.',
+    '',
+    'Día: ' + input.dateString,
+    'Hora: ' + input.timeSlot + ' hs',
+    'Servicio: ' + input.serviceName,
+    'Barbero: ' + input.barberName,
+    'Código: ' + input.code,
+    '',
+    'El horario quedó disponible nuevamente. Si querés otro turno,',
+    'podés reservar en https://13-cut.snoservice.uy/agendar',
+    '',
+    'Disculpá las molestias.',
+    shopName,
+  ].join('\n');
+  const html = [
+    '<!doctype html><html lang="es"><head><meta charset="UTF-8">',
+    '<meta name="viewport" content="width=device-width,initial-scale=1"></head>',
+    '<body style="margin:0;padding:30px 12px;background:#09090b;color:#f4f4f5;font-family:Arial,sans-serif">',
+    '<table role="presentation" cellspacing="0" cellpadding="0" style="max-width:560px;width:100%;margin:0 auto;background:#18181b;border:1px solid #3f3f46;border-radius:18px">',
+    '<tr><td style="padding:30px 25px">',
+    '<p style="color:#86efac;font-size:12px;letter-spacing:2px;font-weight:bold">', escapeHtml(shopName), '</p>',
+    '<h1 style="font-size:26px;margin:14px 0">Tu turno fue cancelado</h1>',
+    '<p style="color:#d4d4d8;line-height:1.6">Hola ', escapeHtml(input.clientName),
+    ', te avisamos que ', escapeHtml(actor), ' canceló tu reserva.</p>',
+    '<div style="padding:18px;border-radius:12px;background:#27272a;line-height:1.9">',
+    '<strong>Día:</strong> ', escapeHtml(input.dateString), '<br>',
+    '<strong>Hora:</strong> ', escapeHtml(input.timeSlot), ' hs<br>',
+    '<strong>Servicio:</strong> ', escapeHtml(input.serviceName), '<br>',
+    '<strong>Barbero:</strong> ', escapeHtml(input.barberName), '<br>',
+    '<strong>Código:</strong> ', escapeHtml(input.code),
+    '</div>',
+    '<p style="color:#d4d4d8;line-height:1.6">El horario quedó libre nuevamente. Si querés, podés elegir otro turno.</p>',
+    '<a href="https://13-cut.snoservice.uy/agendar" style="display:inline-block;background:#86efac;color:#052e16;padding:13px 19px;border-radius:10px;text-decoration:none;font-weight:bold">Reservar otro turno</a>',
+    '<p style="color:#a1a1aa;font-size:13px;margin-top:24px">Disculpá las molestias. ', escapeHtml(shopName), '</p>',
+    '</td></tr></table></body></html>',
+  ].join('');
+  return {subject, text, html};
+}
