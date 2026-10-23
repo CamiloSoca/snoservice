@@ -327,7 +327,7 @@ export default function AgendaCalendar({
                   </div>
                   <span className={'shrink-0 rounded-full px-2 py-1 text-[10px] font-bold ' +
                     (appointment.status === 'completado'
-                      ? 'bg-emerald-500/100/15 text-emerald-300' : 'bg-amber-500/15 text-amber-300')}>
+                      ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-300')}>
                     {appointment.status === 'completado' ? 'Hecho' : 'Pendiente'}
                   </span>
                 </button>
