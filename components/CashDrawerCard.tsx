@@ -12,7 +12,7 @@ type Drawer={
 type Draw={id:string;amount:number|string;method:OnSitePaymentMethod;note:string;created_at:string;register_id:string};
 type Report={drawer:Drawer;ownerDraws:Draw[]};
 const fmt=(n:number|string|null|undefined)=>'$'+Number(n||0).toLocaleString('es-UY',{maximumFractionDigits:2});
-export default function CashDrawerCard(){
+export default function CashDrawerCard({view='overview'}:{view?:'overview'|'owner'}){
   const [report,setReport]=useState<Report|null>(null);
   const [loading,setLoading]=useState(true);
   const [error,setError]=useState('');
@@ -64,15 +64,22 @@ export default function CashDrawerCard(){
   return <section aria-label="Arqueo de caja" className="rounded-3xl border border-zinc-800 bg-zinc-900/90 p-4 sm:p-6 space-y-4">
     <div className="flex items-center justify-between gap-3">
       <div>
-        <h3 className="font-extrabold text-base text-white">Arqueo y retiros del dueño</h3>
-        <p className="mt-1 text-xs text-zinc-400">El resultado del negocio y el efectivo en cajón son cuentas distintas.</p>
+        <h3 className="font-extrabold text-lg text-white">{view==='overview'?'¿Cuánto hay en caja?':'Retirar dinero del dueño'}</h3>
+        <p className="mt-1 text-xs text-zinc-400">{view==='overview'
+          ?'Acá ves el efectivo del cajón. Las transferencias se registran aparte.'
+          :'Anotá el dinero que realmente sacaste del negocio. No es un gasto.'}</p>
       </div>
       <button type="button" onClick={()=>{void refresh();}} className="shrink-0 rounded-lg border border-zinc-700 p-2 text-xs font-bold">Actualizar</button>
     </div>
     {loading&&<p className="text-xs text-zinc-400">Consultando caja…</p>}
     {error&&<p role="alert" className="rounded-xl border border-red-700/50 bg-red-950/30 p-3 text-xs text-red-200">{error}</p>}
     {success&&<p role="status" className="rounded-xl border border-emerald-700/50 bg-emerald-950/30 p-3 text-xs text-emerald-200">{success}</p>}
-    {drawer?.registerId&&<>
+    {view==='owner'&&drawer&&<p className="rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-3 text-xs text-zinc-300">
+      {drawer.reliable
+        ? <>Efectivo disponible según los movimientos registrados: <strong className="text-emerald-400">{fmt(drawer.expectedCash)}</strong>. Contá el dinero antes de retirarlo.</>
+        : 'Esta caja todavía no está conciliada. Para retirar efectivo primero hay que revisar el saldo inicial y los movimientos.'}
+    </p>}
+    {view==='overview'&&drawer?.registerId&&<>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {([
           ['Inicial contado',fmt(drawer.openingCash)],
@@ -94,7 +101,7 @@ export default function CashDrawerCard(){
       {!drawer.cashOpen&&drawer.closingCounted!=null&&<p className="text-xs text-zinc-300">
         Último cierre: contado {fmt(drawer.closingCounted)}, diferencia {fmt(drawer.cashVariance)}.</p>}
     </>}
-    {drawer?.cashOpen&&<form onSubmit={e=>{void submit(e);}} className="space-y-3 rounded-2xl border border-zinc-700 bg-zinc-950 p-3 sm:p-4">
+    {view==='owner'&&drawer?.cashOpen&&<form onSubmit={e=>{void submit(e);}} className="space-y-3 rounded-2xl border border-zinc-700 bg-zinc-950 p-3 sm:p-4">
       <h4 className="font-bold text-sm text-white">Registrar dinero retirado por el dueño</h4>
       <label className="block text-xs text-zinc-400">Monto en pesos
         <input type="number" min="0.01" step="0.01" required inputMode="decimal" value={amount}
@@ -118,14 +125,14 @@ export default function CashDrawerCard(){
       </button>
       <p className="text-[11px] text-zinc-500">Este retiro no se registra como gasto ni descuenta una segunda vez la ganancia.</p>
     </form>}
-    <div className="space-y-2">
-      <h4 className="text-sm font-bold">Historial de retiros del dueño</h4>
+    {view==='owner'&&<div className="space-y-2">
+      <h4 className="text-sm font-bold">Retiros anteriores del dueño</h4>
       {report?.ownerDraws.length===0&&<p className="text-xs text-zinc-500">Sin retiros todavía.</p>}
       {report?.ownerDraws.map(r=><div key={r.id} className="flex items-center justify-between gap-2 border-b border-zinc-800 py-2 text-xs">
         <div><p className="font-semibold">{fmt(r.amount)} · {r.method==='cash'?'Efectivo':'Transferencia'}</p>
           <p className="text-zinc-500">{new Date(r.created_at).toLocaleString('es-UY',{timeZone:'America/Montevideo'})} {r.note?' · '+r.note:''}</p></div>
         <span className="text-emerald-400">Registrado</span>
       </div>)}
-    </div>
+    </div>}
   </section>;
 }
