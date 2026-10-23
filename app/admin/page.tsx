@@ -72,6 +72,7 @@ import { splitBusinessRevenue } from '@/lib/financial-allocations';
 import { invalidatePublicShopData } from '@/lib/public-shop-data';
 import { MAX_BARBER_PHOTO_BYTES } from '@/lib/barber-photo';
 import AgendaCalendar from '@/components/AgendaCalendar';
+import type {OnSitePaymentMethod} from '@/lib/payment-method';
 import {customerWhatsAppLink} from '@/lib/customer-contact';
 import {useAgendaAutoSync} from '@/hooks/useAgendaAutoSync';
 
@@ -304,10 +305,10 @@ export default function AdminDashboard() {
     router.refresh();
   };
 
-  const handleStatusChange = async (id: string, status: AppointmentItem['status']) => {
+  const handleStatusChange = async (id: string, status: AppointmentItem['status'], paymentMethod?: OnSitePaymentMethod) => {
     try {
       setAdminError('');
-      const persisted = await updateAppointmentStatus(id, status);
+      const persisted = await updateAppointmentStatus(id, status, paymentMethod);
       setAppointments((current) => current.map((appointment) =>
         appointment.id === id ? {...appointment, ...persisted} : appointment
       ));
@@ -1779,7 +1780,7 @@ const handleAddBarber = async () => {
               appointments={safeAppointments}
               barbers={safeBarbers}
               canComplete={cashStatus === 'abierta'}
-              onComplete={(appointment) => handleStatusChange(appointment.id, 'completado')}
+              onComplete={(appointment, method) => handleStatusChange(appointment.id, 'completado', method)}
               onCancel={(appointment) => handleStatusChange(appointment.id, 'cancelado')}
               getWhatsAppLink={getClientWhatsAppLink}
               syncState={agendaSyncState}
@@ -1848,7 +1849,14 @@ const handleAddBarber = async () => {
                               alert('Podés completar el turno cuando llegue su hora de inicio.');
                               return;
                             }
-                            handleStatusChange(apt.id, 'completado');
+                            const answer = window.prompt('¿Cómo pagó en el local? Escribí EFECTIVO o TRANSFERENCIA.');
+                              if (answer === null) return;
+                              const method = answer.trim().toLowerCase();
+                              if (method !== 'efectivo' && method !== 'transferencia') {
+                                alert('Elegí efectivo o transferencia para completar el turno.');
+                                return;
+                              }
+                              void handleStatusChange(apt.id, 'completado', method === 'efectivo' ? 'cash' : 'transfer');
                           }}
                           disabled={cashStatus !== 'abierta'}
                           className="px-3 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 text-xs font-semibold flex items-center space-x-1 cursor-pointer"
