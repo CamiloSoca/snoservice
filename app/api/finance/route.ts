@@ -64,16 +64,14 @@ export async function POST(request: Request) {
   // Snapshot de la comisión también para los cortes manuales; no recalcularla con futuras tarifas.
   const rate=barber.is_owner?0:Math.min(100,Math.max(0,Number(barber.commission_rate)||0));
   const barberShare=Math.round(amount*rate)/100;
-  const payload=table==='manual_charges' ? {
-    id:requestId,shop_id:SHOP_UUID,barber_id:barberId,amount,note,date_string:dateString,
-    cash_register_id:register[0].id,payment_method:paymentMethod,
-    commission_rate_snapshot:rate,barber_earnings_snapshot:barberShare,
-    business_earnings_snapshot:Math.round((amount-barberShare)*100)/100,
-  } : {
-    id:requestId,shop_id:SHOP_UUID,barber_id:barberId,amount,note,date_string:dateString,
-    cash_register_id:register[0].id,payment_method:paymentMethod,
-  };
-  const {error}=await supabase.from(table).insert(payload);
+  const common={id:requestId,shop_id:SHOP_UUID,barber_id:barberId,amount,note,
+    date_string:dateString,cash_register_id:register[0].id,payment_method:paymentMethod};
+  const {error}=table==='manual_charges'
+    ? await supabase.from('manual_charges').insert({
+      ...common,commission_rate_snapshot:rate,barber_earnings_snapshot:barberShare,
+      business_earnings_snapshot:Math.round((amount-barberShare)*100)/100,
+    })
+    : await supabase.from('tips').insert(common);
   if (error?.code === '23505') {
     const {data: prior, error: lookupError} = await supabase.from(table)
       .select('id,barber_id,amount,note,payment_method')
