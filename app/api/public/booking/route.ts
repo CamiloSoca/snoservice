@@ -58,7 +58,7 @@ export async function GET() {
     }
 
     const {data:fixed,error:fixedErr}=await supabase.from('fixed_bookings')
-      .select('barber_id,weekday,time_slot,duration_minutes,start_date,end_date')
+      .select('barber_id,weekday,time_slot,duration_minutes,start_date,end_date,skipped_dates')
       .eq('shop_id',SHOP_UUID).eq('active',true);
     if(fixedErr)return NextResponse.json({error:'No se pudo consultar agenda fija.'},{status:503});
     const visibleDays=businessDayOptions(new Date(),30);
@@ -70,6 +70,7 @@ export async function GET() {
     const fixedSlots=(fixed||[]).flatMap(f=>visibleDays.flatMap((day,index)=>{
       const iso=new Date(startUtc+index*86400000).toISOString().slice(0,10);
       return f.weekday===day.dayOfWeek && iso>=f.start_date && (!f.end_date||iso<=f.end_date)
+        && !(f.skipped_dates||[]).includes(iso)
         ? [{barberId:f.barber_id,dateString:day.dateString,timeSlot:f.time_slot,
             durationMinutes:f.duration_minutes,status:'confirmado'}] : [];
     }));
