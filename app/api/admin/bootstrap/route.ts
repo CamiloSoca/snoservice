@@ -36,6 +36,12 @@ export async function GET() {
       Array.isArray(fastData.appointments) &&
       Array.isArray(fastData.services) &&
       Array.isArray(fastData.barbers) &&
+      // No usar un snapshot rápido incompleto: si falta el horario del
+      // barbero, el cliente lo interpreta como "heredar del local" y un
+      // guardado posterior puede sobrescribir cambios previamente guardados.
+      fastData.barbers.every((barber: unknown) =>
+        barber !== null && typeof barber === 'object' &&
+        Object.prototype.hasOwnProperty.call(barber, 'working_schedule')) &&
       Array.isArray(fastData.expenses) &&
       Array.isArray(fastData.tips) &&
       Array.isArray(fastData.manualCharges) &&
