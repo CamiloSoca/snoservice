@@ -40,7 +40,7 @@ test('la reserva pública aplica horario específico y bloquea clientes fijos',(
  assert.match(sql,/Horario reservado para un cliente de agenda fija/);
 });
 test('la edición de horarios del local y los barberos está visible en administración',()=>{
- assert.match(admin,/Días y horarios de apertura del local/);
+ assert.match(admin,/Horarios de la barbería/);
  assert.match(admin,/Días y horarios del nuevo barbero/);
  assert.match(admin,/Horarios de /);
  assert.match(admin,/Guardar horarios y servicios/);
