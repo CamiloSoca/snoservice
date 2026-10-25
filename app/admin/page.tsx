@@ -820,6 +820,10 @@ const handleAddBarber = async () => {
 
   const handleSaveBrand = async (e: React.FormEvent) => {
     e.preventDefault();
+    if(shopHoursDirty){
+      setAdminError('Tenés horarios modificados sin guardar. Primero tocá “Guardar horarios de la barbería”.');
+      return;
+    }
     try {
       setAdminError('');
       const configToSave: ShopConfig = {
