@@ -30,6 +30,9 @@ test('UI distinguishes shop schedule saving from saving the local address and br
  assert.match(page,/Cambios sin guardar/);
  assert.match(page,/Guardar horarios de la barbería/);
  assert.match(page,/Guardar datos generales/);
+ assert.match(page,/Crear barbero y guardar horarios/);
+ assert.ok(page.indexOf('Crear barbero y guardar horarios')>page.indexOf('Días y horarios del nuevo barbero'));
+
  assert.match(page,/type="button" onClick=\{\(\)=>\{void handleSaveShopHours\(\);\}\}/);
  assert.match(page,/Tenés horarios modificados sin guardar/);
 });
