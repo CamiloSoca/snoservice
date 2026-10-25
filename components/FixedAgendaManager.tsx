@@ -3,6 +3,7 @@ import {useCallback,useEffect,useState} from 'react';
 import type {BarberItem,ServiceItem,ShopConfig} from '@/lib/booking-store';
 import {resolvedHours} from '@/lib/weekly-hours';
 import {fixedBookingStartSlots} from '@/lib/fixed-booking-time-slots';
+import {upcomingFixedDates} from '@/lib/fixed-booking-occurrence';
 type Fixed={
   id:string;barber_id:string;service_id:string;client_name:string;client_phone:string;
   client_email:string;weekday:number;time_slot:string;duration_minutes:number;
@@ -17,20 +18,6 @@ const todayLocal=()=>{
 };
 const empty=()=>({id:'',barberId:'',serviceId:'',clientName:'',clientPhone:'',
   clientEmail:'',weekday:6,timeSlot:'',startDate:todayLocal(),endDate:''});
-// Genera fechas del día semanal del cliente, sin depender del huso horario del navegador.
-const upcomingDates=(item:Fixed,count=26):string[]=>{
-  const start=Math.max(Date.parse(todayLocal()+'T00:00:00Z'),
-    Date.parse(item.start_date+'T00:00:00Z'));
-  if(!Number.isFinite(start))return [];
-  const shift=(item.weekday-new Date(start).getUTCDay()+7)%7;
-  const dates:string[]=[];
-  for(let n=0;n<count;n++){
-    const iso=new Date(start+(shift+7*n)*86400000).toISOString().slice(0,10);
-    if(item.end_date&&iso>item.end_date)break;
-    if(!(item.skipped_dates||[]).includes(iso))dates.push(iso);
-  }
-  return dates;
-};
 const shortDate=(iso:string)=>iso.slice(8,10)+'/'+iso.slice(5,7)+'/'+iso.slice(0,4);
 
 export default function FixedAgendaManager({barbers,services,shopSchedule}:{
@@ -61,6 +48,7 @@ export default function FixedAgendaManager({barbers,services,shopSchedule}:{
    : null;
  const startSlots=selectedService
    ? fixedBookingStartSlots(daySchedule,selectedService.durationMinutes):[];
+ const upcomingDates=(item:Fixed)=>upcomingFixedDates(item,todayLocal());
  const set=(key:keyof ReturnType<typeof empty>,value:string|number)=>
    setDraft(current=>({...current,[key]:value,
      ...(['barberId','serviceId','weekday'].includes(key)?{timeSlot:''}:{})}));
