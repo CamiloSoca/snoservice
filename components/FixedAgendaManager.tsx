@@ -1,7 +1,6 @@
 'use client';
 import {useCallback,useEffect,useState} from 'react';
 import type {BarberItem,ServiceItem} from '@/lib/booking-store';
-import {WEEK_DAYS} from '@/lib/weekly-hours';
 type Fixed={
   id:string;barber_id:string;service_id:string;client_name:string;client_phone:string;
   client_email:string;weekday:number;time_slot:string;duration_minutes:number;
