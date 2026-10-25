@@ -434,6 +434,17 @@ export async function getShopConfig(forceRefresh = false): Promise<ShopConfig> {
   return config;
 }
 
+export async function saveShopHours(hours:ShopConfig['schedule']):Promise<ShopConfig['schedule']> {
+  const response=await apiRequest('/api/admin',jsonRequest('POST',{
+    operation:'SAVE_SHOP_HOURS',schedule:hours,
+  }));
+  if(!response.ok||!response.schedule)throw new Error('No se confirmó el guardado de los horarios.');
+  const saved=response.schedule as ShopConfig['schedule'];
+  cachedShopConfig={...cachedShopConfig,schedule:saved};
+  invalidatePublicShopData();
+  return saved;
+}
+
 export async function saveShopConfig(cfg: ShopConfig): Promise<void> {
   await apiRequest('/api/admin', jsonRequest('POST', {operation: 'SAVE_SHOP_CONFIG', config: cfg}));
   cachedShopConfig = cfg;
