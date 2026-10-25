@@ -15,7 +15,7 @@ const time=/^([01]\d|2[0-3]):[0-5]\d$/;
 export async function GET(){
   if(!await requireAdminSession())return NextResponse.json({error:'Sesión requerida.'},{status:401,headers});
   const {data,error}=await getSupabaseServer().from('fixed_bookings')
-    .select('id,barber_id,service_id,client_name,client_phone,client_email,weekday,time_slot,duration_minutes,start_date,end_date,active')
+    .select('id,barber_id,service_id,client_name,client_phone,client_email,weekday,time_slot,duration_minutes,start_date,end_date,active,skipped_dates')
     .eq('shop_id',SHOP_UUID).order('weekday',{ascending:true}).order('time_slot',{ascending:true});
   if(error)return NextResponse.json({error:'No se pudo cargar agenda fija.'},{status:503,headers});
   return NextResponse.json({items:data||[]},{headers});
@@ -36,6 +36,33 @@ export async function POST(request:Request){
         ?'Ese turno fijo se superpone con una reserva existente o está fuera del horario.'
         :'No se pudo cambiar la agenda fija.'},{status:409,headers});
       if(!data)return NextResponse.json({error:'No se encontró ese turno fijo.'},{status:404,headers});
+      return NextResponse.json({ok:true},{headers});
+    }
+
+    if(body?.action==='skip_date'){
+      const id=String(body.id||'');
+      const occurrence=String(body.date||'');
+      const validDate=iso.test(occurrence)&&
+        !Number.isNaN(Date.parse(occurrence+'T00:00:00Z')) &&
+        new Date(occurrence+'T00:00:00Z').toISOString().slice(0,10)===occurrence;
+      if(!isValidUUID(id)||!validDate||typeof body.skip!=='boolean'){
+        return NextResponse.json({error:'Elegí una fecha válida de este turno fijo.'},{status:400,headers});
+      }
+      // RPC atómica: guarda una excepción semanal, nunca altera una reserva normal.
+      const {error}=await db.rpc('set_fixed_booking_week_skip',{
+        p_shop_id:SHOP_UUID,p_fixed_id:id,p_occurrence:occurrence,p_skip:body.skip,
+      });
+      if(error){
+        const message=error.code==='23505'
+          ?'No se puede restaurar esa fecha: otro cliente ya reservó el horario.'
+          :error.code==='23514'
+          ?'La fecha no corresponde a ese turno fijo o ya pasó.'
+          :error.code==='23503'
+          ?'No se encontró el turno fijo.'
+          :'No se pudo actualizar esta fecha del turno fijo.';
+        return NextResponse.json({error:message},{status:
+          error.code==='23514'?400:error.code==='23503'?404:409,headers});
+      }
       return NextResponse.json({ok:true},{headers});
     }
     if(body?.action!=='save')return NextResponse.json({error:'Acción inválida.'},{status:400,headers});
