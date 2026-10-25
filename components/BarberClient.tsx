@@ -708,7 +708,7 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
                 <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 space-y-1">
                   <span className="text-xs text-zinc-400">{isOwner ? 'Aporte al negocio en esta fecha' : 'Comisión generada en esta fecha'}</span>
                   <p className="text-2xl font-extrabold text-emerald-400">${isOwner ? dailyToBusiness : dailyCommission}</p>
-                  <span className="text-[11px] text-zinc-500">{dailyAppointments.length} turnos completados + {dailyCharges.length} cobros extra</span>
+                  <span className="text-[11px] text-zinc-500">{dailyAppointments.length} turnos normales completados + {dailyCharges.length} cobros (incluidos fijos)</span>
                 </div>
                 <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 space-y-1">
                   <span className="text-xs text-zinc-400">Propinas de la fecha</span>
@@ -744,7 +744,7 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
               <div>
                 <h3 className="font-bold text-base flex items-center gap-2">
                   <Coins className="w-4 h-4 text-emerald-400" />
-                  Registrar Cobro Manual (Corte sin turno previo)
+                  Registrar cobros adicionales y consultar cortes fijos cobrados
                 </h3>
               </div>
 
@@ -794,7 +794,8 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
                         <button
                           type="button"
                           onClick={() => handleDeleteMyCharge(chg.id)}
-                          disabled={!cashOpen}
+                          disabled={!cashOpen || Boolean(chg.note?.startsWith('Turno fijo ·'))}
+                          title={chg.note?.startsWith('Turno fijo ·')?'Corte fijo completado: no se puede eliminar sin conciliación':'Eliminar cobro manual'}
                           className="p-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-rose-400 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                           <Trash2 className="w-3.5 h-3.5" />

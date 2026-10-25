@@ -1446,7 +1446,8 @@ const handleAddBarber = async () => {
                             <button
                               type="button"
                               onClick={() => handleRemoveChargeAdmin(chg.id)}
-                              disabled={cashStatus !== 'abierta'}
+                              disabled={cashStatus !== 'abierta' || Boolean(chg.note?.startsWith('Turno fijo ·'))}
+                              title={chg.note?.startsWith('Turno fijo ·')?'Fijo completado: cobro protegido contra borrados':'Eliminar cobro extra'}
                               className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-rose-400 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -1889,7 +1890,7 @@ const handleAddBarber = async () => {
                           </div>
                           {item.barberManualChargesTotal > 0 && (
                             <div className="flex justify-between text-emerald-400 font-medium">
-                              <span>Cobros manuales extra:</span>
+                              <span>Cobros adicionales y fijos:</span>
                               <span>+${item.barberManualChargesTotal}</span>
                             </div>
                           )}
