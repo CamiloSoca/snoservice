@@ -15,8 +15,9 @@ type CalendarView = 'dia' | 'semana';
 interface FixedRule {
  id:string;barberId:string;serviceId:string;clientName:string;clientPhone:string;clientEmail:string;
  weekday:number;timeSlot:string;durationMinutes:number;startDate:string;endDate:string|null;
- serviceName:string;barberName:string;skippedDates?:string[];
+ serviceName:string;servicePrice:number;barberName:string;skippedDates?:string[];
 }
+type FixedCompleted={fixedBookingId:string;occurrenceDate:string;chargeId:string;amount:number};
 type BarberRef = Pick<BarberItem, 'id' | 'name'>;
 
 interface AgendaCalendarProps {
@@ -89,16 +90,23 @@ export default function AgendaCalendar({
   const [selectedAppointmentId, setSelectedAppointmentId] = useState<string | null>(null);
   const [actionFeedback, setActionFeedback] = useState<string>('');
   const [fixedRules,setFixedRules]=useState<FixedRule[]>([]);
+  const [completedFixed,setCompletedFixed]=useState<FixedCompleted[]>([]);
   const [fixedError,setFixedError]=useState('');
   const [fixedReload,setFixedReload]=useState(0);
   useEffect(()=>{
     let alive=true;
     async function refreshFixed() {
       try {
-        const response=await fetch('/api/agenda/fixed',{cache:'no-store',credentials:'same-origin'});
+        const dates=view==='semana'?calendarWeekDays(selectedDate):[selectedDate];
+        const params=new URLSearchParams({from:dates[0],to:dates[dates.length-1]});
+        const response=await fetch('/api/agenda/fixed?'+params.toString(),{cache:'no-store',credentials:'same-origin'});
         const json=await response.json().catch(()=>({}));
         if(!response.ok)throw new Error(json.error||'No se pudieron actualizar los fijos.');
-        if(alive){setFixedRules(Array.isArray(json.items)?json.items:[]);setFixedError('');}
+        if(alive){
+          setFixedRules(Array.isArray(json.items)?json.items:[]);
+          setCompletedFixed(Array.isArray(json.completed)?json.completed:[]);
+          setFixedError('');
+        }
       } catch {
         if(alive)setFixedError('No se pudieron verificar los clientes fijos. Reintentá la actualización.');
       }
@@ -108,7 +116,7 @@ export default function AgendaCalendar({
     document.addEventListener('visibilitychange',onVisible);
     const interval=window.setInterval(()=>{if(document.visibilityState==='visible')void refreshFixed();},12_000);
     return()=>{alive=false;window.clearInterval(interval);document.removeEventListener('visibilitychange',onVisible);};
-  },[mode,fixedReload]);
+  },[mode,fixedReload,view,selectedDate]);
 
   const today = todayInMontevideo();
   const syncLabel = syncState === 'error' ? 'Sin sincronizar'
@@ -143,16 +151,23 @@ export default function AgendaCalendar({
         &&(!f.endDate||date<=f.endDate)
         &&!f.skippedDates?.includes(date)
         &&barbers.some(b=>b.id===f.barberId))
-        .map(f=>({
-          id:'fixed-'+f.id+'-'+date,code:'FIJO',isFixed:true,fixedDate:date,
-          serviceId:f.serviceId,serviceName:f.serviceName,servicePrice:0,priceSnapshot:0,
-          durationMinutes:f.durationMinutes,barberId:f.barberId,barberName:f.barberName,
-          dateString:bookingDateLabel(date),timeSlot:f.timeSlot,
-          clientName:f.clientName,clientPhone:f.clientPhone,clientEmail:f.clientEmail,
-          status:'confirmado' as const,createdAt:new Date().toISOString(),
-        }));
+        .map(f=>{
+          const paid=completedFixed.find(c=>c.fixedBookingId===f.id&&c.occurrenceDate===date);
+          const price=paid?paid.amount:f.servicePrice;
+          return {
+            id:'fixed-'+f.id+'-'+date,code:'FIJO',isFixed:true,
+            fixedBookingId:f.id,fixedDate:date,
+            serviceId:f.serviceId,serviceName:f.serviceName,servicePrice:price,priceSnapshot:price,
+            durationMinutes:f.durationMinutes,barberId:f.barberId,barberName:f.barberName,
+            dateString:bookingDateLabel(date),timeSlot:f.timeSlot,
+            clientName:f.clientName,clientPhone:f.clientPhone,clientEmail:f.clientEmail,
+            status:(paid?'completado':'confirmado') as 'completado'|'confirmado',
+            // La fecha del fijo, no el instante de renderización.
+            createdAt:date+'T12:00:00.000Z',
+          };
+        });
     })
-  ),[displayedDates,fixedRules,barbers]);
+  ),[displayedDates,fixedRules,barbers,completedFixed]);
   const agendaEntries=useMemo(()=>[...ownAppointments,...fixedEvents],[ownAppointments,fixedEvents]);
   const calendarAppointments = useMemo(() => (
     displayedDates.flatMap(date => agendaDayAppointments(agendaEntries, date))
@@ -220,7 +235,7 @@ export default function AgendaCalendar({
           <span className="text-xs font-extrabold tabular-nums text-zinc-200">{appointment.timeSlot}</span>
           {compact && <span className={'text-[10px] font-semibold ' +
             (appointment.status === 'completado' ? 'text-emerald-300' : 'text-amber-300')}>
-            {appointment.isFixed ? 'Fijo' : appointment.status === 'completado' ? 'Completado' : 'Sin marcar'}
+            {appointment.isFixed ? appointment.status === 'completado' ? 'Fijo · Hecho' : 'Fijo' : appointment.status === 'completado' ? 'Completado' : 'Sin marcar'}
           </span>}
         </div>
         <p className="truncate text-xs font-bold text-zinc-100">{appointment.clientName}</p>
@@ -355,7 +370,7 @@ export default function AgendaCalendar({
                   <span className={'shrink-0 rounded-full px-2 py-1 text-[10px] font-bold ' +
                     (appointment.status === 'completado'
                       ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-300')}>
-                    {appointment.isFixed ? 'Fijo' : appointment.status === 'completado' ? 'Hecho' : 'Pendiente'}
+                    {appointment.isFixed ? appointment.status === 'completado' ? 'Fijo · Hecho' : 'Fijo' : appointment.status === 'completado' ? 'Hecho' : 'Pendiente'}
                   </span>
                 </button>
               ))
@@ -416,7 +431,7 @@ export default function AgendaCalendar({
                                     ? 'border-l-emerald-500 border-emerald-600/40 bg-emerald-500/10'
                                     : 'border-l-amber-500 border-zinc-800 bg-zinc-900 hover:bg-zinc-800')}>
                               <span className="block truncate text-[11px] font-bold tabular-nums text-zinc-200">
-                                {event.appointment.timeSlot} {event.appointment.clientName}{event.appointment.isFixed ? ' · Fijo' : ''}
+                                {event.appointment.timeSlot} {event.appointment.clientName}{event.appointment.isFixed ? event.appointment.status==='completado'?' · Fijo hecho':' · Fijo' : ''}
                               </span>
                               <span className="block truncate text-[10px] text-zinc-400">{event.appointment.serviceName}</span>
                             </button>
@@ -465,7 +480,28 @@ export default function AgendaCalendar({
           appointment={selectedAppointment}
           canComplete={canComplete}
           getWhatsAppLink={getWhatsAppLink}
-          onComplete={onComplete}
+          onComplete={async(appointment,method)=>{
+            if(!appointment.isFixed)return onComplete(appointment,method);
+            if(!appointment.fixedBookingId||!appointment.fixedDate){
+              return {ok:false,error:'Faltan datos de este turno fijo.'};
+            }
+            try{
+              const response=await fetch('/api/agenda/fixed/complete',{
+                method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({
+                  fixedBookingId:appointment.fixedBookingId,
+                  occurrenceDate:appointment.fixedDate,
+                  paymentMethod:method,
+                }),
+              });
+              const result=await response.json().catch(()=>({}));
+              if(!response.ok||!result.ok)return {ok:false,error:result.error||'No se confirmó el corte fijo.'};
+              setFixedReload(value=>value+1);
+              return {ok:true};
+            }catch{
+              return {ok:false,error:'No se pudo comprobar el cobro. Revisá la caja antes de repetirlo.'};
+            }
+          }}
           onCancel={onCancel}
           onSuccess={(message) => {setActionFeedback(message); onRefresh();}}
           onClose={() => setSelectedAppointmentId(null)}
