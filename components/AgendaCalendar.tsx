@@ -15,7 +15,7 @@ type CalendarView = 'dia' | 'semana';
 interface FixedRule {
  id:string;barberId:string;serviceId:string;clientName:string;clientPhone:string;clientEmail:string;
  weekday:number;timeSlot:string;durationMinutes:number;startDate:string;endDate:string|null;
- serviceName:string;barberName:string;
+ serviceName:string;barberName:string;skippedDates?:string[];
 }
 type BarberRef = Pick<BarberItem, 'id' | 'name'>;
 
@@ -141,6 +141,7 @@ export default function AgendaCalendar({
       const weekday=day.getUTCDay();
       return fixedRules.filter(f=>f.weekday===weekday&&date>=f.startDate
         &&(!f.endDate||date<=f.endDate)
+        &&!f.skippedDates?.includes(date)
         &&barbers.some(b=>b.id===f.barberId))
         .map(f=>({
           id:'fixed-'+f.id+'-'+date,code:'FIJO',isFixed:true,fixedDate:date,
