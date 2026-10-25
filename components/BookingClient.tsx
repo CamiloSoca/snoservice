@@ -35,6 +35,7 @@ import {
 import { InitialShopSkeleton } from '@/components/InitialShopState';
 import type { PublicShopData } from '@/lib/public-shop-data';
 import {businessDayOptions, validateBookingTime} from '@/lib/appointment-rules';
+import {resolvedHours} from '@/lib/weekly-hours';
 import {suggestEmailCorrection} from '@/lib/email-validation';
 
 const BOOKING_COOLDOWN_MS = 60 * 1000;
@@ -210,7 +211,8 @@ function AgendarContent({initialShop}: {initialShop: PublicShopData}) {
 
   const dayKeyMap = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
   const currentDayKey = activeDayObj ? dayKeyMap[activeDayObj.dayOfWeek] : 'martes';
-  const rawSchedule = shopConfig.schedule || {};
+  const effectiveSchedule = resolvedHours(shopConfig.schedule, selectedBarber?.workingSchedule);
+  const rawSchedule = effectiveSchedule || {};
   const currentDayRule = rawSchedule[currentDayKey] || {
     isOpen: true,
     openTime: '09:00',
@@ -220,7 +222,7 @@ function AgendarContent({initialShop}: {initialShop: PublicShopData}) {
   const { morning: morningSlots, afternoon: afternoonSlots } = getSlotsForDayOfWeek(
     activeDayObj?.dayOfWeek ?? 2,
     30,
-    shopConfig.schedule
+    effectiveSchedule
   );
 
   const scrollToTop = () => {
@@ -240,7 +242,7 @@ function AgendarContent({initialShop}: {initialShop: PublicShopData}) {
       dateString: dateStr,
       timeSlot,
       durationMinutes: duration,
-      schedule: shopConfig.schedule,
+      schedule: resolvedHours(shopConfig.schedule,barbers.find(b=>b.id===barberId)?.workingSchedule),
     })) return true;
     return !isSlotAvailable({
       candidateTime: timeSlot,
