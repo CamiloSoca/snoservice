@@ -12,7 +12,10 @@ test('iPhone uses apple-touch-icon with official 13 Cut logo at 180 pixels',()=>
   assert.match(apple,/return makeBrandIcon\(size\.width\)/);
   assert.match(renderer,/zdhuymfapknpogdrbksn\.supabase\.co\/storage\/v1\/object\/public\/media\//);
   assert.match(renderer,/0f5ab934-db55-46d2-a829-ecd59150d61a\.png\?v=1791937983092/);
-  assert.match(renderer,/objectFit:'contain'/);
+  assert.match(renderer,/const bleed=Math.round\(size\*1\.05\)/);
+  assert.match(renderer,/objectFit:'cover'/);
+  assert.match(renderer,/overflow:'hidden'/);
+  assert.doesNotMatch(renderer,/size\*\.86/);
 });
 
 test('browser and Android icon reuse exactly the same brand asset',()=>{
