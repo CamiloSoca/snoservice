@@ -3,7 +3,7 @@ import type {OnSitePaymentMethod} from './payment-method';
 import type {WeeklyHours} from './weekly-hours';
 import { createClient } from '@supabase/supabase-js';
 import { invalidatePublicShopData } from '@/lib/public-shop-data';
-import {businessDayOptions, bookingIntervalsConflict} from '@/lib/appointment-rules';
+import {businessDayOptions, bookingAvailabilityConflict} from '@/lib/appointment-rules';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -301,7 +301,7 @@ export function getSlotsForDayOfWeek(
 // Un corte (<90 min) puede arrancar antes de otro ya reservado y
 // compartir como máximo 30 minutos, NUNCA empezar dentro de uno existente.
 // Color Global/Mechas (>=90 min) jamás se solapan.
-// No reemplazar bookingIntervalsConflict por slotsOverlap.
+// Regla histórica intacta para turnos normales; ocupación estricta sólo para fijos.
 export function isSlotAvailable(params: {
   candidateTime: string;
   serviceDurationMinutes: number;
@@ -329,7 +329,7 @@ export function isSlotAvailable(params: {
 
     const matchedDuration = allServices?.find((s) => s.id === apt.serviceId)?.durationMinutes;
     const aptDuration = Math.max(15, Number(apt.durationMinutes || matchedDuration) || 60);
-    if (bookingIntervalsConflict(candidateTime, duration, apt.timeSlot, aptDuration)) return false;
+    if (bookingAvailabilityConflict(candidateTime, duration, apt.timeSlot, aptDuration, apt.isFixed === true)) return false;
   }
 
   return true;
@@ -652,15 +652,16 @@ export async function getAdminDashboardSnapshot(): Promise<AdminDashboardSnapsho
 
 export async function getPublicBookedSlots(forceRefresh = false): Promise<AppointmentItem[]> {
   const {appointments} = await apiRequest('/api/public/booking', {cache: 'no-store'});
-  // El servidor devuelve sólo estos cinco campos públicos. Restaurar en
+  // El servidor devuelve únicamente intervalos y una marca de agenda fija, sin nombres.
+  // Restaurar en
   // memoria el modelo necesario para la lógica existente de solapamientos.
   type BookedSlot = Pick<AppointmentItem, 'barberId' | 'dateString' |
-    'timeSlot' | 'durationMinutes' | 'status'>;
+    'timeSlot' | 'durationMinutes' | 'status' | 'isFixed'>;
   return ((appointments || []) as BookedSlot[]).map((slot) => ({
     id: '', code: '', serviceId: '', serviceName: '', servicePrice: 0,
     priceSnapshot: 0, durationMinutes: Number(slot.durationMinutes) || 60,
     barberId: slot.barberId, barberName: '', dateString: slot.dateString,
-    timeSlot: slot.timeSlot, status: slot.status, createdAt: '',
+    timeSlot: slot.timeSlot, status: slot.status, isFixed: slot.isFixed === true, createdAt: '',
     clientName: '', clientPhone: '', clientEmail: '', clientNotes: '',
   }));
 }

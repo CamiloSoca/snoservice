@@ -71,7 +71,7 @@ export async function GET() {
       const iso=new Date(startUtc+index*86400000).toISOString().slice(0,10);
       return f.weekday===day.dayOfWeek && iso>=f.start_date && (!f.end_date||iso<=f.end_date)
         ? [{barberId:f.barber_id,dateString:day.dateString,timeSlot:f.time_slot,
-            durationMinutes:f.duration_minutes,status:'confirmado'}] : [];
+            durationMinutes:f.duration_minutes,status:'confirmado',isFixed:true}] : [];
     }));
     // El navegador solo necesita intervalos ocupados, no una estructura
     // completa de turno con campos vacíos ni datos de clientes.

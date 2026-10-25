@@ -66,6 +66,19 @@ export function bookingIntervalsConflict(
   return firstDuration >= 90 || secondDuration >= 90 || overlap > 30;
 }
 
+// Regla de reserva pública. La agenda fija es un bloqueo absoluto:
+ // nunca comparte minutos con una reserva normal. Sin un fijo,
+ // conservar exactamente la excepción histórica (unidireccional) de 13'Cut.
+export function bookingAvailabilityConflict(
+  candidateTime: string, candidateDuration: number,
+  existingTime: string, existingDuration: number,
+  existingIsFixed = false,
+): boolean {
+  return existingIsFixed
+    ? slotsOverlap(candidateTime, candidateDuration, existingTime, existingDuration)
+    : bookingIntervalsConflict(candidateTime, candidateDuration, existingTime, existingDuration);
+}
+
 export function businessDayOptions(now = new Date(), count = 30) {
   const firstDay = dayNumber(now);
   return Array.from({length: count}, (_, offset) => {
