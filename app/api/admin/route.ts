@@ -363,7 +363,7 @@ export async function POST(request: Request) {
         const coverImageUrl = cfg.coverImageUrl
           ? String(cfg.coverImageUrl).trim().slice(0, 500)
           : backgroundImageUrl;
-        const schedule = cfg.schedule || DEFAULT_SHOP_CONFIG.schedule;
+        const schedule = normalizeHours(cfg.schedule ?? DEFAULT_SHOP_CONFIG.schedule);
 
         const updatePayload: Record<string, any> = {
           name,
