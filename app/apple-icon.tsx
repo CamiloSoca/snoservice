@@ -2,8 +2,6 @@ import {makeBrandIcon} from '@/lib/brand-home-icon';
 
 export const size={width:180,height:180};
 export const contentType='image/png';
-export const runtime='nodejs';
-export const dynamic='force-dynamic';
 
 // Next.js publishes <link rel="apple-touch-icon"> for Safari/iPhone automatically.
 export default async function AppleIcon(){
