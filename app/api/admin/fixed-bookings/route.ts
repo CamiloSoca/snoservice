@@ -56,7 +56,7 @@ export async function POST(request:Request){
     const payload={
       barber_id:barberId,service_id:serviceId,client_name:clientName,
       client_phone:clientPhone,client_email:clientEmail,weekday,time_slot:timeSlot,
-      start_date:startDate,end_date:endDate,active:true,
+      start_date:startDate,end_date:endDate,
     };
     const result=id
       ? await db.from('fixed_bookings').update(payload).eq('id',id).eq('shop_id',SHOP_UUID).select('id').maybeSingle()
