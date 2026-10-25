@@ -497,7 +497,9 @@ export async function getBarbers(forceRefresh = false): Promise<BarberItem[]> {
 }
 
 export async function getAdminBarbers(forceRefresh = false): Promise<BarberItem[]> {
-  const { data } = await apiRequest('/api/admin?resource=barbers');
+  // Una lectura de confirmación jamás debe venir de caché: el administrador
+  // necesita comprobar lo efectivamente persistido en Supabase.
+  const { data } = await apiRequest('/api/admin?resource=barbers', {cache:'no-store'});
   const items = (data || []).map(mapBarber);
   cachedBarbers = items;
   return items;
