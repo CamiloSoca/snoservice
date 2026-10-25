@@ -59,3 +59,27 @@ test('agenda fija: edición, pausa, permisos y protección de datos personales',
  assert.match(sql,/GRANT SELECT,INSERT,UPDATE,DELETE ON public.fixed_bookings TO service_role/);
  assert.match(sql,/Hay reservas existentes en uno de esos días/);
 });
+
+test('clientes fijos aparecen en día y semana sin poder completar/cancelar como reserva normal',()=>{
+ const calendar=read('components/AgendaCalendar.tsx');
+ const modal=read('components/AppointmentDetailModal.tsx');
+ const route=read('app/api/agenda/fixed/route.ts');
+ assert.match(calendar,/fixedEvents=useMemo/);
+ assert.match(calendar,/fixedDate:date/);
+ assert.match(calendar,/isFixed:true/);
+ assert.match(calendar,/appointment\.isFixed \? 'Fijo'/);
+ assert.match(calendar,/fixedReload/);
+ assert.match(modal,/!appointment\.isFixed && appointment\.status === 'confirmado'/);
+ assert.match(modal,/No se factura automáticamente/);
+ assert.match(route,/if\(!admin&&staff\)query=query\.eq\('barber_id',staff\.sub\)/);
+ assert.match(route,/Cache-Control.*private, no-store/);
+});
+
+test('los fijos se pueden pausar sin borrar historial ni emitir cobros',()=>{
+ const management=read('components/FixedAgendaManager.tsx');
+ assert.match(management,/Pausar fijo/);
+ assert.match(management,/Reactivar/);
+ assert.match(management,/Editar/);
+ assert.match(sql,/IF NOT NEW\.active THEN/);
+ assert.doesNotMatch(management,/delete\(/);
+});
