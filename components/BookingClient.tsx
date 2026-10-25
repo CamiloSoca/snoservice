@@ -218,6 +218,10 @@ function AgendarContent({initialShop}: {initialShop: PublicShopData}) {
     openTime: '09:00',
     closeTime: '19:00',
   };
+  const shopClosedOnSelectedDay = shopConfig.schedule[currentDayKey]?.isOpen !== true;
+  const closedDayMessage = shopClosedOnSelectedDay
+    ? 'La barbería está cerrada este día. Elegí otra fecha.'
+    : `${selectedBarber?.name || 'El barbero'} no atiende este día. Elegí otra fecha.`;
 
   const { morning: morningSlots, afternoon: afternoonSlots } = getSlotsForDayOfWeek(
     activeDayObj?.dayOfWeek ?? 2,
@@ -330,7 +334,7 @@ function AgendarContent({initialShop}: {initialShop: PublicShopData}) {
   const handleNext = async () => {
     if (!canProceed()) {
       if (step === 3 && !currentDayRule.isOpen) {
-        setFormError('El local se encuentra cerrado este día.');
+        setFormError(closedDayMessage);
       } else if (step === 3 && selectedBarber && selectedTime && checkSlotBooked(selectedBarber.id, selectedDate, selectedTime)) {
         setSelectedTime(null);
         setFormError('El horario acaba de ocuparse. Elegí otro horario.');
@@ -931,7 +935,7 @@ function AgendarContent({initialShop}: {initialShop: PublicShopData}) {
                           </div>
                         ) : !currentDayRule.isOpen ? (
                           <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-semibold text-center">
-                            El local se encuentra cerrado este día. Tocá otra fecha arriba.
+                            {closedDayMessage}
                           </div>
                         ) : (
                           <div className="space-y-4">
