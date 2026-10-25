@@ -106,7 +106,7 @@ export default function AgendaCalendar({
     void refreshFixed();
     const onVisible=()=>{if(document.visibilityState==='visible')void refreshFixed();};
     document.addEventListener('visibilitychange',onVisible);
-    const interval=window.setInterval(()=>{if(document.visibilityState==='visible')void refreshFixed();},30_000);
+    const interval=window.setInterval(()=>{if(document.visibilityState==='visible')void refreshFixed();},12_000);
     return()=>{alive=false;window.clearInterval(interval);document.removeEventListener('visibilitychange',onVisible);};
   },[mode,fixedReload]);
 
