@@ -83,3 +83,14 @@ test('los fijos se pueden pausar sin borrar historial ni emitir cobros',()=>{
  assert.match(sql,/IF NOT NEW\.active THEN/);
  assert.doesNotMatch(management,/delete\(/);
 });
+
+test('mensaje del día cerrado distingue ausencia del barbero del cierre real del local',()=>{
+ const booking=read('components/BookingClient.tsx');
+ assert.match(booking,/shopClosedOnSelectedDay = shopConfig\.schedule\[currentDayKey\]\?\.isOpen !== true/);
+ assert.match(booking,/selectedBarber\?\.name \|\| 'El barbero'/);
+ assert.match(booking,/no atiende este día\. Elegí otra fecha\./);
+ assert.match(booking,/La barbería está cerrada este día\. Elegí otra fecha\./);
+ assert.match(booking,/setFormError\(closedDayMessage\)/);
+ assert.match(booking,/\{closedDayMessage\}/);
+ assert.doesNotMatch(booking,/El local se encuentra cerrado este día/);
+});
