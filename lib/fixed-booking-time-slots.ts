@@ -16,8 +16,8 @@ export function fixedBookingStartSlots(rule:Rule|null|undefined,durationMinutes:
   const extra=durationMinutes<90?30:0;
   const slots:string[]=[];
   for(let start=opening;start<closing;start+=30){
-    // Nunca crear bloques que atraviesen medianoche.
-    if(start+durationMinutes<=closing+extra&&start+durationMinutes<=1440){
+    // Nunca crear bloques que lleguen a medianoche ni la atraviesen.
+    if(start+durationMinutes<=closing+extra&&start+durationMinutes<1440){
       slots.push(label(start));
     }
   }
