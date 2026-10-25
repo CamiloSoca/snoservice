@@ -415,7 +415,7 @@ export default function AgendaCalendar({
                                     ? 'border-l-emerald-500 border-emerald-600/40 bg-emerald-500/10'
                                     : 'border-l-amber-500 border-zinc-800 bg-zinc-900 hover:bg-zinc-800')}>
                               <span className="block truncate text-[11px] font-bold tabular-nums text-zinc-200">
-                                {event.appointment.timeSlot} {event.appointment.clientName}
+                                {event.appointment.timeSlot} {event.appointment.clientName}{event.appointment.isFixed ? ' · Fijo' : ''}
                               </span>
                               <span className="block truncate text-[10px] text-zinc-400">{event.appointment.serviceName}</span>
                             </button>
@@ -432,7 +432,7 @@ export default function AgendaCalendar({
       ) : (
         <div className="space-y-3 p-3 sm:p-4">
           {displayedDates.map(date => {
-            const items = agendaDayAppointments(ownAppointments, date)
+            const items = agendaDayAppointments(agendaEntries, date)
               .filter(appointment => filteredBarbers.some(barber => barber.id === appointment.barberId));
             return (
               <div key={date} className={'overflow-hidden rounded-2xl border ' +
