@@ -1,10 +1,12 @@
 import {ImageResponse} from 'next/og';
+import {connection} from 'next/server';
 
 // Imagen oficial proporcionada por el dueño. No crear otro logo ni usar el monograma de prueba.
 export const OFFICIAL_13_CUT_LOGO =
   'https://zdhuymfapknpogdrbksn.supabase.co/storage/v1/object/public/media/0f5ab934-db55-46d2-a829-ecd59150d61a/logo/0f5ab934-db55-46d2-a829-ecd59150d61a.png?v=1791937983092';
 
 export async function makeBrandIcon(size:number):Promise<ImageResponse> {
+  await connection(); // Logo fetched on demand, not locked to a build-time fallback.
   let source:string|null=null;
   try {
     // Only this fixed public asset may be read here; no user-controlled remote URL.
