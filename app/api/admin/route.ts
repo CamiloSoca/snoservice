@@ -262,6 +262,7 @@ export async function POST(request: Request) {
             }, {status: 503});
           }
         }
+        revalidateTag('public-shop-'+SHOP_UUID,{expire:0});
         return NextResponse.json({ok: true});
       }
       case 'DELETE_BARBER': {
