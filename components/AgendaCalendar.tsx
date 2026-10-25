@@ -313,6 +313,7 @@ export default function AgendaCalendar({
         </button>
       </div>
 
+      {fixedError && <p role="alert" className="mx-3 mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">{fixedError}</p>}
       {actionFeedback && (
         <div role="status" className="mx-3 mt-3 flex items-start justify-between gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-3 text-sm text-emerald-200">
           <span>{actionFeedback}</span>
