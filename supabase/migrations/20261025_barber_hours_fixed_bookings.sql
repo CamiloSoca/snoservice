@@ -138,6 +138,11 @@ DECLARE
  shop_schedule jsonb; own_schedule jsonb; rule jsonb; worker jsonb;
  k text; open_time time; close_time time; start_at time; actual_duration int;
 BEGIN
+ -- Pausing must ALWAYS be possible, even when the shop/staff has since closed.
+ IF NOT NEW.active THEN
+   NEW.updated_at:=now();
+   RETURN NEW;
+ END IF;
  SELECT schedule INTO shop_schedule FROM public.shops WHERE id=NEW.shop_id FOR UPDATE;
  IF NOT FOUND THEN RAISE EXCEPTION 'Local inexistente' USING ERRCODE='23514'; END IF;
  SELECT working_schedule INTO own_schedule FROM public.barbers
