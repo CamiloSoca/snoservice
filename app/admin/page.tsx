@@ -72,6 +72,8 @@ import { splitBusinessRevenue } from '@/lib/financial-allocations';
 import { invalidatePublicShopData } from '@/lib/public-shop-data';
 import { MAX_BARBER_PHOTO_BYTES } from '@/lib/barber-photo';
 import AgendaCalendar from '@/components/AgendaCalendar';
+import WeeklyScheduleEditor from '@/components/WeeklyScheduleEditor';
+import {normalizeHours, type WeeklyHours} from '@/lib/weekly-hours';
 import CashDrawerCard from '@/components/CashDrawerCard';
 import FinanceLedgerCard from '@/components/FinanceLedgerCard';
 import type {OnSitePaymentMethod} from '@/lib/payment-method';
@@ -173,6 +175,7 @@ export default function AdminDashboard() {
   const [newBarberCommission, setNewBarberCommission] = useState('50');
   const [newBarberIsOwner, setNewBarberIsOwner] = useState(false);
   const [newBarberPin, setNewBarberPin] = useState('');
+  const [newBarberSchedule,setNewBarberSchedule]=useState<WeeklyHours|null>(null);
   const [barberPinDrafts, setBarberPinDrafts] = useState<Record<string, string>>({});
 
   const [expenseDesc, setExpenseDesc] = useState('');
@@ -463,7 +466,8 @@ const handleAddBarber = async () => {
       id: generateUUID(),
       slug,
       name: newBarberName.trim(),
-      role: 'Barbero Profesional',
+      role: 'Barbero',
+      workingSchedule:normalizeHours(newBarberSchedule ?? shopConfig.schedule),
       bio: '',
       specialties: ['Fade', 'Corte Clásico'],
       serviceIds: services.map((s) => s.id),
@@ -498,6 +502,7 @@ const handleAddBarber = async () => {
       setNewBarberCommission('50');
       setNewBarberIsOwner(false);
       setNewBarberPin('');
+      setNewBarberSchedule(null);
       
       alert(`¡Barbero ${newItem.name} agregado con éxito!`);
     } catch (err: any) {
@@ -799,7 +804,7 @@ const handleAddBarber = async () => {
         phone: shopConfig.phone.trim(),
         address: shopConfig.address.trim(),
         city: shopConfig.city ? shopConfig.city.trim() : 'Montevideo',
-        schedule: shopConfig.schedule || DEFAULT_SHOP_CONFIG.schedule,
+        schedule: normalizeHours(shopConfig.schedule) || DEFAULT_SHOP_CONFIG.schedule,
       };
       await saveShopConfig(configToSave);
       setSavedBanner(true);
@@ -2023,6 +2028,10 @@ const handleAddBarber = async () => {
                     Sumar
                   </button>
                 </div>
+                <WeeklyScheduleEditor title="Días y horarios del nuevo barbero"
+                  value={newBarberSchedule ?? shopConfig.schedule}
+                  onChange={setNewBarberSchedule}
+                  help="Podés habilitar solo sábados o cualquier combinación. Se guardará junto al perfil."/>
                 <label className="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
                   <input type="checkbox" checked={newBarberIsOwner} onChange={(e) => setNewBarberIsOwner(e.target.checked)} className="accent-emerald-500 size-4" />
                   Es propietario: 100% de sus cortes al fondo común (sin comisión)
@@ -2157,6 +2166,10 @@ const handleAddBarber = async () => {
                         </div>
                       </div>
 
+                      <WeeklyScheduleEditor title={'Horarios de '+brb.name}
+                        help="Desmarcá los días que no trabaja. Guardá para actualizar las próximas reservas disponibles."
+                        value={brb.workingSchedule ?? shopConfig.schedule}
+                        onChange={(hours)=>setBarbers(prev=>prev.map(b=>b.id===brb.id?{...b,workingSchedule:hours}:b))}/>
                       <div className="pt-3 border-t border-zinc-800/80 space-y-3">
                         <div className="flex items-center justify-between">
                           <p className="text-xs text-zinc-400 font-medium">
@@ -2169,7 +2182,7 @@ const handleAddBarber = async () => {
                           >
                             <Save className="w-3.5 h-3.5" />
                             <span>
-                              {savingBarberId === brb.id ? '¡Guardado!' : 'Guardar Servicios'}
+                              {savingBarberId === brb.id ? '¡Guardado!' : 'Guardar horarios y servicios'}
                             </span>
                           </button>
                         </div>
@@ -2360,6 +2373,10 @@ const handleAddBarber = async () => {
                 </div>
               </div>
 
+              <WeeklyScheduleEditor title="Días y horarios de apertura del local"
+                help="Cerrá los días que no atendés y ajustá el horario general. Los barberos nunca podrán ofrecer turnos fuera de estos límites."
+                value={shopConfig.schedule}
+                onChange={(hours)=>setShopConfig(prev=>({...prev,schedule:hours}))}/>
               <div className="flex items-center justify-between pt-2">
                 {savedBanner ? (
                   <span className="text-xs text-emerald-400 font-medium flex items-center gap-1.5">
