@@ -2,9 +2,13 @@ import {NextResponse} from 'next/server';
 import {getSupabaseServer,SHOP_UUID} from '@/lib/supabase-server';
 import {requireAdminSession,verifyCsrfOrigin} from '@/lib/session';
 import {isValidUUID,sanitizeInput} from '@/lib/booking-store';
+import {resolvedHours,type WeeklyHours} from '@/lib/weekly-hours';
+import type {BusinessSchedule} from '@/lib/appointment-rules';
+import {fixedBookingStartSlots} from '@/lib/fixed-booking-time-slots';
 
 const headers={'Cache-Control':'private, no-store'};
 const days=new Set([0,1,2,3,4,5,6]);
+const dayKeys=['domingo','lunes','martes','miercoles','jueves','viernes','sabado'];
 const iso=/^\d{4}-\d{2}-\d{2}$/;
 const time=/^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -52,7 +56,37 @@ export async function POST(request:Request){
       ||(clientEmail&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clientEmail))){
       return NextResponse.json({error:'Revisá cliente, barbero, servicio, día, hora y fechas.'},{status:400,headers});
     }
-    // La validación definitiva de horarios, servicio y solapamientos es atómica en PostgreSQL.
+    // Validar también del lado del servidor: no aceptar una hora enviada
+    // manualmente a la API fuera de los bloques de 30 min del barbero.
+    // Consultas SELECT únicamente; no se altera ninguna reserva existente.
+    const [shopResult,barberResult,serviceResult]=await Promise.all([
+      db.from('shops').select('schedule').eq('id',SHOP_UUID).maybeSingle(),
+      db.from('barbers').select('working_schedule').eq('shop_id',SHOP_UUID)
+        .eq('id',barberId).eq('active',true).maybeSingle(),
+      db.from('services').select('duration_minutes').eq('shop_id',SHOP_UUID)
+        .eq('id',serviceId).eq('active',true).maybeSingle(),
+    ]);
+    if(shopResult.error||barberResult.error||serviceResult.error){
+      return NextResponse.json({error:'No se pudieron verificar los horarios. Intentá nuevamente.'},
+        {status:503,headers});
+    }
+    if(!shopResult.data?.schedule||!barberResult.data||!serviceResult.data){
+      return NextResponse.json({error:'Local, barbero o servicio no disponible.'},
+        {status:409,headers});
+    }
+    const schedule=resolvedHours(
+      shopResult.data.schedule as BusinessSchedule,
+      barberResult.data.working_schedule as WeeklyHours|null,
+    );
+    const validSlots=fixedBookingStartSlots(
+      schedule[dayKeys[weekday]],Number(serviceResult.data.duration_minutes),
+    );
+    if(!validSlots.includes(timeSlot)){
+      return NextResponse.json({error:'Elegí un bloque horario válido cada 30 minutos para ese barbero y servicio.'},
+        {status:400,headers});
+    }
+    // Los conflictos con reservas y turnos fijos se siguen validando
+    // atómicamente en PostgreSQL. Nunca resolverlos cambiando otros turnos.
     const payload={
       barber_id:barberId,service_id:serviceId,client_name:clientName,
       client_phone:clientPhone,client_email:clientEmail,weekday,time_slot:timeSlot,
