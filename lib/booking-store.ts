@@ -73,6 +73,8 @@ export interface BarberItem {
 }
 
 export interface AppointmentItem {
+  isFixed?: boolean;
+  fixedDate?: string;
   paymentMethod?: 'cash' | 'transfer' | null;
   id: string;
   code: string;
