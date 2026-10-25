@@ -16,7 +16,7 @@ interface PublicShopSnapshot {
 // /api/public/shop; never bookings, clients, PINs, tokens or financial data.
 const STORAGE_KEY = 'snoservice.public-shop.v3';
 const STORAGE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
-const REVALIDATE_AFTER_MS = 45 * 1000;
+const REVALIDATE_AFTER_MS = 15 * 1000;
 const EMPTY_SNAPSHOT: PublicShopSnapshot = {data: null, state: 'idle', updatedAt: 0};
 
 let snapshot: PublicShopSnapshot = EMPTY_SNAPSHOT;
