@@ -6,7 +6,7 @@ import {fixedBookingStartSlots} from '@/lib/fixed-booking-time-slots';
 type Fixed={
   id:string;barber_id:string;service_id:string;client_name:string;client_phone:string;
   client_email:string;weekday:number;time_slot:string;duration_minutes:number;
-  start_date:string;end_date:string|null;active:boolean;
+  start_date:string;end_date:string|null;active:boolean;skipped_dates:string[];
 };
 const week=['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
 const dayKeys=['domingo','lunes','martes','miercoles','jueves','viernes','sabado'];
@@ -17,6 +17,22 @@ const todayLocal=()=>{
 };
 const empty=()=>({id:'',barberId:'',serviceId:'',clientName:'',clientPhone:'',
   clientEmail:'',weekday:6,timeSlot:'',startDate:todayLocal(),endDate:''});
+// Genera fechas del día semanal del cliente, sin depender del huso horario del navegador.
+const upcomingDates=(item:Fixed,count=26):string[]=>{
+  const start=Math.max(Date.parse(todayLocal()+'T00:00:00Z'),
+    Date.parse(item.start_date+'T00:00:00Z'));
+  if(!Number.isFinite(start))return [];
+  const shift=(item.weekday-new Date(start).getUTCDay()+7)%7;
+  const dates:string[]=[];
+  for(let n=0;n<count;n++){
+    const iso=new Date(start+(shift+7*n)*86400000).toISOString().slice(0,10);
+    if(item.end_date&&iso>item.end_date)break;
+    if(!(item.skipped_dates||[]).includes(iso))dates.push(iso);
+  }
+  return dates;
+};
+const shortDate=(iso:string)=>iso.slice(8,10)+'/'+iso.slice(5,7)+'/'+iso.slice(0,4);
+
 export default function FixedAgendaManager({barbers,services,shopSchedule}:{
   barbers:BarberItem[];services:ServiceItem[];shopSchedule:ShopConfig['schedule'];
 }){
@@ -24,6 +40,8 @@ export default function FixedAgendaManager({barbers,services,shopSchedule}:{
  const [draft,setDraft]=useState(empty);
  const [loading,setLoading]=useState(true);
  const [saving,setSaving]=useState(false);
+ const [busySkip,setBusySkip]=useState('');
+ const [dateByFixed,setDateByFixed]=useState<Record<string,string>>({});
  const [error,setError]=useState('');
  const [notice,setNotice]=useState('');
  const refresh=useCallback(async()=>{
@@ -67,6 +85,28 @@ export default function FixedAgendaManager({barbers,services,shopSchedule}:{
    }catch(e){setError(e instanceof Error?e.message:'No se pudieron guardar los datos.');}
    finally{setSaving(false);}
  };
+ const skipOnce=async(item:Fixed,date:string,skip:boolean)=>{
+   if(!date||busySkip)return;
+   const message=skip
+     ?'¿Liberar solo el '+shortDate(date)+'? Ese día se podrá reservar online; los demás '+week[item.weekday].toLowerCase()+' siguen fijos.'
+     :'¿Restaurar el fijo del '+shortDate(date)+'? Solo se permitirá si no existe otra reserva.';
+   if(!window.confirm(message))return;
+   setBusySkip(item.id);setError('');setNotice('');
+   try{
+     const r=await fetch('/api/admin/fixed-bookings',{
+       method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',
+       body:JSON.stringify({action:'skip_date',id:item.id,date,skip}),
+     });
+     const j=await r.json().catch(()=>({}));
+     if(!r.ok)throw new Error(j.error||'No se pudo cambiar esa fecha.');
+     setNotice(skip
+       ?'Se liberó únicamente el '+shortDate(date)+'. Las demás semanas siguen fijas.'
+       :'Se restauró el fijo del '+shortDate(date)+'.');
+     setDateByFixed(current=>({...current,[item.id]:''}));
+     await refresh();
+   }catch(e){setError(e instanceof Error?e.message:'No se pudo modificar la fecha.');}
+   finally{setBusySkip('');}
+ };
  const toggle=async(item:Fixed)=>{
    if(!window.confirm(item.active
      ?'¿Pausar este turno fijo? Sus horarios futuros volverán a estar disponibles.'
@@ -85,7 +125,7 @@ export default function FixedAgendaManager({barbers,services,shopSchedule}:{
  return <div className="space-y-4">
    <header className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 sm:p-6">
      <h2 className="text-xl font-extrabold">Agenda fija semanal</h2>
-     <p className="mt-2 text-sm text-zinc-400">Reservá el mismo día y horario cada semana para un cliente. Podés modificarlo o pausarlo cuando quieras.</p>
+     <p className="mt-2 text-sm text-zinc-400">Reservá el mismo día y horario cada semana. Podés pausar todas las semanas o liberar únicamente una fecha si el cliente falta.</p>
      <p className="mt-2 text-xs text-amber-300">Estos horarios bloquean la reserva online. No se cobran automáticamente: para registrar un servicio atendido hay que completar su cobro por separado.</p>
    </header>
    {error&&<p role="alert" className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-300">{error}</p>}
@@ -153,6 +193,7 @@ export default function FixedAgendaManager({barbers,services,shopSchedule}:{
        <label className="text-xs text-zinc-400">Hasta (opcional)
          <input type="date" min={draft.startDate} value={draft.endDate} onChange={e=>set('endDate',e.target.value)}
            className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 p-3 text-sm text-white"/>
+         <span className="mt-1 block text-[11px] text-emerald-300">Dejalo vacío si el cliente viene todas las semanas sin fecha final.</span>
        </label>
      </div>
      <button type="submit" disabled={saving} className="w-full rounded-xl bg-emerald-400 p-3 font-extrabold text-zinc-950 disabled:opacity-50">
@@ -184,8 +225,41 @@ export default function FixedAgendaManager({barbers,services,shopSchedule}:{
            window.scrollTo({top:0,behavior:'smooth'});}}
            className="rounded-lg border border-zinc-700 px-3 py-2 text-xs font-semibold">Editar</button>
          <button type="button" onClick={()=>{void toggle(item);}}
-           className="rounded-lg border border-zinc-700 px-3 py-2 text-xs font-semibold">{item.active?'Pausar fijo':'Reactivar'}</button>
+           className="rounded-lg border border-zinc-700 px-3 py-2 text-xs font-semibold">{item.active?'Pausar fijo (todas las semanas)':'Reactivar todas las semanas'}</button>
        </div>
+       {item.active&&<div className="space-y-2 rounded-xl border border-zinc-700/70 bg-zinc-950/80 p-3">
+         <p className="text-xs font-semibold text-emerald-300">¿No viene una semana?</p>
+         <p className="text-[11px] text-zinc-400">Liberá solo esa fecha. El fijo continúa automáticamente en las demás semanas.</p>
+         <div className="flex flex-col gap-2 sm:flex-row">
+           <select aria-label={'Fecha de ausencia de '+item.client_name}
+             value={upcomingDates(item).includes(dateByFixed[item.id])?dateByFixed[item.id]:upcomingDates(item)[0]||''}
+             onChange={e=>setDateByFixed(current=>({...current,[item.id]:e.target.value}))}
+             disabled={busySkip===item.id||upcomingDates(item).length===0}
+             className="min-h-11 min-w-0 flex-1 rounded-xl border border-zinc-700 bg-zinc-900 px-3 text-sm text-white">
+             {upcomingDates(item).map(date=><option key={date} value={date}>{week[item.weekday]} {shortDate(date)}</option>)}
+             {upcomingDates(item).length===0&&<option value="">No hay fechas futuras disponibles</option>}
+           </select>
+           <button type="button" disabled={Boolean(busySkip)||upcomingDates(item).length===0}
+             onClick={()=>{const dates=upcomingDates(item);
+               void skipOnce(item,dates.includes(dateByFixed[item.id])?dateByFixed[item.id]:dates[0],true);
+             }}
+             className="min-h-11 rounded-xl border border-amber-500/50 bg-amber-500/10 px-3 text-xs font-semibold text-amber-200 disabled:opacity-50">
+             {busySkip===item.id?'Actualizando…':'Liberar solo esta fecha'}
+           </button>
+         </div>
+       </div>}
+       {(item.skipped_dates||[]).filter(date=>date>=todayLocal()).length>0&&
+         <div className="space-y-2">
+           <p className="text-[11px] font-semibold text-amber-300">Fechas liberadas (el fijo NO viene esos días)</p>
+           <div className="flex flex-wrap gap-2">
+             {item.skipped_dates.filter(date=>date>=todayLocal()).map(date=>
+               <button key={date} type="button" disabled={Boolean(busySkip)||!item.active}
+                 onClick={()=>{void skipOnce(item,date,false);}}
+                 className="rounded-lg border border-zinc-700 px-3 py-2 text-xs text-zinc-300 disabled:opacity-50">
+                 {shortDate(date)} · Restaurar
+               </button>)}
+           </div>
+         </div>}
      </div>)}
    </section>
  </div>;
