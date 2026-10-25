@@ -20,7 +20,7 @@ test('admin nunca acepta snapshot RPC que omite horarios propios',()=>{
  assert.match(code,/hasOwnProperty\.call\(barber, 'working_schedule'\)/);
  assert.match(code,/working_schedule'\)/);
  assert.match(code,/rpcUnavailableUntil/);
- assert.match(code,/using consultas paralelas/);
+ assert.match(code,/usando consultas paralelas/);
  assert.match(code,/working_schedule'\)/);
 });
 test('guardado de horarios confirma persistencia tras SELECT real, no solo POST',()=>{
