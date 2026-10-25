@@ -54,7 +54,7 @@ BEGIN
    RAISE EXCEPTION 'Horario reservado para un cliente de agenda fija' USING ERRCODE='23505';
  END IF;
  RETURN NEW;
-END $function$
+END $function$;
 
 
 CREATE OR REPLACE FUNCTION public.validate_fixed_booking()
@@ -118,7 +118,7 @@ BEGIN
  ) THEN RAISE EXCEPTION 'Hay reservas existentes en uno de esos días; elegí otro horario' USING ERRCODE='23505'; END IF;
  NEW.updated_at:=now();
  RETURN NEW;
-END $function$
+END $function$;
 
 
 DROP FUNCTION public.booking_conflicts_one_way(text,integer,text,integer) RESTRICT;
