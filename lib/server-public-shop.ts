@@ -2,6 +2,7 @@ import 'server-only';
 import { cacheLife, cacheTag } from 'next/cache';
 import { getSupabaseServer, SHOP_UUID } from '@/lib/supabase-server';
 import type { PublicShopData } from '@/lib/public-shop-data';
+import type {WeeklyHours} from '@/lib/weekly-hours';
 
 // Solo campos del catálogo público: jamás PIN, comisión, turnos,
 // movimientos financieros o información privada de clientes.
@@ -20,6 +21,7 @@ type BarberRow = {
   id: string; slug?: string | null; name: string; role?: string | null;
   bio?: string | null; specialties?: string[] | null;
   service_ids?: string[] | null; image_url?: string | null; active: boolean;
+  working_schedule?: WeeklyHours | null;
 };
 
 function toPublicShopData(
@@ -54,6 +56,7 @@ function toPublicShopData(
       bio: barber.bio || '',
       specialties: barber.specialties || [],
       serviceIds: barber.service_ids || [],
+      workingSchedule: barber.working_schedule ?? null,
       imageUrl: barber.image_url || '',
       active: barber.active,
       isOwner: false,
@@ -94,7 +97,7 @@ export async function getServerPublicShopData(): Promise<PublicShopData> {
       .select('id,name,price,duration_minutes,description,image_url,active')
       .eq('shop_id', SHOP_UUID).eq('active', true),
     db.from('barbers')
-      .select('id,slug,name,role,bio,specialties,service_ids,active,image_url')
+      .select('id,slug,name,role,bio,specialties,service_ids,active,image_url,working_schedule')
       .eq('shop_id', SHOP_UUID).eq('active', true),
   ]);
   if (shopResult.error || !shopResult.data || servicesResult.error || barbersResult.error) {
