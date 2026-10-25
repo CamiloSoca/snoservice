@@ -29,7 +29,7 @@ export function PublicShopProvider({children}: {children: React.ReactNode}) {
     };
 
     refreshIfNeeded();
-    const interval = window.setInterval(refreshIfNeeded, 30_000);
+    const interval = window.setInterval(refreshIfNeeded, 10_000);
     window.addEventListener('focus', refreshIfNeeded);
     document.addEventListener('visibilitychange', refreshIfNeeded);
     return () => {
