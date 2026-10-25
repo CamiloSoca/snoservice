@@ -488,7 +488,8 @@ const handleAddBarber = async () => {
     try {
       setAdminError('');
       // Guardamos directamente en la base de datos a través de la función del store
-      await saveBarbers(updated);
+      // La RPC hace upsert por barbero, evitando reescribir horarios ajenos.
+      await saveBarbers([newItem]);
       
       // Recargamos la lista oficial de la base de datos
       const freshBarbers = await getAdminBarbers(true);
@@ -536,7 +537,9 @@ const handleAddBarber = async () => {
     setBarbers(updated.map((barber) => ({...barber, pin: ''})));
     try {
       setAdminError('');
-      await saveBarbers(updated);
+      const changed = updated.find(b => b.id === id);
+      if (!changed) throw new Error('Barbero no encontrado.');
+      await saveBarbers([changed]);
     } catch (err: any) {
       setBarbers(previous);
       setAdminError(err?.message || 'Error al actualizar los datos del barbero.');
@@ -631,14 +634,31 @@ const handleAddBarber = async () => {
   };
 
   const handleSaveBarberChanges = async (barberId: string) => {
+    if (savingBarberId) return;
+    const barber = barbers.find(item => item.id === barberId);
+    if (!barber) {
+      setAdminError('No se encontró el barbero que querés guardar.');
+      return;
+    }
+    setSavingBarberId(barberId);
+    setAdminError('');
     try {
-      setAdminError('');
-      await saveBarbers(barbers);
-      setSavingBarberId(barberId);
-      setTimeout(() => setSavingBarberId(null), 1500);
+      // Guardar únicamente este barbero para no alterar horarios de otros.
+      await saveBarbers([barber]);
+      // Confirmar el resultado con una nueva lectura de Supabase, sin caché.
+      const fresh = (await getAdminBarbers(true)).find(item => item.id === barberId);
+      const expectedHours = normalizeHours(barber.workingSchedule ?? null);
+      const persistedHours = normalizeHours(fresh?.workingSchedule ?? null);
+      const expectedServices = [...(barber.serviceIds || [])].sort();
+      const persistedServices = [...(fresh?.serviceIds || [])].sort();
+      if (!fresh || JSON.stringify(expectedHours) !== JSON.stringify(persistedHours) ||
+        JSON.stringify(expectedServices) !== JSON.stringify(persistedServices)) {
+        throw new Error('El servidor no confirmó los horarios y servicios guardados. Revisá antes de salir.');
+      }
     } catch (err: any) {
+      setAdminError(err?.message || 'No se pudieron confirmar los horarios guardados.');
+    } finally {
       setSavingBarberId(null);
-      setAdminError(err?.message || 'Error al guardar los servicios del barbero.');
     }
   };
 
@@ -2213,11 +2233,12 @@ const handleAddBarber = async () => {
                           <button
                             type="button"
                             onClick={() => handleSaveBarberChanges(brb.id)}
+                             disabled={Boolean(savingBarberId)}
                             className="px-3.5 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/40 hover:bg-emerald-500/25 text-emerald-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
                           >
                             <Save className="w-3.5 h-3.5" />
                             <span>
-                              {savingBarberId === brb.id ? '¡Guardado!' : 'Guardar horarios y servicios'}
+                              {savingBarberId === brb.id ? 'Verificando guardado…' : 'Guardar horarios y servicios'}
                             </span>
                           </button>
                         </div>
