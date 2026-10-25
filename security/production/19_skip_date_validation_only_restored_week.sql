@@ -33,8 +33,8 @@ BEGIN
  -- Modificar solo las ausencias semanales no es reprogramar el turno.
  -- No revalidar todas las semanas: otro corte puede haberse reservado
  -- legítimamente ANTES de este fijo mediante la tolerancia unidireccional.
- IF TG_OP='UPDATE'
-   AND NEW.skipped_dates IS DISTINCT FROM OLD.skipped_dates
+ IF TG_OP='UPDATE' THEN
+ IF NEW.skipped_dates IS DISTINCT FROM OLD.skipped_dates
    AND NEW.shop_id IS NOT DISTINCT FROM OLD.shop_id
    AND NEW.barber_id IS NOT DISTINCT FROM OLD.barber_id
    AND NEW.service_id IS NOT DISTINCT FROM OLD.service_id
@@ -79,6 +79,7 @@ BEGIN
    END LOOP;
    NEW.updated_at:=now();
    RETURN NEW;
+ END IF;
  END IF;
  -- Misma barrera serializada que en la reserva común; ANTES del bloqueo del local.
  PERFORM pg_advisory_xact_lock(hashtextextended('13cut-fixed-oneway:' || NEW.shop_id::text,0));
