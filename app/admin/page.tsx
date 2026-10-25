@@ -73,6 +73,7 @@ import { invalidatePublicShopData } from '@/lib/public-shop-data';
 import { MAX_BARBER_PHOTO_BYTES } from '@/lib/barber-photo';
 import AgendaCalendar from '@/components/AgendaCalendar';
 import WeeklyScheduleEditor from '@/components/WeeklyScheduleEditor';
+import FixedAgendaManager from '@/components/FixedAgendaManager';
 import {normalizeHours, type WeeklyHours} from '@/lib/weekly-hours';
 import CashDrawerCard from '@/components/CashDrawerCard';
 import FinanceLedgerCard from '@/components/FinanceLedgerCard';
@@ -134,7 +135,7 @@ function isWithinPeriod(
 export default function AdminDashboard() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<
-    'inicio' | 'caja' | 'facturacion' | 'agenda' | 'turnos' | 'barberos' | 'servicios' | 'marca' | 'configuracion'
+    'inicio' | 'caja' | 'facturacion' | 'agenda' | 'turnos' | 'fijos' | 'barberos' | 'servicios' | 'marca' | 'configuracion'
   >('inicio');
 
   const [appointments, setAppointments] = useState<AppointmentItem[]>([]);
@@ -1085,16 +1086,21 @@ const handleAddBarber = async () => {
               {id:'barberos',label:'Equipo',icon:Users},
               {id:'configuracion',label:'Configuración',icon:Settings},
             ] as const).map(({id,label,icon:Icon}) => {
-              const active = activeTab===id || (id==='agenda' && activeTab==='turnos') || (id==='configuracion' && (activeTab==='servicios'||activeTab==='marca'));
+              const active = activeTab===id || (id==='agenda' && (activeTab==='turnos'||activeTab==='fijos')) || (id==='configuracion' && (activeTab==='servicios'||activeTab==='marca'));
               return <button type="button" key={id} onClick={() => setActiveTab(id)}
                 aria-current={active ? 'page' : undefined}
                 className={'flex min-h-[50px] min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-center text-[10px] font-bold leading-tight transition-colors focus-visible:outline-2 focus-visible:outline-emerald-400 sm:min-h-14 sm:flex-row sm:gap-1.5 sm:p-2 sm:text-[11px] ' + (active?'bg-zinc-100 text-zinc-950':'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100')}>
                 <Icon className="h-4 w-4"/>{label}</button>;
             })}
           </nav>
-          {(activeTab==='agenda'||activeTab==='turnos') && <div role="group" aria-label="Modo de agenda" className="flex gap-1 rounded-xl border border-zinc-800 bg-zinc-900 p-1">
+          {(activeTab==='agenda'||activeTab==='turnos'||activeTab==='fijos') && <div role="group" aria-label="Modo de agenda" className="flex gap-1 rounded-xl border border-zinc-800 bg-zinc-900 p-1">
             <button type="button" onClick={() => setActiveTab('agenda')} aria-pressed={activeTab==='agenda'} className={'min-w-0 flex-1 rounded-lg px-3 py-2 text-xs font-bold sm:flex-none '+(activeTab==='agenda'?'bg-emerald-400 text-zinc-950':'bg-zinc-800 text-zinc-200')}>Calendario</button>
             <button type="button" onClick={() => setActiveTab('turnos')} aria-pressed={activeTab==='turnos'} className={'min-w-0 flex-1 rounded-lg px-3 py-2 text-xs font-bold sm:flex-none '+(activeTab==='turnos'?'bg-emerald-400 text-zinc-950':'bg-zinc-800 text-zinc-200')}>Listado</button>
+            <button type="button" onClick={() => setActiveTab('fijos')}
+              aria-pressed={activeTab==='fijos'}
+              className={'rounded-lg px-4 py-2 text-xs font-bold '+(activeTab==='fijos'?'bg-emerald-400 text-zinc-950':'bg-zinc-800 text-zinc-200')}>
+              Agenda fija
+            </button>
           </div>}
           {(activeTab==='configuracion'||activeTab==='servicios'||activeTab==='marca') && <div className="flex flex-wrap gap-2 rounded-xl border border-zinc-800 bg-zinc-900 p-2">
             <button type="button" onClick={() => setActiveTab('servicios')} className={'rounded-lg px-4 py-2 text-xs '+(activeTab==='servicios'?'bg-emerald-400 text-zinc-950':'bg-zinc-800 text-zinc-200')}>Servicios y precios</button>
@@ -1982,6 +1988,7 @@ const handleAddBarber = async () => {
             </div>
           )}
 
+          {activeTab === 'fijos' && <FixedAgendaManager barbers={barbers} services={services}/>}
           {activeTab === 'barberos' && (
             <div className="space-y-5">
               <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-4">
