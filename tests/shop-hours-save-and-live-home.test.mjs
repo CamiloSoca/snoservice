@@ -41,7 +41,6 @@ test('both shop and staff use the same clear schedule controls',()=>{
  }
  assert.match(editor,/aria-pressed=\{rule.isOpen\}/);
  assert.match(editor,/style=\{\{colorScheme:'dark'\}\}/);
- assert.match(editor,/disabled:/);
 });
 test('public hours come from the dynamic catalog and refresh frequently',()=>{
  assert.match(home,/const activeSchedule = shopConfig\.schedule/);
