@@ -16,5 +16,6 @@ test('PWA usa un icono generado y deja de pedir icon.png inexistente',()=>{
  assert.equal(manifest.icons[0].src,'/icon');
  assert.equal(manifest.icons[0].type,'image/png');
  assert.match(icon,/export const size=\{width:192,height:192\}/);
- assert.match(icon,/ImageResponse/);
+ assert.match(icon,/makeBrandIcon/);
+ assert.match(read('lib/brand-home-icon.tsx'),/ImageResponse/);
 });
