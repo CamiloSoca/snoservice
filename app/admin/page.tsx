@@ -2054,13 +2054,6 @@ const handleAddBarber = async () => {
                       className="w-full bg-transparent text-base sm:text-sm outline-none"
                     />
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleAddBarber}
-                    className="sm:col-span-2 py-2.5 px-3 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-bold text-xs cursor-pointer touch-manipulation"
-                  >
-                    Sumar
-                  </button>
                 </div>
                 <WeeklyScheduleEditor title="Días y horarios del nuevo barbero"
                   value={newBarberSchedule ?? shopConfig.schedule}
@@ -2070,6 +2063,14 @@ const handleAddBarber = async () => {
                   <input type="checkbox" checked={newBarberIsOwner} onChange={(e) => setNewBarberIsOwner(e.target.checked)} className="accent-emerald-500 size-4" />
                   Es propietario: 100% de sus cortes al fondo común (sin comisión)
                 </label>
+                <button type="button" onClick={handleAddBarber}
+                  className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-emerald-400 px-5 py-3 text-sm font-extrabold text-zinc-950 transition-colors hover:bg-emerald-300">
+                  <Save className="size-4"/>
+                  Crear barbero y guardar horarios
+                </button>
+                <p className="text-center text-xs text-zinc-500">
+                  Nombre, PIN y días de atención se guardan juntos. Después podés modificarlos.
+                </p>
               </div>
 
               <div className="grid grid-cols-1 gap-4">
