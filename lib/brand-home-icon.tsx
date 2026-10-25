@@ -21,16 +21,19 @@ export async function makeBrandIcon(size:number):Promise<ImageResponse> {
   }catch{
     console.warn('Ícono 13 Cut: no se pudo recuperar el logo oficial.');
   }
-  const inner=Math.round(size*.86);
+  // El logo original ya incorpora su propia forma redondeada.
+  // En iOS el acceso directo recibe OTRA máscara redondeada. Evitamos
+  // que se vean dos marcos haciendo que la imagen llene toda la superficie.
+  // El ligero sangrado recorta solo los bordes decorativos, sin tocar el texto.
+  const bleed=Math.round(size*1.05);
   return new ImageResponse(
     <div style={{
       width:'100%',height:'100%',display:'flex',alignItems:'center',
-      justifyContent:'center',background:'#09090b',
+      justifyContent:'center',overflow:'hidden',background:'#09090b',
     }}>
       {source
-        // Display unchanged original logo on a neutral background, never redraw its branding.
-        ? <img src={source} width={inner} height={inner}
-            alt="13 Cut" style={{objectFit:'contain'}}/>
+        ? <img src={source} width={bleed} height={bleed}
+            alt="13 Cut" style={{objectFit:'cover',flexShrink:0}}/>
         : <div style={{display:'flex',alignItems:'center',justifyContent:'center',
             width:'100%',height:'100%',color:'#f4f4f5',fontSize:Math.round(size*.31),fontWeight:900}}>
             13
