@@ -90,7 +90,7 @@ CREATE OR REPLACE FUNCTION public.guard_weekly_bookings()
 RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public AS $$
 DECLARE
  d date; k text;
- schedule jsonb; own jsonb; shop_rule jsonb; worker_rule jsonb;
+ shop_schedule jsonb; own jsonb; shop_rule jsonb; worker_rule jsonb;
  opening time; closing time; a time; mins integer;
 BEGIN
  IF NEW.status<>'confirmado' THEN RETURN NEW; END IF;
@@ -99,8 +99,8 @@ BEGIN
  IF d IS NULL THEN RETURN NEW; END IF; -- original booking validator rejects the date
  k:=(ARRAY['domingo','lunes','martes','miercoles','jueves','viernes','sabado'])[extract(dow from d)::integer+1];
  IF own IS NOT NULL THEN
-   SELECT schedule INTO schedule FROM public.shops WHERE id=NEW.shop_id;
-   shop_rule:=schedule->k;worker_rule:=own->k;
+   SELECT schedule INTO shop_schedule FROM public.shops WHERE id=NEW.shop_id;
+   shop_rule:=shop_schedule->k;worker_rule:=own->k;
    IF worker_rule->>'isOpen' IS DISTINCT FROM 'true' OR shop_rule->>'isOpen' IS DISTINCT FROM 'true' THEN
      RAISE EXCEPTION 'Este barbero no atiende ese día' USING ERRCODE='23514';
    END IF;
@@ -108,7 +108,7 @@ BEGIN
    closing:=least((shop_rule->>'closeTime')::time,(worker_rule->>'closeTime')::time);
    a:=NEW.time_slot::time;
    IF a<opening OR a>=closing OR a+NEW.duration_minutes*interval '1 minute'>
-     closing+CASE WHEN NEW.duration_minutes<90 THEN interval '30 minutes' ELSE interval '0 minutes' END THEN
+     closing+(CASE WHEN NEW.duration_minutes<90 THEN interval '30 minutes' ELSE interval '0 minutes' END) THEN
      RAISE EXCEPTION 'Fuera del horario del barbero' USING ERRCODE='23514';
    END IF;
  END IF;
@@ -161,7 +161,7 @@ BEGIN
  start_at:=NEW.time_slot::time;
  IF start_at<open_time OR start_at>=close_time OR
     start_at+actual_duration*interval '1 minute'>
-    close_time+CASE WHEN actual_duration<90 THEN interval '30 minutes' ELSE interval '0 minutes' END THEN
+    close_time+(CASE WHEN actual_duration<90 THEN interval '30 minutes' ELSE interval '0 minutes' END) THEN
    RAISE EXCEPTION 'Turno fijo fuera del horario de atención' USING ERRCODE='23514';
  END IF;
  IF NEW.active AND EXISTS (
