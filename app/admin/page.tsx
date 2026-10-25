@@ -2015,7 +2015,7 @@ const handleAddBarber = async () => {
             </div>
           )}
 
-          {activeTab === 'fijos' && <FixedAgendaManager barbers={barbers} services={services}/>}
+          {activeTab === 'fijos' && <FixedAgendaManager barbers={barbers} services={services} shopSchedule={shopConfig.schedule}/>}
           {activeTab === 'barberos' && (
             <div className="space-y-5">
               <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-4">
