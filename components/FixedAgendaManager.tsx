@@ -1,21 +1,24 @@
 'use client';
 import {useCallback,useEffect,useState} from 'react';
-import type {BarberItem,ServiceItem} from '@/lib/booking-store';
+import type {BarberItem,ServiceItem,ShopConfig} from '@/lib/booking-store';
+import {resolvedHours} from '@/lib/weekly-hours';
+import {fixedBookingStartSlots} from '@/lib/fixed-booking-time-slots';
 type Fixed={
   id:string;barber_id:string;service_id:string;client_name:string;client_phone:string;
   client_email:string;weekday:number;time_slot:string;duration_minutes:number;
   start_date:string;end_date:string|null;active:boolean;
 };
 const week=['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
+const dayKeys=['domingo','lunes','martes','miercoles','jueves','viernes','sabado'];
 const todayLocal=()=>{
  const p=new Intl.DateTimeFormat('en-US',{timeZone:'America/Montevideo',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
  const n=(k:string)=>p.find(x=>x.type===k)?.value||'';
  return n('year')+'-'+n('month')+'-'+n('day');
 };
 const empty=()=>({id:'',barberId:'',serviceId:'',clientName:'',clientPhone:'',
-  clientEmail:'',weekday:6,timeSlot:'09:00',startDate:todayLocal(),endDate:''});
-export default function FixedAgendaManager({barbers,services}:{
-  barbers:BarberItem[];services:ServiceItem[];
+  clientEmail:'',weekday:6,timeSlot:'',startDate:todayLocal(),endDate:''});
+export default function FixedAgendaManager({barbers,services,shopSchedule}:{
+  barbers:BarberItem[];services:ServiceItem[];shopSchedule:ShopConfig['schedule'];
 }){
  const [items,setItems]=useState<Fixed[]>([]);
  const [draft,setDraft]=useState(empty);
@@ -33,10 +36,24 @@ export default function FixedAgendaManager({barbers,services}:{
    finally{setLoading(false);}
  },[]);
  useEffect(()=>{void refresh();},[refresh]);
+ const selectedBarber=barbers.find(b=>b.id===draft.barberId&&b.active!==false);
+ const selectedService=services.find(s=>s.id===draft.serviceId&&s.active!==false);
+ const daySchedule=selectedBarber
+   ? resolvedHours(shopSchedule,selectedBarber.workingSchedule)[dayKeys[draft.weekday]]
+   : null;
+ const startSlots=selectedService
+   ? fixedBookingStartSlots(daySchedule,selectedService.durationMinutes):[];
  const set=(key:keyof ReturnType<typeof empty>,value:string|number)=>
-   setDraft(current=>({...current,[key]:value}));
+   setDraft(current=>({...current,[key]:value,
+     ...(['barberId','serviceId','weekday'].includes(key)?{timeSlot:''}:{})}));
  const submit=async(e:React.FormEvent)=>{
    e.preventDefault();if(saving)return;
+   // No enviar una hora libre ni un bloque inválido, aunque el navegador
+   // conserve un valor anterior tras cambiar el barbero, día o servicio.
+   if(!startSlots.includes(draft.timeSlot)){
+     setError('Elegí un bloque horario válido para ese barbero, día y servicio.');
+     return;
+   }
    setSaving(true);setError('');setNotice('');
    try{
      const r=await fetch('/api/admin/fixed-bookings',{
@@ -109,10 +126,26 @@ export default function FixedAgendaManager({barbers,services}:{
            {week.map((label,i)=><option value={i} key={i}>{label}</option>)}
          </select>
        </label>
-       <label className="text-xs text-zinc-400">A las *
-         <input required type="time" step={1800} value={draft.timeSlot} onChange={e=>set('timeSlot',e.target.value)}
-           className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 p-3 text-sm text-white"/>
-       </label>
+       <div className="space-y-2 sm:col-span-2">
+         <p className="text-xs font-semibold text-zinc-300">Bloque de inicio * (cada 30 minutos)</p>
+         <p className="text-[11px] text-zinc-400">Elegí primero barbero y servicio. Se muestran los bloques dentro de su horario según la duración del servicio.</p>
+         {startSlots.length>0 ? <div role="group" aria-label="Elegir bloque horario fijo" className="grid grid-cols-3 gap-2 sm:grid-cols-5 lg:grid-cols-6">
+           {startSlots.map(slot=><button key={slot} type="button" disabled={saving}
+             aria-pressed={draft.timeSlot===slot}
+             onClick={()=>set('timeSlot',slot)}
+             className={'min-h-11 rounded-xl border px-2 py-2 text-sm font-bold transition-colors focus-visible:outline-2 focus-visible:outline-emerald-400 disabled:opacity-50 '+(
+               draft.timeSlot===slot
+               ?'border-emerald-300 bg-emerald-400 text-zinc-950'
+               :'border-zinc-700 bg-zinc-950 text-zinc-100 hover:border-emerald-400')}>
+             {slot}
+           </button>)}
+         </div> : <p className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-xs text-amber-300">
+           {!selectedBarber||!selectedService?'Elegí un barbero y un servicio para ver los horarios.':'No hay bloques compatibles para este día y servicio.'}
+         </p>}
+         {draft.id&&draft.timeSlot&&!startSlots.includes(draft.timeSlot)&&
+           <p role="status" className="text-xs text-amber-300">Este turno existente figura a las {draft.timeSlot} y se mantiene intacto. Para modificarlo, elegí un bloque compatible.</p>}
+         <p className="text-[11px] text-zinc-500">El bloqueo definitivo de reservas fijas y comunes se valida al guardar.</p>
+       </div>
        <label className="text-xs text-zinc-400">Válido desde *
          <input required type="date" value={draft.startDate} onChange={e=>set('startDate',e.target.value)}
            className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 p-3 text-sm text-white"/>
