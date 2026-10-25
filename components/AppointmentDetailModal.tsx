@@ -64,8 +64,8 @@ export default function AppointmentDetailModal({
   }, [mounted, busy, onClose]);
 
   const timeState = appointmentTimeState(appointment);
-  const completeAllowed = appointment.status === 'confirmado' && canComplete && timeState === 'started';
-  const cancelAllowed = appointment.status === 'confirmado' && timeState === 'future';
+  const completeAllowed = !appointment.isFixed && appointment.status === 'confirmado' && canComplete && timeState === 'started';
+  const cancelAllowed = !appointment.isFixed && appointment.status === 'confirmado' && timeState === 'future';
   const whatsappLink = getWhatsAppLink?.(appointment)
     || customerWhatsAppLink(appointment.clientPhone, appointment.clientName, "13'Cut");
   const formattedPrice = new Intl.NumberFormat('es-UY', {
@@ -167,7 +167,7 @@ export default function AppointmentDetailModal({
               <p className="mt-3 text-xs text-amber-300">No hay un celular uruguayo válido para contactar por WhatsApp.</p>
             )}
           </div>
-          {appointment.status === 'confirmado' && timeState === 'started' && (
+          {!appointment.isFixed && appointment.status === 'confirmado' && timeState === 'started' && (
             <fieldset className="rounded-xl border border-zinc-700 bg-zinc-900 p-3">
               <legend className="px-1 text-xs font-bold text-zinc-200">¿Cómo pagó el cliente? *</legend>
               <div className="mt-2 grid grid-cols-2 gap-2">
@@ -197,10 +197,11 @@ export default function AppointmentDetailModal({
               </p>
             </div>
           )}
-          {appointment.status === 'confirmado' && !canComplete && (
+          {appointment.isFixed && <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">Cliente de agenda fija. Este bloque se modifica o pausa desde Administración → Agenda fija. No se factura automáticamente.</p>}
+          {!appointment.isFixed && appointment.status === 'confirmado' && !canComplete && (
             <p className="text-xs text-amber-300">Abrí la caja antes de completar turnos.</p>
           )}
-          {appointment.status === 'confirmado' && timeState === 'future' && (
+          {!appointment.isFixed && appointment.status === 'confirmado' && timeState === 'future' && (
             <p className="text-xs text-zinc-400">Completar se habilita cuando comienza el turno. Podés cancelar antes de que empiece.</p>
           )}
           {appointment.status === 'completado' && (
