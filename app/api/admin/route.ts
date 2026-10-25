@@ -231,9 +231,13 @@ export async function POST(request: Request) {
             ? b.specialties.map((sp: string) => sanitizeInput(String(sp)).slice(0, 40))
             : ['Corte'];
 
-          const workingSchedule=normalizeHours(b.workingSchedule ?? null);
+          // El cliente debe enviar el horario deliberadamente. Si no está
+          // presente en un payload antiguo/incompleto, NO convertirlo en null,
+          // porque eso borraría el horario particular ya guardado del barbero.
+          const hasWorkingSchedule = Object.prototype.hasOwnProperty.call(b, 'workingSchedule');
+          const workingSchedule = hasWorkingSchedule ? normalizeHours(b.workingSchedule) : undefined;
           payloads.push({
-            working_schedule:workingSchedule,
+            ...(hasWorkingSchedule ? {working_schedule: workingSchedule} : {}),
             id, shop_id: SHOP_UUID, slug, name,
             role: sanitizeInput(String(b.role || 'Barbero')).slice(0, 40),
             bio: sanitizeInput(String(b.bio || '')).slice(0, 300),
