@@ -62,7 +62,10 @@ export async function GET() {
       .eq('shop_id',SHOP_UUID).eq('active',true);
     if(fixedErr)return NextResponse.json({error:'No se pudo consultar agenda fija.'},{status:503});
     const visibleDays=businessDayOptions(new Date(),30);
-    const todayISO=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Montevideo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+    const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/Montevideo',
+      year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
+    const part=(kind:string)=>parts.find(p=>p.type===kind)?.value||'';
+    const todayISO=part('year')+'-'+part('month')+'-'+part('day');
     const startUtc=Date.parse(todayISO+'T00:00:00Z');
     const fixedSlots=(fixed||[]).flatMap(f=>visibleDays.flatMap((day,index)=>{
       const iso=new Date(startUtc+index*86400000).toISOString().slice(0,10);
