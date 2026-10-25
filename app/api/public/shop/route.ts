@@ -12,7 +12,7 @@ export async function GET() {
     const data = await getServerPublicShopData();
     return NextResponse.json(data, {
       headers: {
-        'Cache-Control': 'public, max-age=0, s-maxage=15, stale-while-revalidate=10',
+        'Cache-Control': 'no-store',
         'Server-Timing': `public-shop;dur=${(performance.now()-startedAt).toFixed(1)}`,
       },
     });

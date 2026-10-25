@@ -64,6 +64,7 @@ import {
   createManualCharge,
   deleteManualCharge,
   saveShopConfig,
+  saveShopHours,
   sortAppointmentsChronologically,
 } from '@/lib/booking-store';
 import { appointmentTimeState } from '@/lib/appointment-rules';
@@ -146,6 +147,9 @@ export default function AdminDashboard() {
   const [manualCharges, setManualCharges] = useState<ManualChargeItem[]>([]);
   const [shopConfig, setShopConfig] = useState<ShopConfig>(DEFAULT_SHOP_CONFIG);
   const [savedBanner, setSavedBanner] = useState(false);
+  const [shopHoursSaving,setShopHoursSaving]=useState(false);
+  const [shopHoursDirty,setShopHoursDirty]=useState(false);
+  const [shopHoursFeedback,setShopHoursFeedback]=useState('');
   const [savingBarberId, setSavingBarberId] = useState<string | null>(null);
   const [barberPhotoBusyId, setBarberPhotoBusyId] = useState<string | null>(null);
   const [adminError, setAdminError] = useState<string>('');
@@ -795,8 +799,31 @@ const handleAddBarber = async () => {
     }
   };
 
+  const handleSaveShopHours = async () => {
+    if(shopHoursSaving)return;
+    setShopHoursSaving(true);
+    setAdminError('');
+    setShopHoursFeedback('');
+    try {
+      const hours=normalizeHours(shopConfig.schedule);
+      if(!hours)throw new Error('Configurá los siete días.');
+      const saved=await saveShopHours(hours);
+      setShopConfig(prev=>({...prev,schedule:saved}));
+      setShopHoursDirty(false);
+      setShopHoursFeedback('Horarios guardados. La portada y la reserva online se actualizarán automáticamente.');
+    } catch(error) {
+      setAdminError(error instanceof Error?error.message:'No se pudieron guardar los horarios.');
+    } finally {
+      setShopHoursSaving(false);
+    }
+  };
+
   const handleSaveBrand = async (e: React.FormEvent) => {
     e.preventDefault();
+    if(shopHoursDirty){
+      setAdminError('Tenés horarios modificados sin guardar. Primero tocá “Guardar horarios de la barbería”.');
+      return;
+    }
     try {
       setAdminError('');
       const configToSave: ShopConfig = {
@@ -2380,11 +2407,29 @@ const handleAddBarber = async () => {
                 </div>
               </div>
 
-              <WeeklyScheduleEditor title="Días y horarios de apertura del local"
-                help="Cerrá los días que no atendés y ajustá el horario general. Los barberos nunca podrán ofrecer turnos fuera de estos límites."
-                value={shopConfig.schedule}
-                onChange={(hours)=>setShopConfig(prev=>({...prev,schedule:hours}))}/>
-              <div className="flex items-center justify-between pt-2">
+              <div className="space-y-3 rounded-3xl border border-emerald-500/20 bg-emerald-500/[0.04] p-3 sm:p-4">
+                <WeeklyScheduleEditor title="Horarios de la barbería"
+                  help="Elegí qué días abrís y desde qué hora hasta qué hora. Los barberos solo podrán atender cuando el local esté abierto."
+                  value={shopConfig.schedule}
+                  onChange={(hours)=>{
+                    setShopHoursDirty(true);
+                    setShopHoursFeedback('');
+                    setShopConfig(prev=>({...prev,schedule:hours}));
+                  }}/>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="space-y-1" aria-live="polite">
+                    {shopHoursDirty&&<p className="text-xs font-semibold text-amber-300">Cambios sin guardar</p>}
+                    {shopHoursFeedback&&<p role="status" className="text-xs font-semibold text-emerald-300">{shopHoursFeedback}</p>}
+                    <p className="text-xs text-zinc-500">Los horarios afectan a la página de inicio y a las reservas.</p>
+                  </div>
+                  <button type="button" onClick={()=>{void handleSaveShopHours();}} disabled={shopHoursSaving}
+                    className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-emerald-400 px-5 py-3 text-sm font-extrabold text-zinc-950 transition-colors hover:bg-emerald-300 disabled:opacity-60 sm:w-auto">
+                    <Save className="size-4"/>
+                    {shopHoursSaving?'Guardando horarios…':'Guardar horarios de la barbería'}
+                  </button>
+                </div>
+              </div>
+              <div className="flex items-center justify-between border-t border-zinc-800 pt-4">
                 {savedBanner ? (
                   <span className="text-xs text-emerald-400 font-medium flex items-center gap-1.5">
                     <CheckCircle2 className="w-4 h-4" /> Guardado
@@ -2397,7 +2442,7 @@ const handleAddBarber = async () => {
                   type="submit"
                   className="px-6 py-2.5 rounded-xl bg-zinc-100 hover:bg-white text-zinc-950 font-bold text-xs cursor-pointer"
                 >
-                  Guardar cambios
+                  Guardar datos generales
                 </button>
               </div>
             </form>
