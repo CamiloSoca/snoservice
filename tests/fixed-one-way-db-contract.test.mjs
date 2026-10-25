@@ -30,7 +30,7 @@ test('regla en los dos sentidos: nunca se superpone hacia adelante',()=>{
 });
 test('misma regla SQL para público/fijo y fijo/fijo, con verificaciones atómicas',()=>{
   assert.match(sql,/CREATE OR REPLACE FUNCTION public\.booking_conflicts_one_way\(/);
-  assert.equal(sql.split('public.booking_conflicts_one_way(').length-1,5);
+  assert.equal(sql.split('public.booking_conflicts_one_way(').length-1,6);
   assert.match(sql,/v_candidate > v_booked OR/);
   assert.match(sql,/p_candidate_minutes >= 90 OR p_booked_minutes >= 90/);
   assert.match(sql,/v_shared > 30;/);
