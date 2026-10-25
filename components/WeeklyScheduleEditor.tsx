@@ -18,12 +18,13 @@ const readable=(time:string)=>time.slice(0,5);
 export default function WeeklyScheduleEditor({value,onChange,title,help}:EditorProps){
   const enabled=WEEK_DAYS.filter(d=>value[d.key]?.isOpen).length;
   const edit=(key:string,field:'isOpen'|'openTime'|'closeTime',newValue:boolean|string)=>{
-    onChange({...value,[key]:{...value[key],[field]:newValue}} as WeeklyHours);
+    const previous=value[key]||{isOpen:false,openTime:'09:00',closeTime:'19:00'};
+    onChange({...value,[key]:{...previous,[field]:newValue}} as WeeklyHours);
   };
   const setOpenDays=(selected:Set<string>)=>{
     const next:WeeklyHours={};
     for(const day of WEEK_DAYS){
-      const previous=value[day.key]||{openTime:'09:00',closeTime:'19:00',isOpen:false};
+      const previous={isOpen:false,openTime:'09:00',closeTime:'19:00',...value[day.key]};
       next[day.key]={...previous,isOpen:selected.has(day.key)};
     }
     onChange(next);
@@ -80,7 +81,7 @@ export default function WeeklyScheduleEditor({value,onChange,title,help}:EditorP
           {rule.isOpen ? <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-end gap-2">
             <label className="min-w-0 text-[11px] font-medium text-zinc-400">
               Desde
-              <input type="time" step={1800} required aria-label={'Desde '+day.label} value={readable(rule.openTime)}
+              <input type="time" step={1800} required aria-label={'Desde '+day.label} value={readable(rule.openTime||'09:00')}
                 onChange={e=>edit(day.key,'openTime',e.target.value)}
                 style={{colorScheme:'dark'}}
                 className="mt-1 w-full min-w-0 rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-2.5 text-sm font-bold text-white outline-none focus:border-emerald-400"/>
@@ -88,7 +89,7 @@ export default function WeeklyScheduleEditor({value,onChange,title,help}:EditorP
             <Clock3 size={15} aria-hidden className="mb-3 text-emerald-400"/>
             <label className="min-w-0 text-[11px] font-medium text-zinc-400">
               Hasta
-              <input type="time" step={1800} required aria-label={'Hasta '+day.label} value={readable(rule.closeTime)}
+              <input type="time" step={1800} required aria-label={'Hasta '+day.label} value={readable(rule.closeTime||'19:00')}
                 onChange={e=>edit(day.key,'closeTime',e.target.value)}
                 style={{colorScheme:'dark'}}
                 className="mt-1 w-full min-w-0 rounded-xl border border-zinc-700 bg-zinc-950 px-2 py-2.5 text-sm font-bold text-white outline-none focus:border-emerald-400"/>
