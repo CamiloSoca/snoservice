@@ -1,5 +1,6 @@
 // app/api/admin/route.ts
 import { NextResponse } from 'next/server';
+import {revalidateTag} from 'next/cache';
 import { getSupabaseServer, SHOP_UUID } from '@/lib/supabase-server';
 import { requireAdminSession, verifyCsrfOrigin } from '@/lib/session';
 import { requireOpenCash } from '@/lib/cash-guard';
@@ -349,6 +350,31 @@ export async function POST(request: Request) {
         return NextResponse.json({ ok: true });
       }
 
+      case 'SAVE_SHOP_HOURS': {
+        // Guardar solamente los horarios: no alterar nombre, redes, fotos ni otros datos.
+        let schedule;
+        try {
+          schedule = normalizeHours(body.schedule);
+          if (!schedule) throw new Error('Indicá una semana completa.');
+        } catch (error) {
+          return NextResponse.json({
+            error:error instanceof Error ? error.message : 'Revisá los horarios.',
+          },{status:422});
+        }
+        const {data,error}=await supabase.from('shops')
+          .update({schedule}).eq('id',SHOP_UUID)
+          .select('schedule').maybeSingle();
+        if(error) {
+          console.error('Error guardando horario del local:',error.code);
+          return NextResponse.json({error:'No se pudo guardar el horario del local. Volvé a intentarlo.'},{status:503});
+        }
+        if(!data?.schedule) return NextResponse.json({error:'No se encontró la configuración del local.'},{status:404});
+        // Expiración inmediata para que los próximos visitantes no reciban el horario viejo.
+        revalidateTag('public-shop-'+SHOP_UUID,{expire:0});
+        return NextResponse.json({ok:true,schedule:data.schedule},{
+          headers:{'Cache-Control':'no-store'},
+        });
+      }
       case 'SAVE_SHOP_CONFIG': {
         const cfg = body.config || {};
         const name = sanitizeInput(String(cfg.name || '')).slice(0, 80);
@@ -377,15 +403,16 @@ export async function POST(request: Request) {
           schedule,
         };
 
-        const { error } = await supabase
-          .from('shops')
-          .update(updatePayload)
-          .eq('id', SHOP_UUID);
-
+        const { data,error } = await supabase.from('shops')
+          .update(updatePayload).eq('id',SHOP_UUID)
+          .select('schedule').maybeSingle();
         if (error) {
-          return NextResponse.json({ error: error.message }, { status: 400 });
+          console.error('Error guardando datos del local:',error.code);
+          return NextResponse.json({error:'No se pudo guardar el local. Comprobá los datos e intentá nuevamente.'},{status:503});
         }
-        return NextResponse.json({ ok: true });
+        if (!data) return NextResponse.json({error:'No se encontró la barbería.'},{status:404});
+        revalidateTag('public-shop-'+SHOP_UUID,{expire:0});
+        return NextResponse.json({ok:true,schedule:data.schedule},{headers:{'Cache-Control':'no-store'}});
       }
 
       case 'UPDATE_APPOINTMENT_STATUS': {
