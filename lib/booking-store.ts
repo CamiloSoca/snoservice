@@ -1,5 +1,6 @@
 // lib/booking-store.ts
 import type {OnSitePaymentMethod} from './payment-method';
+import type {WeeklyHours} from './weekly-hours';
 import { createClient } from '@supabase/supabase-js';
 import { invalidatePublicShopData } from '@/lib/public-shop-data';
 import {businessDayOptions, bookingIntervalsConflict} from '@/lib/appointment-rules';
@@ -56,6 +57,7 @@ export interface ServiceItem {
 }
 
 export interface BarberItem {
+  workingSchedule?: WeeklyHours | null;
   id: string;
   slug?: string;
   name: string;
@@ -71,6 +73,8 @@ export interface BarberItem {
 }
 
 export interface AppointmentItem {
+  isFixed?: boolean;
+  fixedDate?: string;
   paymentMethod?: 'cash' | 'transfer' | null;
   id: string;
   code: string;
@@ -374,6 +378,7 @@ function mapBarber(d: any): BarberItem {
     bio: d.bio || '',
     specialties: d.specialties || [],
     serviceIds: d.service_ids || [],
+    workingSchedule: d.working_schedule ?? null,
     imageUrl: d.image_url || '',
     isOwner: d.is_owner ?? false,
     active: d.active ?? true,

@@ -72,6 +72,9 @@ import { splitBusinessRevenue } from '@/lib/financial-allocations';
 import { invalidatePublicShopData } from '@/lib/public-shop-data';
 import { MAX_BARBER_PHOTO_BYTES } from '@/lib/barber-photo';
 import AgendaCalendar from '@/components/AgendaCalendar';
+import WeeklyScheduleEditor from '@/components/WeeklyScheduleEditor';
+import FixedAgendaManager from '@/components/FixedAgendaManager';
+import {normalizeHours, type WeeklyHours} from '@/lib/weekly-hours';
 import CashDrawerCard from '@/components/CashDrawerCard';
 import FinanceLedgerCard from '@/components/FinanceLedgerCard';
 import type {OnSitePaymentMethod} from '@/lib/payment-method';
@@ -132,7 +135,7 @@ function isWithinPeriod(
 export default function AdminDashboard() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<
-    'inicio' | 'caja' | 'facturacion' | 'agenda' | 'turnos' | 'barberos' | 'servicios' | 'marca' | 'configuracion'
+    'inicio' | 'caja' | 'facturacion' | 'agenda' | 'turnos' | 'fijos' | 'barberos' | 'servicios' | 'marca' | 'configuracion'
   >('inicio');
 
   const [appointments, setAppointments] = useState<AppointmentItem[]>([]);
@@ -173,6 +176,7 @@ export default function AdminDashboard() {
   const [newBarberCommission, setNewBarberCommission] = useState('50');
   const [newBarberIsOwner, setNewBarberIsOwner] = useState(false);
   const [newBarberPin, setNewBarberPin] = useState('');
+  const [newBarberSchedule,setNewBarberSchedule]=useState<WeeklyHours|null>(null);
   const [barberPinDrafts, setBarberPinDrafts] = useState<Record<string, string>>({});
 
   const [expenseDesc, setExpenseDesc] = useState('');
@@ -463,7 +467,8 @@ const handleAddBarber = async () => {
       id: generateUUID(),
       slug,
       name: newBarberName.trim(),
-      role: 'Barbero Profesional',
+      role: 'Barbero',
+      workingSchedule:normalizeHours(newBarberSchedule ?? shopConfig.schedule),
       bio: '',
       specialties: ['Fade', 'Corte Clásico'],
       serviceIds: services.map((s) => s.id),
@@ -498,6 +503,7 @@ const handleAddBarber = async () => {
       setNewBarberCommission('50');
       setNewBarberIsOwner(false);
       setNewBarberPin('');
+      setNewBarberSchedule(null);
       
       alert(`¡Barbero ${newItem.name} agregado con éxito!`);
     } catch (err: any) {
@@ -799,7 +805,7 @@ const handleAddBarber = async () => {
         phone: shopConfig.phone.trim(),
         address: shopConfig.address.trim(),
         city: shopConfig.city ? shopConfig.city.trim() : 'Montevideo',
-        schedule: shopConfig.schedule || DEFAULT_SHOP_CONFIG.schedule,
+        schedule: normalizeHours(shopConfig.schedule) || DEFAULT_SHOP_CONFIG.schedule,
       };
       await saveShopConfig(configToSave);
       setSavedBanner(true);
@@ -1080,16 +1086,21 @@ const handleAddBarber = async () => {
               {id:'barberos',label:'Equipo',icon:Users},
               {id:'configuracion',label:'Configuración',icon:Settings},
             ] as const).map(({id,label,icon:Icon}) => {
-              const active = activeTab===id || (id==='agenda' && activeTab==='turnos') || (id==='configuracion' && (activeTab==='servicios'||activeTab==='marca'));
+              const active = activeTab===id || (id==='agenda' && (activeTab==='turnos'||activeTab==='fijos')) || (id==='configuracion' && (activeTab==='servicios'||activeTab==='marca'));
               return <button type="button" key={id} onClick={() => setActiveTab(id)}
                 aria-current={active ? 'page' : undefined}
                 className={'flex min-h-[50px] min-w-0 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-center text-[10px] font-bold leading-tight transition-colors focus-visible:outline-2 focus-visible:outline-emerald-400 sm:min-h-14 sm:flex-row sm:gap-1.5 sm:p-2 sm:text-[11px] ' + (active?'bg-zinc-100 text-zinc-950':'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100')}>
                 <Icon className="h-4 w-4"/>{label}</button>;
             })}
           </nav>
-          {(activeTab==='agenda'||activeTab==='turnos') && <div role="group" aria-label="Modo de agenda" className="flex gap-1 rounded-xl border border-zinc-800 bg-zinc-900 p-1">
+          {(activeTab==='agenda'||activeTab==='turnos'||activeTab==='fijos') && <div role="group" aria-label="Modo de agenda" className="flex gap-1 rounded-xl border border-zinc-800 bg-zinc-900 p-1">
             <button type="button" onClick={() => setActiveTab('agenda')} aria-pressed={activeTab==='agenda'} className={'min-w-0 flex-1 rounded-lg px-3 py-2 text-xs font-bold sm:flex-none '+(activeTab==='agenda'?'bg-emerald-400 text-zinc-950':'bg-zinc-800 text-zinc-200')}>Calendario</button>
             <button type="button" onClick={() => setActiveTab('turnos')} aria-pressed={activeTab==='turnos'} className={'min-w-0 flex-1 rounded-lg px-3 py-2 text-xs font-bold sm:flex-none '+(activeTab==='turnos'?'bg-emerald-400 text-zinc-950':'bg-zinc-800 text-zinc-200')}>Listado</button>
+            <button type="button" onClick={() => setActiveTab('fijos')}
+              aria-pressed={activeTab==='fijos'}
+              className={'rounded-lg px-4 py-2 text-xs font-bold '+(activeTab==='fijos'?'bg-emerald-400 text-zinc-950':'bg-zinc-800 text-zinc-200')}>
+              Agenda fija
+            </button>
           </div>}
           {(activeTab==='configuracion'||activeTab==='servicios'||activeTab==='marca') && <div className="flex flex-wrap gap-2 rounded-xl border border-zinc-800 bg-zinc-900 p-2">
             <button type="button" onClick={() => setActiveTab('servicios')} className={'rounded-lg px-4 py-2 text-xs '+(activeTab==='servicios'?'bg-emerald-400 text-zinc-950':'bg-zinc-800 text-zinc-200')}>Servicios y precios</button>
@@ -1977,6 +1988,7 @@ const handleAddBarber = async () => {
             </div>
           )}
 
+          {activeTab === 'fijos' && <FixedAgendaManager barbers={barbers} services={services}/>}
           {activeTab === 'barberos' && (
             <div className="space-y-5">
               <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-4">
@@ -2023,6 +2035,10 @@ const handleAddBarber = async () => {
                     Sumar
                   </button>
                 </div>
+                <WeeklyScheduleEditor title="Días y horarios del nuevo barbero"
+                  value={newBarberSchedule ?? shopConfig.schedule}
+                  onChange={setNewBarberSchedule}
+                  help="Podés habilitar solo sábados o cualquier combinación. Se guardará junto al perfil."/>
                 <label className="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
                   <input type="checkbox" checked={newBarberIsOwner} onChange={(e) => setNewBarberIsOwner(e.target.checked)} className="accent-emerald-500 size-4" />
                   Es propietario: 100% de sus cortes al fondo común (sin comisión)
@@ -2157,6 +2173,10 @@ const handleAddBarber = async () => {
                         </div>
                       </div>
 
+                      <WeeklyScheduleEditor title={'Horarios de '+brb.name}
+                        help="Desmarcá los días que no trabaja. Guardá para actualizar las próximas reservas disponibles."
+                        value={brb.workingSchedule ?? shopConfig.schedule}
+                        onChange={(hours)=>setBarbers(prev=>prev.map(b=>b.id===brb.id?{...b,workingSchedule:hours}:b))}/>
                       <div className="pt-3 border-t border-zinc-800/80 space-y-3">
                         <div className="flex items-center justify-between">
                           <p className="text-xs text-zinc-400 font-medium">
@@ -2169,7 +2189,7 @@ const handleAddBarber = async () => {
                           >
                             <Save className="w-3.5 h-3.5" />
                             <span>
-                              {savingBarberId === brb.id ? '¡Guardado!' : 'Guardar Servicios'}
+                              {savingBarberId === brb.id ? '¡Guardado!' : 'Guardar horarios y servicios'}
                             </span>
                           </button>
                         </div>
@@ -2360,6 +2380,10 @@ const handleAddBarber = async () => {
                 </div>
               </div>
 
+              <WeeklyScheduleEditor title="Días y horarios de apertura del local"
+                help="Cerrá los días que no atendés y ajustá el horario general. Los barberos nunca podrán ofrecer turnos fuera de estos límites."
+                value={shopConfig.schedule}
+                onChange={(hours)=>setShopConfig(prev=>({...prev,schedule:hours}))}/>
               <div className="flex items-center justify-between pt-2">
                 {savedBanner ? (
                   <span className="text-xs text-emerald-400 font-medium flex items-center gap-1.5">

@@ -76,7 +76,7 @@ export async function GET() {
         .eq('shop_id', SHOP_UUID)),
       timed('barbers', supabase.from('barbers')
         // El PIN almacenado nunca debe enviarse al navegador.
-        .select('id,slug,name,role,bio,specialties,service_ids,active,commission_rate,is_owner,image_url')
+        .select('id,slug,name,role,bio,specialties,service_ids,active,commission_rate,is_owner,image_url,working_schedule')
         .eq('shop_id', SHOP_UUID)),
       timed('expenses', supabase.from('expenses')
         .select('id,description,amount,category,expense_date,created_at')

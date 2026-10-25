@@ -14,6 +14,8 @@ import {
 } from '@/lib/booking-store';
 import {validateBookingTime, type BusinessSchedule} from '@/lib/appointment-rules';
 import {suggestEmailCorrection} from '@/lib/email-validation';
+import {resolvedHours} from '@/lib/weekly-hours';
+import {businessDayOptions} from '@/lib/appointment-rules';
 
 // Los turnos se guardan como "Mié 21 Oct" (sin año), el mismo formato
 // generado por buildRealOpenDays. La agenda publica muestra los siguientes
@@ -55,6 +57,22 @@ export async function GET() {
       );
     }
 
+    const {data:fixed,error:fixedErr}=await supabase.from('fixed_bookings')
+      .select('barber_id,weekday,time_slot,duration_minutes,start_date,end_date')
+      .eq('shop_id',SHOP_UUID).eq('active',true);
+    if(fixedErr)return NextResponse.json({error:'No se pudo consultar agenda fija.'},{status:503});
+    const visibleDays=businessDayOptions(new Date(),30);
+    const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/Montevideo',
+      year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());
+    const part=(kind:string)=>parts.find(p=>p.type===kind)?.value||'';
+    const todayISO=part('year')+'-'+part('month')+'-'+part('day');
+    const startUtc=Date.parse(todayISO+'T00:00:00Z');
+    const fixedSlots=(fixed||[]).flatMap(f=>visibleDays.flatMap((day,index)=>{
+      const iso=new Date(startUtc+index*86400000).toISOString().slice(0,10);
+      return f.weekday===day.dayOfWeek && iso>=f.start_date && (!f.end_date||iso<=f.end_date)
+        ? [{barberId:f.barber_id,dateString:day.dateString,timeSlot:f.time_slot,
+            durationMinutes:f.duration_minutes,status:'confirmado'}] : [];
+    }));
     // El navegador solo necesita intervalos ocupados, no una estructura
     // completa de turno con campos vacíos ni datos de clientes.
     const sanitizedSlots = (data || []).map((apt) => ({
@@ -65,7 +83,7 @@ export async function GET() {
       status: apt.status || 'confirmado',
     }));
 
-    return NextResponse.json({ appointments: sanitizedSlots }, {
+    return NextResponse.json({ appointments: [...sanitizedSlots,...fixedSlots] }, {
       headers: {'Cache-Control': 'private, no-store'},
     });
   } catch {
@@ -128,7 +146,7 @@ export async function POST(request: Request) {
           .maybeSingle(),
         supabase
           .from('barbers')
-          .select('id, name, service_ids, active')
+          .select('id, name, service_ids, active, working_schedule')
           .eq('id', barberId)
           .eq('shop_id', SHOP_UUID)
           .maybeSingle(),
@@ -169,7 +187,7 @@ export async function POST(request: Request) {
       dateString: cleanDate,
       timeSlot: cleanTime,
       durationMinutes: realDuration,
-      schedule: shopRow.schedule as BusinessSchedule,
+      schedule: resolvedHours(shopRow.schedule as BusinessSchedule,barberRow.working_schedule),
     });
     if (timeError) return NextResponse.json({error: timeError}, {status: 400});
 

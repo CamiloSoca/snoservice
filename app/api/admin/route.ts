@@ -5,6 +5,7 @@ import { requireAdminSession, verifyCsrfOrigin } from '@/lib/session';
 import { requireOpenCash } from '@/lib/cash-guard';
 import {appointmentTimeState} from '@/lib/appointment-rules';
 import {isOnSitePaymentMethod} from '@/lib/payment-method';
+import {normalizeHours} from '@/lib/weekly-hours';
 
 import {sendBookingCancellationNotice} from '@/lib/server-booking-cancellation';
 import {
@@ -56,7 +57,7 @@ export async function GET(request: Request) {
     if (resource === 'barbers') {
       const { data, error } = await supabase
         .from('barbers')
-        .select('id,slug,name,role,bio,specialties,service_ids,active,commission_rate,is_owner,image_url')
+        .select('id,slug,name,role,bio,specialties,service_ids,active,commission_rate,is_owner,image_url,working_schedule')
         .eq('shop_id', SHOP_UUID);
       if (error) return NextResponse.json({ error: error.message }, { status: 400 });
       return NextResponse.json({ data: data || [] });
@@ -229,7 +230,9 @@ export async function POST(request: Request) {
             ? b.specialties.map((sp: string) => sanitizeInput(String(sp)).slice(0, 40))
             : ['Corte'];
 
+          const workingSchedule=normalizeHours(b.workingSchedule ?? null);
           payloads.push({
+            working_schedule:workingSchedule,
             id, shop_id: SHOP_UUID, slug, name,
             role: sanitizeInput(String(b.role || 'Barbero')).slice(0, 40),
             bio: sanitizeInput(String(b.bio || '')).slice(0, 300),
@@ -360,7 +363,7 @@ export async function POST(request: Request) {
         const coverImageUrl = cfg.coverImageUrl
           ? String(cfg.coverImageUrl).trim().slice(0, 500)
           : backgroundImageUrl;
-        const schedule = cfg.schedule || DEFAULT_SHOP_CONFIG.schedule;
+        const schedule = normalizeHours(cfg.schedule ?? DEFAULT_SHOP_CONFIG.schedule);
 
         const updatePayload: Record<string, any> = {
           name,

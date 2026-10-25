@@ -66,6 +66,7 @@ function onlyPublicFields(source: PublicShopData): PublicShopData {
       id: b.id, slug: b.slug || '', name: b.name, role: b.role || 'Barbero',
       bio: b.bio || '', specialties: b.specialties || [],
       serviceIds: b.serviceIds || [], imageUrl: b.imageUrl || '', active: b.active !== false,
+      workingSchedule: b.workingSchedule ?? null,
       isOwner: false, commissionRate: 0, pin: '',
     })),
   };

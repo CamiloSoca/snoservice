@@ -71,8 +71,9 @@ export function readableWeek(key: string): string {
 /** La base guarda fecha sin año: resolverla desde la creación (máximo 30 días de antelación).
  *  Evita confundir un turno de otro año que comparte etiqueta "Vie 23 Oct". */
 export function appointmentCalendarKey(
-  appointment: Pick<AppointmentItem, 'dateString' | 'createdAt'>,
+  appointment: Pick<AppointmentItem, 'dateString' | 'createdAt' | 'isFixed' | 'fixedDate'>,
 ): string | null {
+  if (appointment.isFixed && appointment.fixedDate) return appointment.fixedDate;
   const created = new Date(appointment.createdAt);
   if (!Number.isFinite(created.getTime())) return null;
   const bookingDay = todayInMontevideo(created);

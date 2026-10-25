@@ -1,17 +1,22 @@
 'use client';
 
-import {useMemo, useState} from 'react';
+import {useEffect,useMemo,useState} from 'react';
 import {CalendarDays, ChevronLeft, ChevronRight, RefreshCw, WifiOff} from 'lucide-react';
 import type {AppointmentItem, BarberItem} from '@/lib/booking-store';
 import AppointmentDetailModal, {type AppointmentActionResult} from '@/components/AppointmentDetailModal';
 import type {OnSitePaymentMethod} from '@/lib/payment-method';
 import {
   agendaDayAppointments, appointmentStartMinute, calendarWeekDays,
-  moveCalendarDay, readableDay, readableWeek, todayInMontevideo,
+  moveCalendarDay, readableDay, readableWeek, todayInMontevideo, bookingDateLabel,
 } from '@/lib/agenda-calendar';
 
 type CalendarMode = 'admin' | 'barber';
 type CalendarView = 'dia' | 'semana';
+interface FixedRule {
+ id:string;barberId:string;serviceId:string;clientName:string;clientPhone:string;clientEmail:string;
+ weekday:number;timeSlot:string;durationMinutes:number;startDate:string;endDate:string|null;
+ serviceName:string;barberName:string;
+}
 type BarberRef = Pick<BarberItem, 'id' | 'name'>;
 
 interface AgendaCalendarProps {
@@ -83,6 +88,27 @@ export default function AgendaCalendar({
   const [selectedBarber, setSelectedBarber] = useState('todos');
   const [selectedAppointmentId, setSelectedAppointmentId] = useState<string | null>(null);
   const [actionFeedback, setActionFeedback] = useState<string>('');
+  const [fixedRules,setFixedRules]=useState<FixedRule[]>([]);
+  const [fixedError,setFixedError]=useState('');
+  const [fixedReload,setFixedReload]=useState(0);
+  useEffect(()=>{
+    let alive=true;
+    async function refreshFixed() {
+      try {
+        const response=await fetch('/api/agenda/fixed',{cache:'no-store',credentials:'same-origin'});
+        const json=await response.json().catch(()=>({}));
+        if(!response.ok)throw new Error(json.error||'No se pudieron actualizar los fijos.');
+        if(alive){setFixedRules(Array.isArray(json.items)?json.items:[]);setFixedError('');}
+      } catch {
+        if(alive)setFixedError('No se pudieron verificar los clientes fijos. Reintentá la actualización.');
+      }
+    }
+    void refreshFixed();
+    const onVisible=()=>{if(document.visibilityState==='visible')void refreshFixed();};
+    document.addEventListener('visibilitychange',onVisible);
+    const interval=window.setInterval(()=>{if(document.visibilityState==='visible')void refreshFixed();},12_000);
+    return()=>{alive=false;window.clearInterval(interval);document.removeEventListener('visibilitychange',onVisible);};
+  },[mode,fixedReload]);
 
   const today = todayInMontevideo();
   const syncLabel = syncState === 'error' ? 'Sin sincronizar'
@@ -108,15 +134,34 @@ export default function AgendaCalendar({
     view === 'semana' ? calendarWeekDays(selectedDate) : [selectedDate]
   ), [view, selectedDate]);
 
+  const fixedEvents=useMemo<AppointmentItem[]>(()=>(
+    displayedDates.flatMap(date=>{
+      const day=new Date(date+'T00:00:00Z');
+      if(Number.isNaN(day.getTime()))return [];
+      const weekday=day.getUTCDay();
+      return fixedRules.filter(f=>f.weekday===weekday&&date>=f.startDate
+        &&(!f.endDate||date<=f.endDate)
+        &&barbers.some(b=>b.id===f.barberId))
+        .map(f=>({
+          id:'fixed-'+f.id+'-'+date,code:'FIJO',isFixed:true,fixedDate:date,
+          serviceId:f.serviceId,serviceName:f.serviceName,servicePrice:0,priceSnapshot:0,
+          durationMinutes:f.durationMinutes,barberId:f.barberId,barberName:f.barberName,
+          dateString:bookingDateLabel(date),timeSlot:f.timeSlot,
+          clientName:f.clientName,clientPhone:f.clientPhone,clientEmail:f.clientEmail,
+          status:'confirmado' as const,createdAt:new Date().toISOString(),
+        }));
+    })
+  ),[displayedDates,fixedRules,barbers]);
+  const agendaEntries=useMemo(()=>[...ownAppointments,...fixedEvents],[ownAppointments,fixedEvents]);
   const calendarAppointments = useMemo(() => (
-    displayedDates.flatMap(date => agendaDayAppointments(ownAppointments, date))
+    displayedDates.flatMap(date => agendaDayAppointments(agendaEntries, date))
       .filter(appointment => filteredBarbers.some(barber => barber.id === appointment.barberId))
-  ), [displayedDates, ownAppointments, filteredBarbers]);
+  ), [displayedDates, agendaEntries, filteredBarbers]);
 
   const dayAppointments = useMemo(() => (
-    agendaDayAppointments(ownAppointments, selectedDate)
+    agendaDayAppointments(agendaEntries, selectedDate)
       .filter(appointment => filteredBarbers.some(barber => barber.id === appointment.barberId))
-  ), [ownAppointments, selectedDate, filteredBarbers]);
+  ), [agendaEntries, selectedDate, filteredBarbers]);
 
   const selectedAppointment = calendarAppointments.find(
     appointment => appointment.id === selectedAppointmentId
@@ -174,7 +219,7 @@ export default function AgendaCalendar({
           <span className="text-xs font-extrabold tabular-nums text-zinc-200">{appointment.timeSlot}</span>
           {compact && <span className={'text-[10px] font-semibold ' +
             (appointment.status === 'completado' ? 'text-emerald-300' : 'text-amber-300')}>
-            {appointment.status === 'completado' ? 'Completado' : 'Sin marcar'}
+            {appointment.isFixed ? 'Fijo' : appointment.status === 'completado' ? 'Completado' : 'Sin marcar'}
           </span>}
         </div>
         <p className="truncate text-xs font-bold text-zinc-100">{appointment.clientName}</p>
@@ -260,7 +305,7 @@ export default function AgendaCalendar({
               (syncState === 'connected' ? 'bg-emerald-400' : 'bg-amber-400')} />}
           {syncLabel}
         </div>
-        <button type="button" onClick={onRefresh} disabled={syncState === 'updating'}
+        <button type="button" onClick={()=>{setFixedReload(n=>n+1);onRefresh();}} disabled={syncState === 'updating'}
           className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-1.5 text-[11px] font-semibold text-zinc-200 hover:border-emerald-500 hover:text-emerald-300 disabled:opacity-50"
           aria-label="Actualizar la agenda ahora">
           <RefreshCw className={'h-3.5 w-3.5 ' + (syncState === 'updating' ? 'animate-spin' : '')} />
@@ -268,6 +313,7 @@ export default function AgendaCalendar({
         </button>
       </div>
 
+      {fixedError && <p role="alert" className="mx-3 mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">{fixedError}</p>}
       {actionFeedback && (
         <div role="status" className="mx-3 mt-3 flex items-start justify-between gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-3 text-sm text-emerald-200">
           <span>{actionFeedback}</span>
@@ -308,7 +354,7 @@ export default function AgendaCalendar({
                   <span className={'shrink-0 rounded-full px-2 py-1 text-[10px] font-bold ' +
                     (appointment.status === 'completado'
                       ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-300')}>
-                    {appointment.status === 'completado' ? 'Hecho' : 'Pendiente'}
+                    {appointment.isFixed ? 'Fijo' : appointment.status === 'completado' ? 'Hecho' : 'Pendiente'}
                   </span>
                 </button>
               ))
@@ -369,7 +415,7 @@ export default function AgendaCalendar({
                                     ? 'border-l-emerald-500 border-emerald-600/40 bg-emerald-500/10'
                                     : 'border-l-amber-500 border-zinc-800 bg-zinc-900 hover:bg-zinc-800')}>
                               <span className="block truncate text-[11px] font-bold tabular-nums text-zinc-200">
-                                {event.appointment.timeSlot} {event.appointment.clientName}
+                                {event.appointment.timeSlot} {event.appointment.clientName}{event.appointment.isFixed ? ' · Fijo' : ''}
                               </span>
                               <span className="block truncate text-[10px] text-zinc-400">{event.appointment.serviceName}</span>
                             </button>
@@ -386,7 +432,7 @@ export default function AgendaCalendar({
       ) : (
         <div className="space-y-3 p-3 sm:p-4">
           {displayedDates.map(date => {
-            const items = agendaDayAppointments(ownAppointments, date)
+            const items = agendaDayAppointments(agendaEntries, date)
               .filter(appointment => filteredBarbers.some(barber => barber.id === appointment.barberId));
             return (
               <div key={date} className={'overflow-hidden rounded-2xl border ' +
