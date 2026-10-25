@@ -28,5 +28,5 @@ test('does not enable automatic deployment or touch bookings and finance',()=>{
   const config=JSON.parse(read('vercel.json'));
   assert.equal(config.git.deploymentEnabled,false);
   const apple=read('app/apple-icon.tsx');
-  assert.doesNotMatch(apple,/supabase-server|service_role|BOOKING|/i);
+  assert.doesNotMatch(apple,/supabase-server|service_role|BOOKING/i);
 });
