@@ -1377,13 +1377,13 @@ const handleAddBarber = async () => {
                 <h3 className="text-base font-bold text-zinc-100">Gastos, propinas y cobros extras</h3>
                 <p className="mt-1 text-xs text-zinc-400">Registrá cada ingreso o salida con su medio de pago. Efectivo afecta el cajón; transferencia no.</p>
               </div>
-              <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-4">
-                <div>
-                  <h3 className="font-bold text-base flex items-center gap-2">
-                    <Coins className="w-4 h-4 text-emerald-400" />
-                    Ingresar Cobros Manuales / Cortes Extra
-                  </h3>
-                </div>
+              <details className="group/extracash overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/90 open:border-zinc-700">
+                <summary className="flex min-h-16 cursor-pointer list-none items-center gap-3 px-4 py-3 text-sm font-bold hover:bg-zinc-800/60 focus-visible:outline-2 focus-visible:outline-emerald-400 [&::-webkit-details-marker]:hidden">
+                  <Coins className="h-5 w-5 text-emerald-400"/>
+                  <span className="flex-1">Cobros extras y fijos · {filteredManualCharges.length}</span>
+                  <ChevronDown className="h-4 w-4 text-zinc-400 transition-transform group-open/extracash:rotate-180"/>
+                </summary>
+                <div className="space-y-4 border-t border-zinc-800 p-4 sm:p-5">
 
                 <form onSubmit={handleAddChargeAdmin} className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
                   <select
@@ -1472,12 +1472,15 @@ const handleAddBarber = async () => {
                   )}
                 </div>
               </div>
+              </details>
 
-              <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-4">
-                <h3 className="font-bold text-base flex items-center gap-2">
-                  <Coins className="w-4 h-4 text-emerald-400" />
-                  Propinas del Equipo
-                </h3>
+              <details className="group/teamtips overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/90 open:border-zinc-700">
+                <summary className="flex min-h-16 cursor-pointer list-none items-center gap-3 px-4 py-3 text-sm font-bold hover:bg-zinc-800/60 focus-visible:outline-2 focus-visible:outline-emerald-400 [&::-webkit-details-marker]:hidden">
+                  <Coins className="h-5 w-5 text-emerald-400"/>
+                  <span className="flex-1">Propinas del equipo · {filteredTips.length}</span>
+                  <ChevronDown className="h-4 w-4 text-zinc-400 transition-transform group-open/teamtips:rotate-180"/>
+                </summary>
+                <div className="space-y-4 border-t border-zinc-800 p-4 sm:p-5">
 
                 <form onSubmit={handleAddTipAdmin} className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
                   <select
@@ -1567,12 +1570,15 @@ const handleAddBarber = async () => {
                   )}
                 </div>
               </div>
+              </details>
 
-              <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-4">
-                <h3 className="font-bold text-base flex items-center gap-2">
-                  <Receipt className="w-4 h-4 text-rose-400" />
-                  Gastos del Local
-                </h3>
+              <details className="group/expenses overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/90 open:border-zinc-700">
+                <summary className="flex min-h-16 cursor-pointer list-none items-center gap-3 px-4 py-3 text-sm font-bold hover:bg-zinc-800/60 focus-visible:outline-2 focus-visible:outline-emerald-400 [&::-webkit-details-marker]:hidden">
+                  <Receipt className="h-5 w-5 text-emerald-400"/>
+                  <span className="flex-1">Gastos del local · {filteredExpenses.length}</span>
+                  <ChevronDown className="h-4 w-4 text-zinc-400 transition-transform group-open/expenses:rotate-180"/>
+                </summary>
+                <div className="space-y-4 border-t border-zinc-800 p-4 sm:p-5">
 
                 <p className="text-xs text-zinc-400">Registrá aquí insumos, alquiler y otros gastos del local. No registres pagos de comisiones: ya están descontados del resultado del negocio.</p>
                 <form onSubmit={handleAddExpense} noValidate className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
@@ -1656,7 +1662,8 @@ const handleAddBarber = async () => {
                     </div>
                   ))}
                 </div>
-              </div>
+                </div>
+              </details>
               </>}
             </div>
           )}
