@@ -1454,6 +1454,16 @@ const handleAddBarber = async () => {
                             {chg.note && (
                               <span className="text-xs text-zinc-300 font-medium">• {chg.note}</span>
                             )}
+                            <span className="text-[11px] text-zinc-500">
+                              Registrado por: {chg.createdByRole === 'admin'
+                                ? 'Administración'
+                                : chg.createdByRole === 'barber'
+                                  ? (safeBarbers.find(b => b.id === chg.createdByBarberId)?.name || 'Barbero no disponible')
+                                  : 'Sin registrar (anterior a esta mejora)'}
+                              {' · '}{new Date(chg.createdAt).toLocaleTimeString('es-UY', {
+                                timeZone: 'America/Montevideo', hour:'2-digit', minute:'2-digit'
+                              })}
+                            </span>
                           </div>
 
                           <div className="flex items-center space-x-3">

@@ -10,10 +10,16 @@ function tableOf(value: unknown): FinanceTable | null {
   return value === 'tips' || value === 'manual_charges' ? value : null;
 }
 
-async function authorize(barberId: string | null): Promise<{ admin: boolean; barberId: string | null } | null> {
+// Forzar identidad de barbero para el panel individual aunque exista cookie de administrador.
+async function authorize(barberId: string | null, barberScope: boolean = false):
+  Promise<{admin: boolean; barberId: string | null} | null> {
   const [admin, barber] = await Promise.all([requireAdminSession(), getBarberSession()]);
-  if (admin) return { admin: true, barberId };
-  if (barber && (!barberId || barber.sub === barberId)) return { admin: false, barberId: barber.sub };
+  if (barberScope) {
+    if (!barber || (barberId && barber.sub !== barberId)) return null;
+    return {admin: false, barberId: barber.sub};
+  }
+  if (admin) return {admin: true, barberId};
+  if (barber && (!barberId || barber.sub === barberId)) return {admin: false, barberId: barber.sub};
   return null;
 }
 
@@ -23,10 +29,10 @@ export async function GET(request: Request) {
   if (!table) return NextResponse.json({error: 'Recurso inválido'}, {status: 400});
   const barberId = params.get('barberId');
   if (barberId && !isValidUUID(barberId)) return NextResponse.json({error: 'ID inválido'}, {status: 400});
-  const session = await authorize(barberId);
+  const session = await authorize(barberId, params.get('scope') === 'barber');
   if (!session) return NextResponse.json({error: 'No autorizado'}, {status: 401});
   let query = getSupabaseServer().from(table).select(table === 'manual_charges'
-    ? 'id,barber_id,amount,note,date_string,payment_method,created_at,commission_rate_snapshot,barber_earnings_snapshot,business_earnings_snapshot,cash_register_id,barbers(name)'
+    ? 'id,barber_id,amount,note,date_string,payment_method,created_at,commission_rate_snapshot,barber_earnings_snapshot,business_earnings_snapshot,cash_register_id,created_by_role,created_by_barber_id,barbers(name)'
     : 'id,barber_id,amount,note,date_string,payment_method,created_at,barbers(name)').eq('shop_id', SHOP_UUID).order('created_at', {ascending: false});
   if (session.barberId) query = query.eq('barber_id', session.barberId);
   const {data, error} = await query;
@@ -43,7 +49,7 @@ export async function POST(request: Request) {
   if (!isValidUUID(barberId)) return NextResponse.json({error: 'Barbero inválido'}, {status: 400});
   const requestId = body.item?.requestId;
   if (!isValidUUID(requestId)) return NextResponse.json({error: 'Identificador de operación inválido'}, {status: 400});
-  const session = await authorize(barberId);
+  const session = await authorize(barberId, body.scope === 'barber');
   if (!session) return NextResponse.json({error: 'No autorizado'}, {status: 401});
   const paymentMethod=body.item?.paymentMethod;
   if(!isOnSitePaymentMethod(paymentMethod)) {
@@ -70,6 +76,9 @@ export async function POST(request: Request) {
     ? await supabase.from('manual_charges').insert({
       ...common,commission_rate_snapshot:rate,barber_earnings_snapshot:barberShare,
       business_earnings_snapshot:Math.round((amount-barberShare)*100)/100,
+      // Autoria derivada de cookie firmada, no de datos del cliente.
+      created_by_role:session.admin?'admin':'barber',
+      created_by_barber_id:session.admin?null:session.barberId,
     })
     : await supabase.from('tips').insert(common);
   if (error?.code === '23505') {
@@ -92,7 +101,7 @@ export async function DELETE(request: Request) {
   const body = await request.json().catch(() => ({}));
   const table = tableOf(body.resource);
   if (!table || !isValidUUID(body.id)) return NextResponse.json({error: 'Solicitud inválida'}, {status: 400});
-  const session = await authorize(null);
+  const session = await authorize(null, body.scope === 'barber');
   if (!session) return NextResponse.json({error: 'No autorizado'}, {status: 401});
   const cashDenied = await requireOpenCash();
   if (cashDenied) return cashDenied;
@@ -101,6 +110,7 @@ export async function DELETE(request: Request) {
   const {data:item,error:itemError}=await supabase.from(table).select('barber_id')
     .eq('shop_id',SHOP_UUID).eq('id',body.id).maybeSingle();
   if(itemError||!item)return NextResponse.json({error:'Movimiento inexistente.'},{status:404});
+  if(!session.admin && item.barber_id !== session.barberId) return NextResponse.json({error:'Registro inexistente o sin permiso'},{status:404});
   const {count:payoutCount,error:payoutError}=await supabase.from('barber_payouts')
     .select('id',{count:'exact',head:true}).eq('shop_id',SHOP_UUID).eq('barber_id',item.barber_id);
   if(payoutError)return NextResponse.json({error:'No se pudo verificar las liquidaciones.'},{status:503});
