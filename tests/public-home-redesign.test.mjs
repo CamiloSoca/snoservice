@@ -12,21 +12,28 @@ const provider = read('components/PublicShopProvider.tsx');
 test('portada mantiene una sola acción de reserva y servicios reales', () => {
   assert.match(home, /\/\* HERO BANNER \*\//);
   assert.match(home, /initialShop\.services\.filter\(service => service\.active !== false\)/);
+  assert.match(home, /src=\{service\.imageUrl\}/);
+  assert.match(home, /alt=\{'Trabajo de ' \+ service\.name/);
+  assert.match(home, /className="grid grid-cols-2 gap-3 md:grid-cols-4"/);
   assert.match(home, /href="\/agendar"/);
   assert.match(home, /Horarios y ubicación/);
   assert.match(home, /<details/);
 });
 test('trabajos de la cuenta profesional antes del equipo y fotos de barberos opcionales', () => {
-  assert.ok(home.indexOf('{/* INSTAGRAM') < home.indexOf('{/* EQUIPO:'));
+  assert.ok(home.indexOf('{/* EQUIPO:') < home.indexOf('{/* INSTAGRAM'));
   assert.match(home, /instagramPosts\.map/);
   assert.match(home, /post\.likeCount\.toLocaleString\('es-UY'\)/);
+  const instagramSection = home.split('{/* INSTAGRAM')[1]?.split('</section>')[0] || '';
+  assert.match(instagramSection, /src=\{bannerUrl\}/);
+  assert.match(instagramSection, /src=\{logoImage\}/);
+  assert.match(instagramSection, /className="grid grid-cols-2 gap-3 lg:grid-cols-4"/);
   assert.match(home, /id="equipo"/);
   assert.match(home, /b\.imageUrl/);
   assert.match(home, /onClick=\{\(\) => setSelectedBarber\(b\)\}/);
   assert.match(home, /'\/agendar\?barbero=' \+ encodeURIComponent\(slug\)/);
 });
 test('navegación pública ofrece Equipo y Más, con acceso staff y admin intactos', () => {
-  assert.match(nav, /href="\/#equipo"/);
+  assert.match(nav, /href="\/barbero" prefetch=\{true\}/);
   assert.match(nav, /aria-expanded=\{moreOpen\}/);
   assert.match(nav, /href="\/barbero"/);
   assert.match(nav, /href="\/admin"/);
