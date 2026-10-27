@@ -1974,11 +1974,12 @@ const handleAddBarber = async () => {
                 </div>
               ) : (
                 safeAppointments.map((apt) => (
-                  <div
+                  <details
                     key={apt.id}
-                    className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                    className="group/appointment overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/90 open:border-zinc-700"
                   >
-                    <div className="space-y-1">
+                    <summary className="flex min-h-[82px] cursor-pointer list-none items-center gap-3 px-4 py-3 hover:bg-zinc-800/60 focus-visible:outline-2 focus-visible:outline-emerald-400 [&::-webkit-details-marker]:hidden">
+                    <div className="min-w-0 flex-1 space-y-1">
                       <div className="flex items-center space-x-2">
                         <span className="px-2.5 py-0.5 rounded-md text-xs font-medium bg-zinc-800 text-zinc-200">
                           {apt.dateString} • {apt.timeSlot} hs
@@ -2005,8 +2006,10 @@ const handleAddBarber = async () => {
                         {apt.serviceName} (${apt.priceSnapshot ?? apt.servicePrice}) • <strong className="text-zinc-200">{apt.barberName}</strong>
                       </p>
                     </div>
+                    <ChevronDown className="h-4 w-4 shrink-0 text-zinc-400 transition-transform group-open/appointment:rotate-180" />
+                    </summary>
 
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2 border-t border-zinc-800 p-4">
                       <a
                         href={getClientWhatsAppLink(apt) || undefined}
                         target="_blank"
@@ -2059,7 +2062,7 @@ const handleAddBarber = async () => {
                         </button>
                       )}
                     </div>
-                  </div>
+                  </details>
                 ))
               )}
             </div>
