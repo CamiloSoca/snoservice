@@ -60,7 +60,7 @@ test('barra inferior tiene acceso directo a Admin, sin menú Más', () => {
   assert.match(nav, /pathname\.startsWith\('\/agendar'\)/);
 });
 test('ficha del barbero usa catálogo público y enlaza al flujo de reserva existente', () => {
-  assert.match(profile, /role="dialog" aria-modal="true"/);
+  assert.match(profile, /role="dialog"[\s\S]*?aria-modal="true"/);
   assert.match(home, /BarberDetailPanel shop=\{initialShop\}/);
   assert.match(profile, /barber\.imageUrl/);
   assert.match(profile, /shop\.services/);
