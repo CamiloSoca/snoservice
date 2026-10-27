@@ -9,15 +9,29 @@ const profile = read('components/BarberDetailPanel.tsx');
 const booking = read('components/BookingClient.tsx');
 const provider = read('components/PublicShopProvider.tsx');
 
-test('portada mantiene una sola acción de reserva y servicios reales', () => {
-  assert.match(home, /\/\* HERO BANNER \*\//);
-  assert.match(home, /initialShop\.services\.filter\(service => service\.active !== false\)/);
-  assert.match(home, /src=\{service\.imageUrl\}/);
-  assert.match(home, /alt=\{'Trabajo de ' \+ service\.name/);
-  assert.match(home, /className="grid grid-cols-2 gap-3 md:grid-cols-4"/);
+test('inicio tiene cuatro bloques y las reservas continúan en el flujo original', () => {
+  const hero = home.indexOf('{/* HERO BANNER */}');
+  const team = home.indexOf('{/* EQUIPO:');
+  const instagram = home.indexOf('{/* INSTAGRAM');
+  const info = home.indexOf('{/* HORARIOS Y UBICACIÓN');
+  assert.ok(hero >= 0 && hero < team && team < instagram && instagram < info);
+  assert.doesNotMatch(home, /Nuestros servicios/);
+  assert.doesNotMatch(home, /\{\/\* SERVICIOS/);
   assert.match(home, /href="\/agendar"/);
-  assert.match(home, /Horarios y ubicación/);
-  assert.match(home, /<details/);
+  assert.doesNotMatch(home, /<details/);
+});
+test('horarios y ubicación visibles lado a lado en móvil, con horarios del local', () => {
+  const info = home.split('{/* HORARIOS Y UBICACIÓN')[1]?.split('</section>')[0] || '';
+  assert.match(info, /grid grid-cols-2 items-stretch gap-3/);
+  assert.match(info, /activeSchedule\[dayKey\]/);
+  for (const name of ['lunes','martes','miercoles','jueves','viernes','sabado','domingo']) {
+    assert.ok(info.includes(name), name);
+  }
+  assert.match(info, /day\.openTime\.replace/);
+  assert.match(info, /day\.closeTime\.replace/);
+  assert.match(info, /shopAddress/);
+  assert.match(info, /shopCity/);
+  assert.match(info, /google\.com\/maps\/search\/\?api=1/);
 });
 test('trabajos de la cuenta profesional antes del equipo y fotos de barberos opcionales', () => {
   assert.ok(home.indexOf('{/* EQUIPO:') < home.indexOf('{/* INSTAGRAM'));

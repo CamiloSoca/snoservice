@@ -18,7 +18,6 @@ import {
   Clock,
   ArrowRight,
   Heart,
-  ChevronDown,
 } from 'lucide-react';
 import {
   DEFAULT_SHOP_CONFIG,
@@ -231,46 +230,6 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
           </div>
         </section>
 
-        {/* SERVICIOS — fotos cargadas por la barbería para cada servicio */}
-        <section className="mx-auto max-w-5xl px-4 pt-5" aria-labelledby="servicios-title">
-          <div className="mb-3 flex items-end justify-between gap-2">
-            <h2 id="servicios-title" className="text-lg font-extrabold tracking-tight">Nuestros servicios</h2>
-            <Link href="/agendar" prefetch={true} className="inline-flex items-center gap-1 text-xs font-bold text-zinc-400">
-              Ver todos <ArrowRight className="h-4 w-4" />
-            </Link>
-          </div>
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            {initialShop.services.filter(service => service.active !== false).slice(0, 4).map(service => (
-              <Link
-                key={service.id}
-                href="/agendar"
-                prefetch={true}
-                className={['group min-w-0 overflow-hidden rounded-2xl border transition-colors',
-                  isDark ? 'border-zinc-800 bg-zinc-900/80 hover:border-zinc-600' : 'border-zinc-200 bg-white hover:border-zinc-400'
-                ].join(' ')}
-              >
-                <div className="relative flex aspect-[4/3] items-center justify-center overflow-hidden bg-zinc-800">
-                  {service.imageUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={service.imageUrl}
-                      alt={'Trabajo de ' + service.name + ' en ' + shopConfig.name}
-                      loading="lazy"
-                      className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
-                    />
-                  ) : (
-                    <Scissors className="h-7 w-7 text-zinc-400" aria-hidden="true" />
-                  )}
-                </div>
-                <div className="flex min-h-14 items-center justify-between gap-2 px-3 py-3">
-                  <span className="min-w-0 text-sm font-bold leading-snug">{service.name}</span>
-                  <ArrowRight className="h-4 w-4 shrink-0 text-zinc-400" aria-hidden="true" />
-                </div>
-              </Link>
-            ))}
-          </div>
-        </section>
-
         {/* EQUIPO: tarjetas breves, foto real o inicial */}
         <section id="equipo" className="mx-auto max-w-5xl scroll-mt-24 px-4 pt-6" aria-labelledby="equipo-title">
           <div className="mb-3">
@@ -433,111 +392,67 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
           </div>
         </section>
 
-        {/* Horarios y ubicación accesibles, sin desplazar las fotos ni el equipo */}
-        <section id="info" className="mx-auto max-w-5xl scroll-mt-24 px-4 py-6">
-          <details className={['group rounded-2xl border', isDark ? 'border-zinc-800 bg-zinc-900/75' : 'border-zinc-200 bg-white'].join(' ')}>
-            <summary className="flex cursor-pointer list-none items-center gap-3 p-4 font-bold [&::-webkit-details-marker]:hidden">
-              <Clock className="h-5 w-5 text-emerald-400" />
-              <span className="flex-1">Horarios y ubicación</span>
-              <ChevronDown className="h-4 w-4 text-zinc-400 transition-transform group-open:rotate-180" />
-            </summary>
-            <div className="border-t border-zinc-800 p-3 sm:p-5">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div
-              className={`border rounded-3xl p-5 sm:p-6 space-y-3 backdrop-blur-sm ${
-                isDark ? 'bg-zinc-900/75 border-zinc-800/90' : 'bg-white/90 border-zinc-200 shadow-sm'
-              }`}
-            >
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-zinc-800 text-white flex items-center justify-center">
-                  <Clock className="w-4 h-4 text-emerald-400" />
-                </div>
-                <h3 className="font-extrabold text-base">Horarios de Atención</h3>
+        {/* HORARIOS Y UBICACIÓN: dos tarjetas visibles, sin menús desplegables */}
+        <section id="info" className="mx-auto max-w-5xl scroll-mt-24 px-4 pb-6 pt-5" aria-label="Horarios y ubicación">
+          <div className="grid grid-cols-2 items-stretch gap-3 sm:gap-4">
+            <div className={['min-w-0 rounded-2xl border p-3.5 sm:p-6',
+              isDark ? 'border-zinc-800 bg-zinc-900/75' : 'border-zinc-200 bg-white/90'
+            ].join(' ')}>
+              <div className="mb-3 flex items-center gap-2">
+                <Clock className="h-4 w-4 shrink-0 text-emerald-400" aria-hidden="true" />
+                <h2 className="text-sm font-extrabold sm:text-base">Horarios</h2>
               </div>
-
-              <div
-                className={`grid grid-cols-2 gap-y-2 text-xs sm:text-sm pt-1 ${
-                  isDark ? 'text-zinc-300' : 'text-zinc-600'
-                }`}
+              <ul className={['space-y-1.5', isDark ? 'text-zinc-300' : 'text-zinc-700'].join(' ')}>
+                {([
+                  ['lunes', 'Lun'],
+                  ['martes', 'Mar'],
+                  ['miercoles', 'Mié'],
+                  ['jueves', 'Jue'],
+                  ['viernes', 'Vie'],
+                  ['sabado', 'Sáb'],
+                  ['domingo', 'Dom'],
+                ] as const).map(([dayKey, label]) => {
+                  const day = activeSchedule[dayKey];
+                  return (
+                    <li key={dayKey} className="flex min-w-0 items-baseline justify-between gap-1 text-[11px] leading-5 sm:text-xs">
+                      <span>{label}</span>
+                      {day?.isOpen ? (
+                        <span className="whitespace-nowrap text-right font-semibold tabular-nums">
+                          {day.openTime.replace(/:00$/, '')}–{day.closeTime.replace(/:00$/, '')}
+                        </span>
+                      ) : (
+                        <span className="text-right font-semibold text-rose-400">Cerrado</span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+            <div className={['flex min-w-0 flex-col rounded-2xl border p-3.5 sm:p-6',
+              isDark ? 'border-zinc-800 bg-zinc-900/75' : 'border-zinc-200 bg-white/90'
+            ].join(' ')}>
+              <div className="mb-3 flex items-center gap-2">
+                <MapPin className="h-4 w-4 shrink-0 text-emerald-400" aria-hidden="true" />
+                <h2 className="text-sm font-extrabold sm:text-base">Ubicación</h2>
+              </div>
+              <p className={['break-words text-xs leading-relaxed sm:text-sm',
+                isDark ? 'text-zinc-300' : 'text-zinc-700'
+              ].join(' ')}>
+                {shopAddress}
+                <span className="mt-1 block">{shopCity}</span>
+              </p>
+              <a
+                href={'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(shopAddress + ', ' + shopCity)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={['mt-auto flex min-h-10 items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 pt-3 text-center text-xs font-bold transition-colors',
+                  isDark ? 'border-zinc-700 bg-zinc-950 text-zinc-100 hover:bg-zinc-800' : 'border-zinc-200 bg-zinc-100 text-zinc-900 hover:bg-zinc-200'
+                ].join(' ')}
               >
-                {activeSchedule ? (
-                  ['lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado', 'domingo'].map(
-                    (dayKey) => {
-                      const rawSchedule = activeSchedule || {};
-                      const val = rawSchedule[dayKey] || {
-                        isOpen: false,
-                        openTime: '09:00',
-                        closeTime: '19:00',
-                      };
-                      const dayName =
-                        dayKey.charAt(0).toUpperCase() +
-                        dayKey.slice(1).replace('miercoles', 'miércoles').replace('sabado', 'sábado');
-
-                      return (
-                        <div key={dayKey} className="contents">
-                          <span className="capitalize font-medium">{dayName}:</span>
-                          {val.isOpen ? (
-                            <span className="font-semibold text-right">
-                              {val.openTime} - {val.closeTime} hs
-                            </span>
-                          ) : (
-                            <span className="text-rose-400 font-bold text-right">Cerrado</span>
-                          )}
-                        </div>
-                      );
-                    }
-                  )
-                ) : (
-                  <span className="text-xs text-zinc-500">Cargando horarios...</span>
-                )}
-              </div>
+                <MapPin className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                Cómo llegar
+              </a>
             </div>
-
-            <div
-              className={`border rounded-3xl p-5 sm:p-6 flex flex-col justify-between space-y-4 backdrop-blur-sm ${
-                isDark ? 'bg-zinc-900/75 border-zinc-800/90' : 'bg-white/90 border-zinc-200 shadow-sm'
-              }`}
-            >
-              <div className="space-y-2">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-xl bg-zinc-800 text-white flex items-center justify-center">
-                    <MapPin className="w-4 h-4 text-emerald-400" />
-                  </div>
-                  <h3 className="font-extrabold text-base">Nuestro Local</h3>
-                </div>
-                
-                <p>Reservá tu lugar online sin esperas.</p>
-                
-                <p className={`text-xs sm:text-sm ${isDark ? 'text-zinc-300' : 'text-zinc-600'}`}>
-                  {shopAddress}, {shopCity}.
-                </p>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                <a
-                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-                    `${shopAddress},${shopCity}`
-                  )}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`flex-1 py-3 px-4 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 touch-manipulation ${
-                    isDark
-                      ? 'bg-zinc-950 border-zinc-800 text-zinc-200'
-                      : 'bg-zinc-100 border-zinc-200 text-zinc-800'
-                  }`}
-                >
-                  <MapPin className="w-3.5 h-3.5" />
-                  <span>Cómo llegar</span>
-                </a>
-  
-              </div>
-            </div>
-          </div>
-            </div>
-          </details>
-          <div className="mt-4 flex justify-center gap-4 text-xs text-zinc-500 sm:hidden">
-            <Link href="/barbero" prefetch={false} className="underline underline-offset-4">Acceso barberos</Link>
-            <Link href="/admin" prefetch={false} className="underline underline-offset-4">Administración</Link>
           </div>
         </section>
 
