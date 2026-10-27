@@ -982,22 +982,39 @@ const handleAddBarber = async () => {
 
   const barberFinancials = safeBarbers.map((barber) => {
     const barberApts = filteredAppointments.filter((apt) => apt.barberId === barber.id);
-    const cutsCount = barberApts.length + filteredMonthlyUses.filter((use) => use.barber_id === barber.id).length;
+    const barberCharges = filteredManualCharges.filter(c => c.barberId === barber.id);
+    // Los cobros no clasificados suman dinero, pero no representan
+    // necesariamente un servicio realizado.
+    const categorizedCharges = barberCharges.filter(c => Boolean(c.serviceNameSnapshot));
+    const monthlyUsesCount = filteredMonthlyUses.filter(use => use.barber_id === barber.id).length;
+    const serviceCounts = new Map<string, number>();
+    for (const appointment of barberApts) {
+      const type = appointment.serviceName || 'Sin clasificar';
+      serviceCounts.set(type, (serviceCounts.get(type) || 0) + 1);
+    }
+    for (const charge of categorizedCharges) {
+      const type = charge.serviceNameSnapshot!;
+      serviceCounts.set(type, (serviceCounts.get(type) || 0) + 1);
+    }
+    if (monthlyUsesCount > 0) {
+      serviceCounts.set('Abonos realizados', (serviceCounts.get('Abonos realizados') || 0) + monthlyUsesCount);
+    }
+    const workCount = barberApts.length + categorizedCharges.length + monthlyUsesCount;
+    const unclassifiedChargesCount = barberCharges.length - categorizedCharges.length;
+    const serviceBreakdown = [...serviceCounts.entries()].sort((a,b) => b[1] - a[1]);
     
     const grossFromAppointments = barberApts.reduce(
       (sum, apt) => sum + Number(apt.priceSnapshot ?? apt.servicePrice),
       0
     );
 
-    const barberManualChargesTotal = filteredManualCharges
-      .filter((c) => c.barberId === barber.id)
-      .reduce((sum, c) => sum + Number(c.amount), 0);
+    const barberManualChargesTotal = barberCharges.reduce((sum, c) => sum + Number(c.amount), 0);
 
     const grossGenerated = grossFromAppointments + barberManualChargesTotal;
 
     const allocated = [
       ...barberApts.map(a => splitBusinessRevenue(Number(a.priceSnapshot ?? a.servicePrice), barber, a)),
-      ...filteredManualCharges.filter(c => c.barberId === barber.id).map(c => splitBusinessRevenue(Number(c.amount), barber, c)),
+      ...barberCharges.map(c => splitBusinessRevenue(Number(c.amount), barber, c)),
     ];
     const barberTakeHome = allocated.reduce((sum, row) => sum + row.barber, 0);
     const leftForOwner = allocated.reduce((sum, row) => sum + row.business, 0);
@@ -1008,7 +1025,13 @@ const handleAddBarber = async () => {
 
     return {
       barber,
-      cutsCount,
+      workCount,
+      appointmentCount: barberApts.length,
+      manualCount: barberCharges.length,
+      monthlyUsesCount,
+      unclassifiedChargesCount,
+      serviceBreakdown,
+      grossFromAppointments,
       grossGenerated,
       barberTakeHome,
       leftForOwner,
@@ -1017,6 +1040,8 @@ const handleAddBarber = async () => {
     };
   });
 
+  const totalServicesPerformed = barberFinancials.reduce((sum, b) => sum + b.workCount, 0);
+  const totalUnclassifiedCharges = barberFinancials.reduce((sum, b) => sum + b.unclassifiedChargesCount, 0);
   const totalGrossAppointments = barberFinancials.reduce((sum, b) => sum + (b.grossGenerated - b.barberManualChargesTotal), 0);
   const totalManualChargesAll = filteredManualCharges.reduce((sum, c) => sum + Number(c.amount), 0);
   const grossRevenueTotal = totalGrossAppointments + totalManualChargesAll;
@@ -1203,7 +1228,7 @@ const handleAddBarber = async () => {
               <button type="button" onClick={() => setActiveTab('agenda')} className="rounded-xl border border-zinc-700 p-3 text-left text-sm hover:bg-zinc-800">📅 Agenda y clientes →</button>
               <button type="button" onClick={() => setActiveTab('caja')} className="rounded-xl border border-zinc-700 p-3 text-left text-sm hover:bg-zinc-800">💳 Caja y movimientos →</button>
               <button type="button" onClick={() => setActiveTab('facturacion')} className="rounded-xl border border-zinc-700 p-3 text-left text-sm hover:bg-zinc-800">📊 Ganancias por barbero →</button>
-            </div></div><div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5"><h3 className="mb-3 font-bold">Caja actual</h3><span className={'rounded-full px-3 py-1 text-xs font-bold '+(cashStatus==='abierta'?'bg-emerald-500/20 text-emerald-300':'bg-rose-500/20 text-rose-300')}>{cashStatus}</span><p className="mt-4 text-sm text-zinc-400">{filteredAppointments.length + filteredMonthlyUses.length} cortes realizados en el período consultado.</p><p className="mt-2 text-xs text-zinc-500">Las ganancias del negocio no equivalen al efectivo contado ni a retiros de propietarios.</p><button type="button" onClick={() => setActiveTab('caja')} className="mt-5 w-full rounded-xl bg-emerald-400 p-3 text-xs font-bold text-zinc-950">Ir a caja →</button></div></div>
+            </div></div><div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5"><h3 className="mb-3 font-bold">Caja actual</h3><span className={'rounded-full px-3 py-1 text-xs font-bold '+(cashStatus==='abierta'?'bg-emerald-500/20 text-emerald-300':'bg-rose-500/20 text-rose-300')}>{cashStatus}</span><p className="mt-4 text-sm text-zinc-400">{totalServicesPerformed} trabajos registrados en el período consultado.</p><p className="mt-2 text-xs text-zinc-500">Las ganancias del negocio no equivalen al efectivo contado ni a retiros de propietarios.</p><button type="button" onClick={() => setActiveTab('caja')} className="mt-5 w-full rounded-xl bg-emerald-400 p-3 text-xs font-bold text-zinc-950">Ir a caja →</button></div></div>
           </div>}
 
           {activeTab === 'caja' && (
@@ -1825,14 +1850,20 @@ const handleAddBarber = async () => {
                 </div>
               </details>
 
+
+
               <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <h3 className="text-sm font-extrabold">Elegí el período</h3>
+                  <p className="text-xs text-zinc-400">Todos los importes y las liquidaciones usan el mismo período. Semana = últimos 7 días.</p>
+                </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="flex items-center space-x-1.5 bg-zinc-950 p-1 rounded-xl border border-zinc-800">
                     {(
                       [
                         { id: 'hoy', label: 'Hoy' },
                         { id: 'semana', label: 'Semana' },
-                        { id: 'mes', label: 'Por Mes' },
+                        { id: 'mes', label: 'Mes' },
                       ] as { id: PeriodFilter; label: string }[]
                     ).map((item) => (
                       <button
@@ -1878,7 +1909,7 @@ const handleAddBarber = async () => {
                     <TrendingUp className="w-4 h-4 text-zinc-200" />
                   </div>
                   <p className="text-2xl font-extrabold text-white">${grossRevenueTotal}</p>
-                  <p className="text-[11px] text-zinc-500">{filteredAppointments.length + filteredMonthlyUses.length} cortes realizados</p>
+                  <p className="text-[11px] text-zinc-500">{totalServicesPerformed} trabajos realizados{totalUnclassifiedCharges > 0 ? ' · '+totalUnclassifiedCharges+' cobros sin clasificar' : ''}</p>
                 </div>
 
                 <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 space-y-1">
