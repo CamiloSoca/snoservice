@@ -1,7 +1,7 @@
 'use client';
 
 import {useEffect,useRef,useState} from 'react';
-import {ArrowLeft,ArrowRight,Banknote,CheckCircle2,CircleAlert,Coins,RefreshCcw,Wallet,X} from 'lucide-react';
+import {ArrowLeft,ArrowRight,Banknote,CheckCircle2,Coins,RefreshCcw,Wallet,X} from 'lucide-react';
 
 type Drawer={
   registerId:string|null;
@@ -93,6 +93,10 @@ export default function CashCloseDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
 
+  useEffect(()=>{
+    if(preview)ref.current?.focus();
+  },[preview]);
+
   const legacy=Boolean(preview && !preview.drawer.openingVerified);
   const blocked=Boolean(preview && !legacy && !preview.drawer.reliable);
   const normalized=counted.trim().replace(',','.');
@@ -112,7 +116,12 @@ export default function CashCloseDialog({
       const stale=fresh.drawer.registerId!==preview.drawer.registerId
         || round(decimal(fresh.drawer.expectedCash))!==round(decimal(preview.drawer.expectedCash))
         || fresh.sales.total!==preview.sales.total
-        || fresh.sales.tipTotal!==preview.sales.tipTotal
+        || fresh.sales.cash!==preview.sales.cash
+        || fresh.sales.transfer!==preview.sales.transfer
+        || fresh.sales.tipCash!==preview.sales.tipCash
+        || fresh.sales.tipTransfer!==preview.sales.tipTransfer
+        || decimal(fresh.drawer.openingCash)!==decimal(preview.drawer.openingCash)
+        || decimal(fresh.drawer.cashOut)!==decimal(preview.drawer.cashOut)
         || fresh.drawer.reliable!==preview.drawer.reliable;
       if(stale){
         setPreview(fresh);
@@ -120,7 +129,7 @@ export default function CashCloseDialog({
         setWarning('Entraron movimientos nuevos o cambió el arqueo. Revisá los importes y confirmá nuevamente el efectivo contado.');
         return;
       }
-      if(!fresh.drawer.openingVerified!==legacy){
+      if(Boolean(!fresh.drawer.openingVerified)!==legacy){
         setError('El estado del arqueo cambió. Volvé a revisar la caja.');
         return;
       }
