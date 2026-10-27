@@ -126,6 +126,8 @@ export interface TipItem {
 }
 
 export interface ManualChargeItem {
+  serviceId?: string | null;
+  serviceNameSnapshot?: string | null;
   createdByRole?: 'admin' | 'barber' | null;
   createdByBarberId?: string | null;
   paymentMethod?: OnSitePaymentMethod | null;
@@ -775,6 +777,8 @@ function mapFinancialEntry(d: any): TipItem & ManualChargeItem {
     cashRegisterId: d.cash_register_id ?? null,
     createdByRole: d.created_by_role === 'admin' || d.created_by_role === 'barber' ? d.created_by_role : null,
     createdByBarberId: d.created_by_barber_id ?? null,
+    serviceId: d.service_id ?? d.serviceId ?? null,
+    serviceNameSnapshot: d.service_name_snapshot ?? d.serviceNameSnapshot ?? null,
   };
 }
 
@@ -827,6 +831,8 @@ export async function createManualCharge(item: {
   note?: string;
   requestId?: string;
   scope?: 'barber';
+  serviceId?: string | null;
+  manualServiceType?: 'barba_local';
 }): Promise<ManualChargeSaveResult> {
   // El POST y la actualización visual son dos pasos distintos. Una falla
   // del segundo no debe hacer creer que el primero fue rechazado.

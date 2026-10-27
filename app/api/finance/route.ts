@@ -32,7 +32,7 @@ export async function GET(request: Request) {
   const session = await authorize(barberId, params.get('scope') === 'barber');
   if (!session) return NextResponse.json({error: 'No autorizado'}, {status: 401});
   let query = getSupabaseServer().from(table).select(table === 'manual_charges'
-    ? 'id,barber_id,amount,note,date_string,payment_method,created_at,commission_rate_snapshot,barber_earnings_snapshot,business_earnings_snapshot,cash_register_id,created_by_role,created_by_barber_id,barbers(name)'
+    ? 'id,barber_id,amount,note,date_string,payment_method,created_at,commission_rate_snapshot,barber_earnings_snapshot,business_earnings_snapshot,cash_register_id,created_by_role,created_by_barber_id,service_id,service_name_snapshot,barbers(name)'
     : 'id,barber_id,amount,note,date_string,payment_method,created_at,barbers(name)').eq('shop_id', SHOP_UUID).order('created_at', {ascending: false});
   if (session.barberId) query = query.eq('barber_id', session.barberId);
   const {data, error} = await query;
@@ -67,6 +67,30 @@ export async function POST(request: Request) {
   if(cashError||!register?.length)return NextResponse.json({error:'La caja no está abierta.'},{status:409});
   const dateString = new Date().toLocaleDateString('es-UY', {day:'numeric', month:'short', timeZone:'America/Montevideo'});
   const note = sanitizeInput(String(body.item?.note || '')).slice(0,300);
+  // Barba sola nunca aparece en el catálogo de reservas y cuesta $200.
+  let serviceId: string | null = null;
+  let serviceNameSnapshot: string | null = null;
+  if (table === 'manual_charges') {
+    if (body.item?.manualServiceType === 'barba_local') {
+      if (amount !== 200 || body.item?.serviceId) {
+        return NextResponse.json({error:'La barba sin reserva tiene precio fijo de $200.'},{status:422});
+      }
+      serviceNameSnapshot = 'Barba';
+    } else if (body.item?.serviceId != null) {
+      if (!isValidUUID(body.item.serviceId)) {
+        return NextResponse.json({error:'Servicio inválido.'},{status:422});
+      }
+      const {data: service, error: serviceError} = await supabase.from('services')
+        .select('id,name,active').eq('shop_id',SHOP_UUID).eq('id',body.item.serviceId).maybeSingle();
+      if (serviceError || !service || !service.active) {
+        return NextResponse.json({error:'El servicio no está disponible.'},{status:422});
+      }
+      serviceId = service.id;
+      serviceNameSnapshot = service.name;
+    } else if (body.item?.manualServiceType != null) {
+      return NextResponse.json({error:'Tipo de servicio inválido.'},{status:422});
+    }
+  }
   // Snapshot de la comisión también para los cortes manuales; no recalcularla con futuras tarifas.
   const rate=barber.is_owner?0:Math.min(100,Math.max(0,Number(barber.commission_rate)||0));
   const barberShare=Math.round(amount*rate)/100;
@@ -79,15 +103,18 @@ export async function POST(request: Request) {
       // Autoria derivada de cookie firmada, no de datos del cliente.
       created_by_role:session.admin?'admin':'barber',
       created_by_barber_id:session.admin?null:session.barberId,
+      service_id:serviceId,service_name_snapshot:serviceNameSnapshot,
     })
     : await supabase.from('tips').insert(common);
   if (error?.code === '23505') {
     const {data: prior, error: lookupError} = await supabase.from(table)
-      .select('id,barber_id,amount,note,payment_method')
+      .select('id,barber_id,amount,note,payment_method,service_id,service_name_snapshot')
       .eq('shop_id', SHOP_UUID).eq('id', requestId).maybeSingle();
     if (!lookupError && prior && prior.barber_id === barberId &&
         Number(prior.amount) === amount && (prior.note || '') === note &&
-        prior.payment_method===paymentMethod) {
+        prior.payment_method===paymentMethod &&
+        (table !== 'manual_charges' || (prior.service_id ?? null) === serviceId) &&
+        (table !== 'manual_charges' || (prior.service_name_snapshot ?? null) === serviceNameSnapshot)) {
       return NextResponse.json({ok: true, id: requestId, repeated: true});
     }
     return NextResponse.json({error: 'El identificador ya pertenece a otro movimiento.'}, {status: 409});
