@@ -1674,7 +1674,13 @@ const handleAddBarber = async () => {
                 <h2 className="text-xl font-extrabold">Informes del negocio</h2>
                 <p className="mt-1 text-xs text-zinc-400">Consultá períodos y jornadas anteriores. El resultado económico no es dinero físico en caja.</p>
               </div>
-              <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 sm:p-6 space-y-5">
+              <details className="group/dailyreport overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/90 open:border-zinc-700">
+                <summary className="flex min-h-16 cursor-pointer list-none items-center gap-3 px-4 py-3 text-sm font-bold hover:bg-zinc-800/60 focus-visible:outline-2 focus-visible:outline-emerald-400 [&::-webkit-details-marker]:hidden">
+                  <BarChart3 className="h-5 w-5 text-emerald-400"/>
+                  <span className="flex-1">Detalle de ingresos por día</span>
+                  <ChevronDown className="h-4 w-4 text-zinc-400 transition-transform group-open/dailyreport:rotate-180"/>
+                </summary>
+                <div className="space-y-5 border-t border-zinc-800 p-4 sm:p-6">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800 pb-4">
                   <div>
                     <h3 className="font-bold text-base flex items-center gap-2">
@@ -1774,8 +1780,8 @@ const handleAddBarber = async () => {
                     </div>
                   </div>
                 )}
-              </div>
-
+                </div>
+              </details>
 
               <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="flex flex-wrap items-center gap-2">
@@ -1873,10 +1879,13 @@ const handleAddBarber = async () => {
                 </div>
               </div>
 
-              <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-4">
-                <h3 className="font-bold text-base">Liquidación por Barbero</h3>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+              <details className="group/settlement overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/90 open:border-zinc-700">
+                <summary className="flex min-h-16 cursor-pointer list-none items-center gap-3 px-4 py-3 text-sm font-bold hover:bg-zinc-800/60 focus-visible:outline-2 focus-visible:outline-emerald-400 [&::-webkit-details-marker]:hidden">
+                  <Users className="h-5 w-5 text-emerald-400"/>
+                  <span className="flex-1">Liquidación por barbero</span>
+                  <ChevronDown className="h-4 w-4 text-zinc-400 transition-transform group-open/settlement:rotate-180"/>
+                </summary>
+                <div className="grid grid-cols-1 gap-3.5 border-t border-zinc-800 p-4 md:grid-cols-3 sm:p-5">
                   {barberFinancials.map((item) => {
                     const isOwner = item.barber.isOwner === true;
                     const totalBarberPocket = item.barberTakeHome + item.barberTipsTotal;
@@ -1937,7 +1946,7 @@ const handleAddBarber = async () => {
                     );
                   })}
                 </div>
-              </div>
+              </details>
             </div>
           )}
 
