@@ -8,6 +8,7 @@ export type InstagramPost = {
   imageUrl: string;
   permalink: string;
   caption: string;
+  likeCount: number | null;
 };
 
 type InstagramConnection = {
@@ -26,6 +27,7 @@ type InstagramMedia = {
   permalink?: string;
   caption?: string;
   timestamp?: string;
+  like_count?: number | null;
 };
 
 const IG_HOST = 'https://graph.instagram.com';
@@ -189,10 +191,20 @@ async function fetchInstagramFeed(): Promise<InstagramPost[]> {
   const connection = await getConnection();
   if (!connection) return [];
   const accessToken = await tokenForConnection(connection);
-  const response = await metaGet('/me/media', accessToken, {
-    fields: 'id,media_type,media_url,thumbnail_url,permalink,caption,timestamp',
-    limit: '12',
-  }) as { data?: InstagramMedia[] };
+  // Likes son opcionales: si Meta rechaza este campo, conservar la galería.
+  const baseFields = 'id,media_type,media_url,thumbnail_url,permalink,caption,timestamp';
+  let response: { data?: InstagramMedia[] };
+  try {
+    response = await metaGet('/me/media', accessToken, {
+      fields: baseFields + ',like_count',
+      limit: '12',
+    }) as { data?: InstagramMedia[] };
+  } catch {
+    response = await metaGet('/me/media', accessToken, {
+      fields: baseFields,
+      limit: '12',
+    }) as { data?: InstagramMedia[] };
+  }
   if (!Array.isArray(response.data)) throw new Error('Formato de publicaciones inválido.');
   return response.data
     .filter(media => media && typeof media.id === 'string')
@@ -205,6 +217,9 @@ async function fetchInstagramFeed(): Promise<InstagramPost[]> {
       return [{
         id: media.id!, imageUrl, permalink: media.permalink,
         caption: (media.caption || 'Publicación de 13 Cut').slice(0, 180),
+        likeCount: typeof media.like_count === 'number' &&
+          Number.isFinite(media.like_count) && media.like_count >= 0
+          ? Math.trunc(media.like_count) : null,
       }];
     })
     .slice(0, 4);
