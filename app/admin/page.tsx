@@ -2141,7 +2141,7 @@ const handleAddBarber = async () => {
                         </span>
                         <span className="flex shrink-0 items-center gap-2">
                           {!brb.isOwner && <span className="hidden rounded-lg border border-zinc-700 bg-zinc-950 px-2.5 py-1.5 text-[11px] font-semibold text-zinc-300 sm:inline">{brb.commissionRate}% comisión</span>}
-                          <span className="hidden text-xs font-semibold text-emerald-300 sm:inline">Administrar</span>
+                          <span className="text-[11px] font-semibold text-emerald-300 sm:text-xs">Administrar</span>
                           <ChevronDown className="h-4 w-4 text-zinc-400 transition-transform group-open/barber:rotate-180" />
                         </span>
                       </summary>
