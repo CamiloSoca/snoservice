@@ -5,12 +5,15 @@ import {isValidUUID, sanitizeInput} from '@/lib/booking-store';
 import {isOnSitePaymentMethod} from '@/lib/payment-method';
 
 const noStore = {'Cache-Control':'private, no-store'};
-export async function GET() {
+export async function GET(request:Request) {
+  const barberView=new URL(request.url).searchParams.get('scope')==='barber';
   const [admin,barber] = await Promise.all([requireAdminSession(),getBarberSession()]);
+  // La vista de barbero exige su propia sesión aun si también existe una cookie de admin.
+  if (barberView && !barber) return NextResponse.json({error:'Sesión de barbero requerida.'},{status:403,headers:noStore});
   if (!admin && !barber) return NextResponse.json({error:'Sesión requerida.'},{status:401,headers:noStore});
   try {
     const db=getSupabaseServer();
-    const ownId=admin?null:barber!.sub;
+    const ownId=barberView?barber!.sub:(admin?null:barber!.sub);
     const [balances,history,cash]=await Promise.all([
       db.rpc('finance_barber_balances',{p_shop_id:SHOP_UUID,p_barber_id:ownId}),
       (ownId ? db.from('barber_payouts').select('id,barber_id,amount,method,note,created_at')
