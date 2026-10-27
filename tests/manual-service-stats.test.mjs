@@ -37,7 +37,7 @@ test('servicios manuales usan catálogo vigente y se registra nombre estable',()
 test('las estadísticas combinan reservas completadas con manuales clasificados por periodo',()=>{
   assert.match(barber, /const \[statsPeriod, setStatsPeriod\]/);
   assert.match(barber, /statsPeriod === 'mes'/);
-  assert.match(barber, /statsPeriod === 'semana'/); // replaced by comparison in period code if relevant
+  assert.match(barber, /const monday = reference\.toISOString\(\)\.slice\(0, 10\)/);
   assert.match(barber, /const periodAppointments = barberAppointments\.filter/);
   assert.match(barber, /const periodCharges = barberCharges\.filter/);
   assert.match(barber, /const periodTips = barberTips\.filter/);
