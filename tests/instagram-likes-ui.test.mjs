@@ -7,7 +7,7 @@ const instagram = readFileSync(new URL('../lib/instagram-server.ts', import.meta
 
 test('el avatar de la barbería usa la portada existente y una máscara redonda', () => {
   assert.match(home, /<Image\s+src=\{bannerUrl\}/);
-  assert.match(home, /overflow-hidden rounded-full border border-white\/25/);
+  assert.match(home, /rounded-full overflow-hidden border-2 border-white\/20/);
   assert.match(home, /src=\{logoImage\}[\s\S]*?className="object-cover"/);
 });
 
