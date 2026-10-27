@@ -383,6 +383,7 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
   const countedServices = [...serviceCounts.entries()].filter(([name]) => name !== 'Sin clasificar')
     .sort((a,b) => b[1] - a[1]);
   const uncategorizedCount = serviceCounts.get('Sin clasificar') || 0;
+  const categorizedCount = countedServices.reduce((sum, [,count]) => sum + count, 0);
   const formatAmount = (n: number) => n.toLocaleString('es-UY', {maximumFractionDigits: 2});
 
   const selectedBarberObj = barbers.find((b) => b.id === selectedBarberId);
@@ -840,7 +841,7 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 <div className="rounded-2xl border border-zinc-800 bg-zinc-900/90 p-4">
                   <span className="text-xs text-zinc-400">Servicios realizados</span>
-                  <p className="mt-1 text-2xl font-extrabold">{periodAppointments.length + periodCharges.length}</p>
+                  <p className="mt-1 text-2xl font-extrabold">{categorizedCount}</p>
                   <p className="text-[11px] text-zinc-500">Agenda + manuales</p>
                 </div>
                 <div className="rounded-2xl border border-zinc-800 bg-zinc-900/90 p-4">
