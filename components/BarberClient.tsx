@@ -115,6 +115,10 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
   const [newChargeNote, setNewChargeNote] = useState<string>('');
   const [newChargePayment,setNewChargePayment] = useState<OnSitePaymentMethod | ''>('');
   const [savingCharge, setSavingCharge] = useState<boolean>(false);
+  const [chargeFeedback, setChargeFeedback] = useState<{
+    kind: 'success' | 'warning' | 'error';
+    message: string;
+  } | null>(null);
   const chargeAttempt = useRef<{fingerprint: string; id: string; pending: boolean} | null>(null);
 
   useEffect(() => {
@@ -289,7 +293,8 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
     try {
       setSavingCharge(true);
       setErrorMsg('');
-      const updatedCharges = await createManualCharge({
+      setChargeFeedback(null);
+      const result = await createManualCharge({
         barberId: selectedBarberId,
         amount: Number(newChargeAmount),
         paymentMethod:newChargePayment,
@@ -297,12 +302,24 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
         requestId: chargeAttempt.current!.id,
         scope: 'barber',
       });
-      setBarberCharges(Array.isArray(updatedCharges) ? updatedCharges : []);
+      if (result.charges !== null) {
+        setBarberCharges(result.charges);
+      }
+      setChargeFeedback(result.charges !== null
+        ? {kind: 'success', message: 'Ingreso guardado correctamente.'}
+        : {kind: 'warning', message: 'Ingreso guardado, pero todavía no se pudo actualizar la lista. No lo ingreses de nuevo: se mostrará al actualizar.'});
       setNewChargeAmount('');
       setNewChargeNote('');
       chargeAttempt.current = null;
     } catch (err: any) {
-      setErrorMsg(err?.message || 'No se pudo registrar el cobro.');
+      // Un error de conexión puede ocurrir después de enviar el POST: no afirmar
+      // que el dinero no se registró ni perder el ID idempotente del intento.
+      setChargeFeedback({
+        kind: 'error',
+        message: err?.status
+          ? (err.message || 'No se pudo guardar el ingreso.')
+          : 'No se pudo confirmar el ingreso. Revisá la lista antes de volver a sumar.',
+      });
     } finally {
       if (chargeAttempt.current) chargeAttempt.current.pending = false;
       setSavingCharge(false);
@@ -806,6 +823,22 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
                   <span>{savingCharge ? '...' : 'Sumar'}</span>
                 </button>
               </form>
+              {chargeFeedback && (
+                <div
+                  role={chargeFeedback.kind === 'error' ? 'alert' : 'status'}
+                  aria-live="polite"
+                  className={[
+                    'rounded-xl border px-3.5 py-3 text-sm font-semibold',
+                    chargeFeedback.kind === 'success'
+                      ? 'border-emerald-700/40 bg-emerald-950/35 text-emerald-200'
+                      : chargeFeedback.kind === 'warning'
+                        ? 'border-amber-700/40 bg-amber-950/30 text-amber-200'
+                        : 'border-rose-700/40 bg-rose-950/30 text-rose-200',
+                  ].join(' ')}
+                >
+                  {chargeFeedback.message}
+                </div>
+              )}
 
               {monthlyCharges.length > 0 && (
                 <div className="space-y-2 pt-2">

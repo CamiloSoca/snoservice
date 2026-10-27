@@ -797,19 +797,25 @@ const handleAddBarber = async () => {
     try {
       setSavingCharge(true);
       setAdminError('');
-      const updated = await createManualCharge({
+      const result = await createManualCharge({
         barberId: chargeBarberId,
         amount: Number(chargeAmount),
         paymentMethod:chargePaymentMethod,
         note: chargeNote.trim() || 'Cobro manual extra',
         requestId: chargeAttempt.current!.id,
       });
-      setManualCharges(Array.isArray(updated) ? updated : []);
+      if (result.charges !== null) {
+        setManualCharges(result.charges);
+      } else {
+        setAdminError('Cobro registrado, pero no se pudo actualizar la lista. No lo ingreses otra vez; revisá la pantalla antes de repetir.');
+      }
       setChargeAmount('');
       setChargeNote('');
       chargeAttempt.current = null;
     } catch (err: any) {
-      setAdminError(err?.message || 'Error al registrar el cobro manual.');
+      setAdminError(err?.status
+        ? (err.message || 'Error al registrar el cobro manual.')
+        : 'No se pudo confirmar el guardado. Revisá la lista antes de volver a sumar.');
     } finally {
       if (chargeAttempt.current) chargeAttempt.current.pending = false;
       setSavingCharge(false);

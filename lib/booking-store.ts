@@ -813,6 +813,13 @@ export async function getManualCharges(barberId?: string, scope?: 'barber'): Pro
   return (data || []).map(mapFinancialEntry);
 }
 
+export interface ManualChargeSaveResult {
+  // Este ID solo existe si la API confirmó que el cobro quedó registrado.
+  id: string;
+  // Null significa que se guardó, pero falló la lectura posterior.
+  charges: ManualChargeItem[] | null;
+}
+
 export async function createManualCharge(item: {
   barberId: string;
   amount: number;
@@ -820,11 +827,19 @@ export async function createManualCharge(item: {
   note?: string;
   requestId?: string;
   scope?: 'barber';
-}): Promise<ManualChargeItem[]> {
-  await apiRequest('/api/finance', jsonRequest('POST', {resource: 'manual_charges', scope: item.scope, item: {
+}): Promise<ManualChargeSaveResult> {
+  // El POST y la actualización visual son dos pasos distintos. Una falla
+  // del segundo no debe hacer creer que el primero fue rechazado.
+  const receipt = await apiRequest('/api/finance', jsonRequest('POST', {resource: 'manual_charges', scope: item.scope, item: {
     ...item, requestId: item.requestId || generateUUID(),
   }}));
-  return getManualCharges(item.scope === 'barber' ? item.barberId : undefined, item.scope);
+  try {
+    const charges = await getManualCharges(item.scope === 'barber' ? item.barberId : undefined, item.scope);
+    return {id: receipt.id as string, charges};
+  } catch {
+    console.warn('Cobro confirmado, pero no se pudo actualizar la lista de cobros.');
+    return {id: receipt.id as string, charges: null};
+  }
 }
 
 export async function deleteManualCharge(id: string, barberId?: string, scope?: 'barber'): Promise<ManualChargeItem[]> {
