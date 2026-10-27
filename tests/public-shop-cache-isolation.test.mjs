@@ -135,7 +135,9 @@ test('la portada sin imágenes configuradas no carga recursos de otra barbería'
   assert.doesNotMatch(home, /bookly\.uy/i);
   assert.match(home, /const bgImage = shopConfig\.backgroundImageUrl \|\| ''/);
   assert.match(home, /const bannerUrl = shopConfig\.coverImageUrl \|\| shopConfig\.backgroundImageUrl \|\| ''/);
-  assert.match(home, /No hay publicaciones con im[áa]genes configuradas/);
+  assert.match(home, /fetch\('\/api\/public\/instagram'/);
+  assert.match(home, /instagramPosts\.map/);
+  assert.match(home, /shopConfig\.instagramUrl/);
 });
 
 test('la caché de servidor y sus invalidaciones incluyen proyecto y Shop ID', () => {

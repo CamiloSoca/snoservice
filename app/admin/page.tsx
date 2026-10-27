@@ -80,6 +80,7 @@ import FixedAgendaManager from '@/components/FixedAgendaManager';
 import {normalizeHours, type WeeklyHours} from '@/lib/weekly-hours';
 import CashDrawerCard from '@/components/CashDrawerCard';
 import FinanceLedgerCard from '@/components/FinanceLedgerCard';
+import InstagramConnection from '@/components/admin/InstagramConnection';
 import type {OnSitePaymentMethod} from '@/lib/payment-method';
 
 import {customerWhatsAppLink} from '@/lib/customer-contact';
@@ -1169,6 +1170,7 @@ const handleAddBarber = async () => {
           {activeTab==='configuracion' && <div className="grid gap-3 sm:grid-cols-2">
             <button type="button" onClick={() => setActiveTab('servicios')} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6 text-left hover:border-emerald-400"><Scissors className="mb-3 h-7 w-7 text-emerald-400"/><strong>Servicios y precios</strong><p className="mt-2 text-xs text-zinc-400">Precios, duración y disponibilidad.</p></button>
             <button type="button" onClick={() => setActiveTab('marca')} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6 text-left hover:border-emerald-400"><Settings className="mb-3 h-7 w-7 text-emerald-400"/><strong>Datos de la barbería</strong><p className="mt-2 text-xs text-zinc-400">Horarios, contacto y marca.</p></button>
+            <InstagramConnection />
           </div>}
           {activeTab==='inicio' && <div className="space-y-5">
             <div><span className="text-xs font-bold uppercase tracking-widest text-emerald-400">Control del negocio</span><h2 className="mt-1 text-2xl font-extrabold">Resumen de {shopConfig.name}</h2><p className="mt-1 text-xs text-zinc-400">Resumen {period==='hoy'?'de hoy':period==='semana'?'de la semana':'del mes seleccionado'}. El fondo común no es el efectivo de caja.</p>
