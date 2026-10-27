@@ -112,6 +112,8 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
   const tipAttempt = useRef<{fingerprint: string; id: string; pending: boolean} | null>(null);
 
   const [newChargeAmount, setNewChargeAmount] = useState<string>('');
+  const [newChargeService, setNewChargeService] = useState<string>('');
+  const [statsPeriod, setStatsPeriod] = useState<'dia' | 'semana' | 'mes'>('mes');
   const [newChargeNote, setNewChargeNote] = useState<string>('');
   const [newChargePayment,setNewChargePayment] = useState<OnSitePaymentMethod | ''>('');
   const [savingCharge, setSavingCharge] = useState<boolean>(false);
@@ -283,8 +285,8 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
 
   const handleAddMyCharge = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedBarberId || !newChargeAmount || Number(newChargeAmount) <= 0 || !newChargePayment) return;
-    const fingerprint = JSON.stringify([selectedBarberId, Number(newChargeAmount), newChargeNote.trim(), newChargePayment]);
+    if (!selectedBarberId || !newChargeService || !newChargeAmount || Number(newChargeAmount) <= 0 || !newChargePayment) return;
+    const fingerprint = JSON.stringify([selectedBarberId, newChargeService, Number(newChargeAmount), newChargeNote.trim(), newChargePayment]);
     if (chargeAttempt.current?.pending) return;
     if (chargeAttempt.current?.fingerprint !== fingerprint) {
       chargeAttempt.current = {fingerprint, id: generateUUID(), pending: false};
@@ -298,7 +300,10 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
         barberId: selectedBarberId,
         amount: Number(newChargeAmount),
         paymentMethod:newChargePayment,
-        note: newChargeNote.trim() || 'Corte extra sin turno',
+        note: newChargeNote.trim() || 'Cliente',
+        ...(newChargeService === 'barba_local'
+          ? {manualServiceType: 'barba_local' as const}
+          : {serviceId: newChargeService}),
         requestId: chargeAttempt.current!.id,
         scope: 'barber',
       });
@@ -309,6 +314,7 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
         ? {kind: 'success', message: 'Ingreso guardado correctamente.'}
         : {kind: 'warning', message: 'Ingreso guardado, pero todavía no se pudo actualizar la lista. No lo ingreses de nuevo: se mostrará al actualizar.'});
       setNewChargeAmount('');
+      setNewChargeService('');
       setNewChargeNote('');
       chargeAttempt.current = null;
     } catch (err: any) {
@@ -335,6 +341,49 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
       setErrorMsg(err?.message || 'No se pudo borrar el cobro.');
     }
   };
+
+  // Corte y Barba cuenta como un servicio combinado, no como dos trabajos.
+  // Cada registro completado y cada ingreso manual clasificado se cuenta una sola vez.
+  const periodIncludes = (dateValue: string) => {
+    if (!dateValue) return false;
+    const key = getMontevideoDateKey(dateValue);
+    if (statsPeriod === 'mes') return key.slice(0, 7) === selectedMonth;
+    if (statsPeriod === 'dia') return key === auditDate;
+    const parts = auditDate.split('-').map(Number);
+    const reference = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
+    const dow = reference.getUTCDay();
+    reference.setUTCDate(reference.getUTCDate() - ((dow + 6) % 7));
+    const monday = reference.toISOString().slice(0, 10);
+    reference.setUTCDate(reference.getUTCDate() + 6);
+    const sunday = reference.toISOString().slice(0, 10);
+    return key >= monday && key <= sunday;
+  };
+
+  const periodAppointments = barberAppointments.filter(a =>
+    a.status === 'completado' && periodIncludes(a.completedAt || a.createdAt));
+  const periodCharges = barberCharges.filter(c => periodIncludes(c.createdAt));
+  const periodTips = barberTips.filter(t => periodIncludes(t.createdAt));
+  const periodCommission = periodAppointments.reduce((sum, a) =>
+    sum + splitBusinessRevenue(Number(a.priceSnapshot ?? a.servicePrice), {commissionRate,isOwner}, a).barber, 0)
+    + periodCharges.reduce((sum, c) =>
+      sum + splitBusinessRevenue(Number(c.amount), {commissionRate,isOwner}, c).barber, 0);
+  const periodGross = periodAppointments.reduce((sum, a) => sum + Number(a.priceSnapshot ?? a.servicePrice), 0)
+    + periodCharges.reduce((sum, c) => sum + Number(c.amount), 0);
+  const periodTipsAmount = periodTips.reduce((sum, t) => sum + Number(t.amount), 0);
+  const periodEarnings = (isOwner ? periodGross : periodCommission) + periodTipsAmount;
+  const serviceCounts = new Map<string, number>();
+  for (const a of periodAppointments) {
+    const name = a.serviceName || initialShop.services.find(s => s.id === a.serviceId)?.name || 'Sin clasificar';
+    serviceCounts.set(name, (serviceCounts.get(name) || 0) + 1);
+  }
+  for (const c of periodCharges) {
+    const name = c.serviceNameSnapshot || 'Sin clasificar';
+    serviceCounts.set(name, (serviceCounts.get(name) || 0) + 1);
+  }
+  const countedServices = [...serviceCounts.entries()].filter(([name]) => name !== 'Sin clasificar')
+    .sort((a,b) => b[1] - a[1]);
+  const uncategorizedCount = serviceCounts.get('Sin clasificar') || 0;
+  const formatAmount = (n: number) => n.toLocaleString('es-UY', {maximumFractionDigits: 2});
 
   const selectedBarberObj = barbers.find((b) => b.id === selectedBarberId);
 
@@ -763,28 +812,67 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
               </div>
             </details>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-1">
-                <span className="text-xs text-zinc-400">Cortes realizados este mes</span>
-                <p className="text-3xl font-extrabold text-white">{completedAppointments.length + monthlyFixedUses.length}</p>
+            <section aria-label="Estadísticas de mis servicios y ganancias" className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-bold">Mis estadísticas</h3>
+                <div className="inline-flex rounded-xl border border-zinc-700 bg-zinc-950 p-1" role="group" aria-label="Período de estadísticas">
+                  {([['dia','Día'],['semana','Semana'],['mes','Mes']] as const).map(([value,label]) => (
+                    <button key={value} type="button" aria-pressed={statsPeriod === value}
+                      onClick={() => setStatsPeriod(value)}
+                      className={['rounded-lg px-3 py-2 text-xs font-bold transition-colors', statsPeriod === value
+                        ? 'bg-zinc-100 text-zinc-950' : 'text-zinc-400 hover:text-white'].join(' ')}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
               </div>
-
-              <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-1">
-                <span className="text-xs text-emerald-400 font-bold">{isOwner ? 'Total generado con mis servicios (mes)' : 'Mis comisiones generadas (mes)'}</span>
-                <p className="text-3xl font-extrabold text-emerald-400">${isOwner ? totalGrossMonthly : totalEarned}</p>
-                {isOwner
-                  ? <p className="text-xs text-zinc-400">Al fondo común: ${totalToBusiness}. No es un pago ni retiro personal.</p>
-                  : <p className="text-xs text-zinc-400">Comisión generada, no necesariamente pagada.</p>}
+              {statsPeriod === 'mes' ? (
+                <select aria-label="Elegir mes de estadísticas" value={selectedMonth}
+                  onChange={e => setSelectedMonth(e.target.value)}
+                  className="rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-xs text-zinc-200">
+                  {availableMonths.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                </select>
+              ) : (
+                <input aria-label="Fecha para estadísticas" type="date" value={auditDate}
+                  onChange={e => setAuditDate(e.target.value)}
+                  className="rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-xs text-zinc-200"/>
+              )}
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="rounded-2xl border border-zinc-800 bg-zinc-900/90 p-4">
+                  <span className="text-xs text-zinc-400">Servicios realizados</span>
+                  <p className="mt-1 text-2xl font-extrabold">{periodAppointments.length + periodCharges.length}</p>
+                  <p className="text-[11px] text-zinc-500">Agenda + manuales</p>
+                </div>
+                <div className="rounded-2xl border border-zinc-800 bg-zinc-900/90 p-4">
+                  <span className="text-xs font-bold text-emerald-400">{isOwner ? 'Ingresos generados' : 'Comisiones generadas'}</span>
+                  <p className="mt-1 text-2xl font-extrabold text-emerald-400">${formatAmount(isOwner ? periodGross : periodCommission)}</p>
+                </div>
+                <div className="rounded-2xl border border-zinc-800 bg-zinc-900/90 p-4">
+                  <span className="text-xs font-bold text-amber-400">Propinas</span>
+                  <p className="mt-1 text-2xl font-extrabold text-amber-400">+${formatAmount(periodTipsAmount)}</p>
+                </div>
+                <div className="rounded-2xl border border-emerald-700/40 bg-zinc-900/90 p-4">
+                  <span className="text-xs font-bold text-zinc-200">{isOwner ? 'Total generado + propinas' : 'Ganancia total'}</span>
+                  <p className="mt-1 text-2xl font-extrabold text-white">${formatAmount(periodEarnings)}</p>
+                  <p className="text-[11px] text-zinc-500">Generado, no necesariamente cobrado</p>
+                </div>
               </div>
-
-              <div className="bg-zinc-900/90 border border-emerald-500/30 rounded-2xl p-5 space-y-1">
-                <span className="text-xs text-amber-400 font-bold flex items-center gap-1.5">
-                  <Coins className="w-3.5 h-3.5" />
-                  Propinas del mes
-                </span>
-                <p className="text-3xl font-extrabold text-amber-400">+${totalTipsAmount}</p>
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
+                <h4 className="mb-3 text-xs font-bold text-zinc-300">Servicios por tipo</h4>
+                <div className="flex flex-wrap gap-2">
+                  {countedServices.length === 0 && uncategorizedCount === 0 &&
+                    <span className="text-xs text-zinc-500">No hay servicios completados en este período.</span>}
+                  {countedServices.map(([name,count]) => (
+                    <span key={name} className="rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-xs text-zinc-200">
+                      {name} <strong className="ml-1 text-white">{count}</strong>
+                    </span>
+                  ))}
+                  {uncategorizedCount > 0 && <span className="rounded-xl border border-amber-800/30 px-3 py-2 text-xs text-amber-200">
+                    Sin clasificar: {uncategorizedCount}
+                  </span>}
+                </div>
               </div>
-            </div>
+            </section>
 
 <details className="group/charges overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/90 open:border-zinc-700">
               <summary className="flex min-h-16 cursor-pointer list-none items-center gap-3 px-4 py-3 text-sm font-bold hover:bg-zinc-800/60 focus-visible:outline-2 focus-visible:outline-emerald-400 [&::-webkit-details-marker]:hidden">
@@ -795,10 +883,29 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
               <div className="space-y-4 border-t border-zinc-800 p-4 sm:p-6">
 
               <form onSubmit={handleAddMyCharge} className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+                <label className="sm:col-span-12 text-xs font-semibold text-zinc-300">
+                  Servicio realizado
+                  <select required value={newChargeService}
+                    onChange={e => {
+                      const choice = e.target.value;
+                      setNewChargeService(choice);
+                      setNewChargeAmount(choice === 'barba_local' ? '200'
+                        : String(initialShop.services.find(s => s.id === choice)?.price ?? ''));
+                      setChargeFeedback(null);
+                    }}
+                    className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-3 text-sm text-white">
+                    <option value="">Elegí el servicio</option>
+                    {initialShop.services.filter(s => s.active !== false).map(s =>
+                      <option key={s.id} value={s.id}>{s.name} · ${s.price}</option>)}
+                    <option value="barba_local">Barba (solo en el local) · $200</option>
+                  </select>
+                </label>
                 <input
                   type="number"
+                  min="1"
                   placeholder="Monto $"
                   value={newChargeAmount}
+                  readOnly={newChargeService === 'barba_local'}
                   onChange={(e) => setNewChargeAmount(e.target.value)}
                   className="sm:col-span-4 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
                 />
@@ -849,7 +956,8 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
                     >
                       <div className="flex items-center gap-2 text-xs">
                         <span className="text-zinc-400 font-medium">{chg.dateString}</span>
-                        {chg.note && <span className="text-zinc-200">• {chg.note}</span>}
+                        {chg.serviceNameSnapshot && <span className="text-emerald-300">• {chg.serviceNameSnapshot}</span>}
+                        {chg.note && <span className="text-zinc-200">· {chg.note}</span>}
                       </div>
                       <div className="flex items-center gap-3">
                         <span className="font-bold text-sm text-emerald-400">+${chg.amount}</span>
