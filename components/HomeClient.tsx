@@ -22,24 +22,6 @@ import {
 } from '@/lib/booking-store';
 import type { PublicShopData } from '@/lib/public-shop-data';
 
-function InstagramSvg({ className = 'w-5 h-5' }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      viewBox="0 0 24 24"
-    >
-      <rect width="20" height="20" x="2" y="2" rx="5" ry="5" />
-      <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
-      <line x1="17.5" x2="17.51" y1="6.5" y2="6.5" />
-    </svg>
-  );
-}
-
 type InstagramPost = { id: string; imageUrl: string; permalink: string; caption: string };
 
 export default function HomeClient({initialShop}: {initialShop: PublicShopData}) {
@@ -405,78 +387,116 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
           </div>
         </section>
 
-        {/* INSTAGRAM */}
+        {/* INSTAGRAM — reutiliza logo, portada y publicaciones reales de cada barbería */}
         <section className="max-w-5xl mx-auto px-4 py-3">
           <div
-            className={`border rounded-3xl p-5 sm:p-7 space-y-5 backdrop-blur-sm ${
-              isDark ? 'bg-zinc-900/75 border-zinc-800/90' : 'bg-white/90 border-zinc-200 shadow-sm'
-            }`}
+            className={['overflow-hidden rounded-3xl border backdrop-blur-sm',
+              isDark ? 'border-zinc-800/90 bg-zinc-900/75' : 'border-zinc-200 bg-white/90 shadow-sm'
+            ].join(' ')}
           >
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 rounded-xl bg-zinc-800 text-white flex items-center justify-center shrink-0">
-                  <InstagramSvg className="w-5 h-5" />
+            {/* Portada y marca que el administrador ya configuró para este local. */}
+            <div className="relative h-40 overflow-hidden bg-zinc-900 text-white sm:h-48">
+              {bannerUrl ? (
+                <Image
+                  src={bannerUrl}
+                  alt={'Portada de ' + shopConfig.name}
+                  fill
+                  sizes="(max-width: 640px) 100vw, 1024px"
+                  quality={70}
+                  loading="lazy"
+                  className="object-cover object-center"
+                />
+              ) : (
+                <div className="absolute inset-0 bg-gradient-to-br from-zinc-800 to-zinc-950" />
+              )}
+              <div className="absolute inset-0 bg-gradient-to-t from-zinc-950/90 via-zinc-950/20 to-transparent" />
+              <div className="absolute inset-x-4 bottom-4 z-10 flex min-w-0 items-end gap-3 sm:inset-x-7">
+                <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/25 bg-zinc-950 shadow-lg">
+                  {logoImage ? (
+                    <Image
+                      src={logoImage}
+                      alt={'Logo de ' + shopConfig.name}
+                      fill
+                      sizes="56px"
+                      quality={75}
+                      className="object-contain p-1"
+                    />
+                  ) : (
+                    <Scissors className="h-6 w-6 text-white" />
+                  )}
                 </div>
-                <div>
-                  <h2 className="text-base sm:text-lg font-extrabold tracking-tight">
-                    Instagram
-                  </h2>
-                  <p className={`text-xs ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
+                <div className="min-w-0 pb-0.5">
+                  <p className="truncate text-lg font-extrabold tracking-tight text-white sm:text-xl">
+                    {shopConfig.name}
+                  </p>
+                  <p className="mt-0.5 truncate text-xs text-zinc-200">
                     {shopConfig.instagramHandle || '@13.cut'}
                   </p>
                 </div>
               </div>
-
-              <a
-                href={shopConfig.instagramUrl || 'https://www.instagram.com/13.cut/'}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={`inline-flex items-center space-x-1.5 px-3.5 py-2.5 rounded-xl border text-xs font-semibold shrink-0 active:scale-95 touch-manipulation ${
-                  isDark
-                    ? 'bg-zinc-950 border-zinc-800 text-zinc-200'
-                    : 'bg-zinc-50 border-zinc-200 text-zinc-800'
-                }`}
-              >
-                <span>Ver perfil</span>
-                <ExternalLink className="w-3.5 h-3.5 opacity-60" />
-              </a>
             </div>
 
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              {instagramPosts.map((post) => (
+            <div className="p-5 sm:p-7">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 className="text-base font-extrabold tracking-tight sm:text-lg">
+                    Últimos trabajos
+                  </h2>
+                  <p className={['mt-1 text-xs', isDark ? 'text-zinc-400' : 'text-zinc-500'].join(' ')}>
+                    Lo último de nuestro Instagram
+                  </p>
+                </div>
                 <a
-                  key={post.id}
-                  href={post.permalink}
+                  href={shopConfig.instagramUrl || 'https://www.instagram.com/13.cut/'}
                   target="_blank"
                   rel="noopener noreferrer"
-                  aria-label={'Ver publicación de Instagram: ' + post.caption}
-                  className={'group relative block aspect-square overflow-hidden rounded-2xl border transition-colors hover:border-emerald-400 ' +
-                    (isDark ? 'border-zinc-800 bg-zinc-950' : 'border-zinc-200 bg-zinc-100')}
+                  className={['inline-flex shrink-0 items-center gap-1.5 rounded-xl border px-3.5 py-2.5 text-xs font-semibold transition-colors active:scale-95 touch-manipulation',
+                    isDark
+                      ? 'border-zinc-700 bg-zinc-950 text-zinc-200 hover:bg-zinc-800'
+                      : 'border-zinc-200 bg-zinc-50 text-zinc-800 hover:bg-zinc-100'
+                  ].join(' ')}
                 >
-                  {/* Miniaturas de la API oficial: sin embebidos ni widgets externos. */}
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={post.imageUrl}
-                    alt={post.caption}
-                    loading="lazy"
-                    referrerPolicy="no-referrer"
-                    className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
-                  />
-                  <span className="absolute bottom-2 right-2 rounded-lg bg-zinc-950/75 p-1.5 text-white">
-                    <ExternalLink className="h-3.5 w-3.5" />
-                  </span>
+                  <span>Ver perfil</span>
+                  <ExternalLink className="h-3.5 w-3.5 opacity-60" />
                 </a>
-              ))}
-              {instagramLoaded && !instagramPosts.length && (
-                <p className="col-span-full py-6 text-center text-sm text-zinc-400">
-                  Mirá nuestros trabajos en Instagram.
-                </p>
-              )}
-              {!instagramLoaded && (
-                <p className="col-span-full py-6 text-center text-sm text-zinc-400">
-                  Cargando publicaciones...
-                </p>
-              )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                {instagramPosts.map((post) => (
+                  <a
+                    key={post.id}
+                    href={post.permalink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={'Ver publicación de Instagram: ' + post.caption}
+                    className={'group relative block aspect-square overflow-hidden rounded-2xl border transition-colors hover:border-emerald-400 ' +
+                      (isDark ? 'border-zinc-800 bg-zinc-950' : 'border-zinc-200 bg-zinc-100')}
+                  >
+                    {/* Miniaturas de la API oficial: sin embebidos ni widgets externos. */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={post.imageUrl}
+                      alt={post.caption}
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                      className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
+                    />
+                    <span className="absolute bottom-2 right-2 rounded-lg bg-zinc-950/75 p-1.5 text-white">
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </span>
+                  </a>
+                ))}
+                {instagramLoaded && !instagramPosts.length && (
+                  <p className="col-span-full py-6 text-center text-sm text-zinc-400">
+                    Mirá nuestros trabajos en Instagram.
+                  </p>
+                )}
+                {!instagramLoaded && (
+                  <p className="col-span-full py-6 text-center text-sm text-zinc-400">
+                    Cargando publicaciones...
+                  </p>
+                )}
+              </div>
             </div>
           </div>
         </section>
