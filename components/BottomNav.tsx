@@ -17,7 +17,7 @@ export default function BottomNav() {
   const isHome = pathname === '/';
   const isBarbero = pathname.startsWith('/barbero');
   const isAdmin = pathname.startsWith('/admin');
-  const isPublic = isHome || pathname.startsWith('/equipo');
+  const isPublic = isHome;
 
   return (
     <nav

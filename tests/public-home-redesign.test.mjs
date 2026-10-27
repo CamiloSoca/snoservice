@@ -5,8 +5,7 @@ import { readFileSync } from 'node:fs';
 const read = path => readFileSync(new URL('../' + path, import.meta.url), 'utf8');
 const home = read('components/HomeClient.tsx');
 const nav = read('components/BottomNav.tsx');
-const profile = read('components/PublicBarberProfile.tsx');
-const profileRoute = read('app/equipo/[slug]/page.tsx');
+const profile = read('components/BarberDetailPanel.tsx');
 const booking = read('components/BookingClient.tsx');
 const provider = read('components/PublicShopProvider.tsx');
 
@@ -23,7 +22,7 @@ test('trabajos de la cuenta profesional antes del equipo y fotos de barberos opc
   assert.match(home, /post\.likeCount\.toLocaleString\('es-UY'\)/);
   assert.match(home, /id="equipo"/);
   assert.match(home, /b\.imageUrl/);
-  assert.match(home, /'\/equipo\/' \+ encodeURIComponent\(slug\)/);
+  assert.match(home, /onClick=\{\(\) => setSelectedBarber\(b\)\}/);
   assert.match(home, /'\/agendar\?barbero=' \+ encodeURIComponent\(slug\)/);
 });
 test('navegación pública ofrece Equipo y Más, con acceso staff y admin intactos', () => {
@@ -34,13 +33,12 @@ test('navegación pública ofrece Equipo y Más, con acceso staff y admin intact
   assert.match(nav, /pathname\.startsWith\('\/agendar'\)/);
 });
 test('ficha del barbero usa catálogo público y enlaza al flujo de reserva existente', () => {
-  assert.match(profile, /PublicShopGate variant="home"/);
-  assert.match(profileRoute, /export const instant = false/);
-  assert.match(profile, /shop\.barbers\.find/);
+  assert.match(profile, /role="dialog" aria-modal="true"/);
+  assert.match(home, /BarberDetailPanel shop=\{initialShop\}/);
   assert.match(profile, /barber\.imageUrl/);
   assert.match(profile, /shop\.services/);
   assert.match(profile, /'\/agendar\?barbero=' \+ encodeURIComponent/);
-  assert.match(profile, /if \(!barber\)/);
+  assert.match(profile, /onClick=\{onClose\}/);
   assert.match(booking, /searchParams\.get\('barbero'\)/);
-  assert.match(provider, /pathname\.startsWith\('\/equipo'\)/);
+  assert.match(provider, /pathname\.startsWith\('\/agendar'\)/);
 });

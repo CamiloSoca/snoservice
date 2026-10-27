@@ -4,6 +4,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import BarberDetailPanel from '@/components/BarberDetailPanel';
 import {
   MapPin,
   Scissors,
@@ -30,6 +31,7 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [instagramPosts, setInstagramPosts] = useState<InstagramPost[]>([]);
   const [instagramLoaded, setInstagramLoaded] = useState(false);
+  const [selectedBarber, setSelectedBarber] = useState<PublicShopData['barbers'][number] | null>(null);
 
   useEffect(() => {
     const abort = new AbortController();
@@ -344,7 +346,7 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
                   <div key={b.id} className={['min-w-0 overflow-hidden rounded-2xl border',
                     isDark ? 'border-zinc-800 bg-zinc-900/75' : 'border-zinc-200 bg-white'
                   ].join(' ')}>
-                    <Link href={'/equipo/' + encodeURIComponent(slug)} className="block">
+                    <button type="button" onClick={() => setSelectedBarber(b)} className="block w-full text-left">
                       <div className="relative flex aspect-[5/4] items-center justify-center overflow-hidden bg-zinc-800">
                         {b.imageUrl ? (
                           // eslint-disable-next-line @next/next/no-img-element
@@ -357,7 +359,7 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
                         <h3 className="truncate text-sm font-bold" title={b.name}>{b.name}</h3>
                         <p className="mt-1 text-xs text-zinc-400">Ver perfil</p>
                       </div>
-                    </Link>
+                    </button>
                     <Link href={'/agendar?barbero=' + encodeURIComponent(slug)} prefetch={true}
                       className={['mx-3 mb-3 mt-3 flex min-h-10 items-center justify-center gap-1 rounded-xl px-2 text-xs font-bold',primaryBtn].join(' ')}>
                       Reservar <ArrowRight className="h-3.5 w-3.5" />
@@ -479,6 +481,10 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
 
 
       </div>
+
+      {selectedBarber && (
+        <BarberDetailPanel shop={initialShop} barber={selectedBarber} onClose={() => setSelectedBarber(null)} />
+      )}
 
       <footer
         className={`relative z-10 border-t py-6 text-xs hidden sm:block ${
