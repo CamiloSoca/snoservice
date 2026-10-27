@@ -418,14 +418,26 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
                 ] as const).map(([dayKey, label]) => {
                   const day = activeSchedule[dayKey];
                   return (
-                    <li key={dayKey} className="flex min-w-0 items-baseline justify-between gap-1 text-[11px] leading-5 sm:text-xs">
-                      <span className={isDark ? 'text-zinc-400' : 'text-zinc-500'}>{label}</span>
+                    <li
+                      key={dayKey}
+                      className={[
+                        'flex min-w-0 items-center justify-between gap-1 rounded-xl border px-2 py-1.5 text-[11px] leading-5 sm:px-2.5 sm:text-xs',
+                        day?.isOpen
+                          ? (isDark
+                            ? 'border-emerald-600/25 bg-emerald-950/40 text-emerald-100/90'
+                            : 'border-emerald-200 bg-emerald-50 text-emerald-900')
+                          : (isDark
+                            ? 'border-rose-600/25 bg-rose-950/35 text-rose-100/80'
+                            : 'border-rose-200 bg-rose-50 text-rose-900'),
+                      ].join(' ')}
+                    >
+                      <span className="font-semibold">{label}</span>
                       {day?.isOpen ? (
                         <span className="whitespace-nowrap text-right font-semibold tabular-nums">
                           {day.openTime.replace(/:00$/, '')}–{day.closeTime.replace(/:00$/, '')}
                         </span>
                       ) : (
-                        <span className="text-right font-medium text-rose-400">Cerrado</span>
+                        <span className="whitespace-nowrap text-right font-medium">Cerrado</span>
                       )}
                     </li>
                   );
