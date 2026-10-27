@@ -2,6 +2,7 @@ import {randomUUID} from 'node:crypto';
 import {NextResponse} from 'next/server';
 import {revalidatePath, revalidateTag} from 'next/cache';
 import {getSupabaseServer, SHOP_UUID} from '@/lib/supabase-server';
+import {publicShopCacheTag} from '@/lib/public-shop-cache';
 import {requireAdminSession, verifyCsrfOrigin} from '@/lib/session';
 import {isValidUUID} from '@/lib/booking-store';
 import {
@@ -15,7 +16,7 @@ const jsonError = (message: string, status: number) =>
 
 function invalidateBarberPhotoViews() {
   // La tienda pública se comparte entre Inicio, Agendar y Portal de Barberos.
-  revalidateTag('public-shop-' + SHOP_UUID, {expire: 0});
+  revalidateTag(publicShopCacheTag(process.env.NEXT_PUBLIC_SUPABASE_URL || '', SHOP_UUID), {expire: 0});
   revalidatePath('/');
   revalidatePath('/barbero');
   revalidatePath('/agendar');

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getBarberSession } from '@/lib/session';
 import { getSupabaseServer, SHOP_UUID } from '@/lib/supabase-server';
+import type { FixedMonthlyUseItem } from '@/lib/booking-store';
 
 let rpcUnavailableUntil = 0;
 
@@ -104,6 +105,27 @@ export async function GET() {
       return NextResponse.json({error: 'Hay más de una caja abierta. Consultá al administrador.'}, {status: 409, headers});
     }
 
+    // Los consumos cuentan como servicios realizados, no como ingresos: la
+    // mensualidad ya se contabiliza una sola vez en manual_charges.
+    let fixedMonthlyUses: FixedMonthlyUseItem[] = [];
+    if (activeBarber.is_owner) {
+      const fixedIds = await db.from('fixed_bookings').select('id')
+        .eq('shop_id',SHOP_UUID).eq('barber_id',session.sub);
+      if (fixedIds.error) {
+        return NextResponse.json({error:'No se pudieron cargar los cortes de abono.'},{status:503,headers});
+      }
+      if (fixedIds.data?.length) {
+        const uses = await db.from('fixed_monthly_uses')
+          .select('fixed_booking_id,period_id,occurrence_date,completed_at')
+          .eq('shop_id',SHOP_UUID)
+          .in('fixed_booking_id',fixedIds.data.map((row)=>row.id));
+        if (uses.error) {
+          return NextResponse.json({error:'No se pudieron cargar los cortes de abono.'},{status:503,headers});
+        }
+        fixedMonthlyUses=(uses.data||[]) as FixedMonthlyUseItem[];
+      }
+    }
+
     const appointmentsMapped = (appointments.data || []).map((apt: any) => ({
       id: apt.id,
       code: apt.code || '',
@@ -155,6 +177,7 @@ export async function GET() {
         appointments: appointmentsMapped,
         tips: (tips.data || []).map(mapEntry),
         manualCharges: (charges.data || []).map(mapEntry),
+        fixedMonthlyUses,
         cashOpen: cash.data?.length === 1,
         commissionRate: Number(activeBarber.commission_rate ?? 50),
         isOwner: activeBarber.is_owner === true,

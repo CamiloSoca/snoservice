@@ -1,6 +1,7 @@
 import 'server-only';
 import { cacheLife, cacheTag } from 'next/cache';
 import { getSupabaseServer, SHOP_UUID } from '@/lib/supabase-server';
+import {publicShopCacheTag} from '@/lib/public-shop-cache';
 import type { PublicShopData } from '@/lib/public-shop-data';
 import type {WeeklyHours} from '@/lib/weekly-hours';
 
@@ -67,14 +68,14 @@ function toPublicShopData(
 }
 
 // Se cachea SOLO el catálogo. La disponibilidad se consulta siempre aparte.
-export async function getServerPublicShopData(): Promise<PublicShopData> {
+async function getCachedPublicShopData(projectUrl: string, shopId: string): Promise<PublicShopData> {
   'use cache';
   cacheLife({stale: 30, revalidate: 15, expire: 300});
-  cacheTag('public-shop-' + SHOP_UUID);
+  cacheTag(publicShopCacheTag(projectUrl, shopId));
 
   const db = getSupabaseServer();
   const {data: fastData, error: fastError} = await db.rpc(
-    'public_shop_snapshot', {p_shop_id: SHOP_UUID}
+    'public_shop_snapshot', {p_shop_id: shopId}
   );
 
   if (!fastError && fastData && typeof fastData === 'object') {
@@ -92,13 +93,13 @@ export async function getServerPublicShopData(): Promise<PublicShopData> {
   const [shopResult, servicesResult, barbersResult] = await Promise.all([
     db.from('shops')
       .select('id,name,phone,address,city,logo_url,background_image_url,cover_image_url,schedule')
-      .eq('id', SHOP_UUID).maybeSingle(),
+      .eq('id', shopId).maybeSingle(),
     db.from('services')
       .select('id,name,price,duration_minutes,description,image_url,active')
-      .eq('shop_id', SHOP_UUID).eq('active', true),
+      .eq('shop_id', shopId).eq('active', true),
     db.from('barbers')
       .select('id,slug,name,role,bio,specialties,service_ids,active,image_url,working_schedule')
-      .eq('shop_id', SHOP_UUID).eq('active', true),
+      .eq('shop_id', shopId).eq('active', true),
   ]);
   if (shopResult.error || !shopResult.data || servicesResult.error || barbersResult.error) {
     console.error('No se pudo cargar la informacion publica', {
@@ -113,4 +114,9 @@ export async function getServerPublicShopData(): Promise<PublicShopData> {
     (servicesResult.data || []) as ServiceRow[],
     (barbersResult.data || []) as BarberRow[],
   );
+}
+
+export async function getServerPublicShopData(): Promise<PublicShopData> {
+  const projectUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+  return getCachedPublicShopData(projectUrl, SHOP_UUID);
 }

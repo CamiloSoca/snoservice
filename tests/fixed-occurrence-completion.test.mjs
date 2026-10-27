@@ -24,11 +24,10 @@ test('completar un viernes no completa la próxima semana',()=>{
 });
 test('se usa el precio verdadero y el botón Completar también en fijos',()=>{
  assert.match(fixed,/services\(name,price\)/);
- assert.match(fixed,/servicePrice:Number\(r\.services\?\.price\|\|0\)/);
- assert.match(agenda,/const price=paid\?paid\.amount:f\.servicePrice/);
- assert.match(modal,/const completeAllowed = appointment\.status === 'confirmado'/);
+ assert.match(fixed,/servicePrice:Number\(service\?\.price\|\|0\)/);
+ assert.match(agenda,/const price=paid&&!paid\.coveredBySubscription\?paid\.amount:f\.servicePrice/);
+ assert.match(modal,/fixedSubscription\?\.covered/);
  assert.doesNotMatch(modal,/const completeAllowed = !appointment\.isFixed/);
- assert.match(modal,/Completar cobra solo este día/);
 });
 test('la API usa sesión y CSRF; sólo el dueño/barbero correcto puede cobrar',()=>{
  assert.match(rpc,/verifyCsrfOrigin\(request\)/);

@@ -16,8 +16,10 @@ interface FixedRule {
  id:string;barberId:string;serviceId:string;clientName:string;clientPhone:string;clientEmail:string;
  weekday:number;timeSlot:string;durationMinutes:number;startDate:string;endDate:string|null;
  serviceName:string;servicePrice:number;barberName:string;skippedDates?:string[];
+ monthlyPlan?:{fixed_booking_id:string;monthly_price:number;included_cuts:number;active:boolean}|null;
 }
-type FixedCompleted={fixedBookingId:string;occurrenceDate:string;chargeId:string;amount:number};
+type FixedCompleted={fixedBookingId:string;occurrenceDate:string;chargeId:string;amount:number;coveredBySubscription?:boolean};
+type FixedPeriod={fixedBookingId:string;month:string;includedCuts:number;used:number};
 type BarberRef = Pick<BarberItem, 'id' | 'name'>;
 
 interface AgendaCalendarProps {
@@ -91,6 +93,7 @@ export default function AgendaCalendar({
   const [actionFeedback, setActionFeedback] = useState<string>('');
   const [fixedRules,setFixedRules]=useState<FixedRule[]>([]);
   const [completedFixed,setCompletedFixed]=useState<FixedCompleted[]>([]);
+  const [fixedPeriods,setFixedPeriods]=useState<FixedPeriod[]>([]);
   const [fixedError,setFixedError]=useState('');
   const [fixedReload,setFixedReload]=useState(0);
   useEffect(()=>{
@@ -105,6 +108,7 @@ export default function AgendaCalendar({
         if(alive){
           setFixedRules(Array.isArray(json.items)?json.items:[]);
           setCompletedFixed(Array.isArray(json.completed)?json.completed:[]);
+          setFixedPeriods(Array.isArray(json.periods)?json.periods:[]);
           setFixedError('');
         }
       } catch {
@@ -153,10 +157,14 @@ export default function AgendaCalendar({
         &&barbers.some(b=>b.id===f.barberId))
         .map(f=>{
           const paid=completedFixed.find(c=>c.fixedBookingId===f.id&&c.occurrenceDate===date);
-          const price=paid?paid.amount:f.servicePrice;
+          const period=fixedPeriods.find(p=>p.fixedBookingId===f.id&&p.month===date.slice(0,7)+'-01');
+          const remaining=Math.max(0,(period?.includedCuts||4)-(period?.used||0));
+          const prepaid=Boolean(period&&remaining>0);
+          const price=paid&&!paid.coveredBySubscription?paid.amount:f.servicePrice;
           return {
             id:'fixed-'+f.id+'-'+date,code:'FIJO',isFixed:true,
             fixedBookingId:f.id,fixedDate:date,
+            fixedSubscription:{active:Boolean(f.monthlyPlan?.active),paid:Boolean(period),used:period?.used||0,remaining,eligible:!paid&&prepaid,covered:paid?.coveredBySubscription===true},
             serviceId:f.serviceId,serviceName:f.serviceName,servicePrice:price,priceSnapshot:price,
             durationMinutes:f.durationMinutes,barberId:f.barberId,barberName:f.barberName,
             dateString:bookingDateLabel(date),timeSlot:f.timeSlot,
@@ -167,7 +175,7 @@ export default function AgendaCalendar({
           };
         });
     })
-  ),[displayedDates,fixedRules,barbers,completedFixed]);
+  ),[displayedDates,fixedRules,barbers,completedFixed,fixedPeriods]);
   const agendaEntries=useMemo(()=>[...ownAppointments,...fixedEvents],[ownAppointments,fixedEvents]);
   const calendarAppointments = useMemo(() => (
     displayedDates.flatMap(date => agendaDayAppointments(agendaEntries, date))
@@ -481,7 +489,7 @@ export default function AgendaCalendar({
           canComplete={canComplete}
           getWhatsAppLink={getWhatsAppLink}
           onComplete={async(appointment,method)=>{
-            if(!appointment.isFixed)return onComplete(appointment,method);
+            if(!appointment.isFixed)return method?onComplete(appointment,method):{ok:false,error:'Missing payment method.'};
             if(!appointment.fixedBookingId||!appointment.fixedDate){
               return {ok:false,error:'Faltan datos de este turno fijo.'};
             }
@@ -491,6 +499,7 @@ export default function AgendaCalendar({
                 body:JSON.stringify({
                   fixedBookingId:appointment.fixedBookingId,
                   occurrenceDate:appointment.fixedDate,
+                  mode:appointment.fixedSubscription?.eligible?'subscription':'charge',
                   paymentMethod:method,
                 }),
               });

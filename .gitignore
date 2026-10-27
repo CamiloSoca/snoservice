@@ -15,6 +15,7 @@
 
 # next.js
 /.next/
+/.playwright-mcp/
 /out/
 
 # production
