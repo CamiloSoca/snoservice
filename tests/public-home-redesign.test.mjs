@@ -23,6 +23,8 @@ test('inicio tiene cuatro bloques y las reservas continúan en el flujo original
 test('horarios y ubicación visibles lado a lado en móvil, con horarios del local', () => {
   const info = home.split('{/* HORARIOS Y UBICACIÓN')[1]?.split('</section>')[0] || '';
   assert.match(info, /grid grid-cols-2 items-stretch gap-3/);
+  assert.match(info, /flex flex-1 flex-col items-center justify-center/);
+  assert.match(info, /rounded-full border border-emerald-500\/15/);
   assert.match(info, /activeSchedule\[dayKey\]/);
   for (const name of ['lunes','martes','miercoles','jueves','viernes','sabado','domingo']) {
     assert.ok(info.includes(name), name);
@@ -46,11 +48,12 @@ test('trabajos de la cuenta profesional antes del equipo y fotos de barberos opc
   assert.match(home, /onClick=\{\(\) => setSelectedBarber\(b\)\}/);
   assert.match(home, /'\/agendar\?barbero=' \+ encodeURIComponent\(slug\)/);
 });
-test('navegación pública ofrece Equipo y Más, con acceso staff y admin intactos', () => {
-  assert.match(nav, /href="\/barbero" prefetch=\{true\}/);
-  assert.match(nav, /aria-expanded=\{moreOpen\}/);
+test('barra inferior tiene acceso directo a Admin, sin menú Más', () => {
   assert.match(nav, /href="\/barbero"/);
   assert.match(nav, /href="\/admin"/);
+  assert.match(nav, /prefetch=\{false\}/);
+  assert.match(nav, /<span className="text-\[10px\] tracking-tight">Admin<\/span>/);
+  assert.doesNotMatch(nav, /moreOpen|>Más<|aria-expanded/);
   assert.match(nav, /pathname\.startsWith\('\/agendar'\)/);
 });
 test('ficha del barbero usa catálogo público y enlaza al flujo de reserva existente', () => {
