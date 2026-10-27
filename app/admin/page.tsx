@@ -1952,70 +1952,116 @@ const handleAddBarber = async () => {
                 </div>
               </div>
 
-              <details className="group/settlement overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/90 open:border-zinc-700">
+              <details open className="group/settlement overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/90 open:border-zinc-700">
                 <summary className="flex min-h-16 cursor-pointer list-none items-center gap-3 px-4 py-3 text-sm font-bold hover:bg-zinc-800/60 focus-visible:outline-2 focus-visible:outline-emerald-400 [&::-webkit-details-marker]:hidden">
-                  <Users className="h-5 w-5 text-emerald-400"/>
-                  <span className="flex-1">Liquidación por barbero</span>
-                  <ChevronDown className="h-4 w-4 text-zinc-400 transition-transform group-open/settlement:rotate-180"/>
+                  <Users className="h-5 w-5 text-emerald-400" aria-hidden="true" />
+                  <div className="min-w-0 flex-1">
+                    <span className="block">Liquidación por barbero</span>
+                    <span className="mt-0.5 block text-xs font-normal text-zinc-400">
+                      Todos los trabajos juntos, con propinas por separado.
+                    </span>
+                  </div>
+                  <ChevronDown className="h-4 w-4 shrink-0 text-zinc-400 transition-transform group-open/settlement:rotate-180" aria-hidden="true" />
                 </summary>
-                <div className="grid grid-cols-1 gap-3.5 border-t border-zinc-800 p-4 md:grid-cols-3 sm:p-5">
+                <div className="grid grid-cols-1 gap-3 border-t border-zinc-800 p-3 sm:p-5 lg:grid-cols-2 xl:grid-cols-3">
                   {barberFinancials.map((item) => {
                     const isOwner = item.barber.isOwner === true;
                     const totalBarberPocket = item.barberTakeHome + item.barberTipsTotal;
+                    const money = (amount: number) => '$' + amount.toLocaleString('es-UY', {maximumFractionDigits: 2});
 
                     return (
-                      <div
-                        key={item.barber.id}
-                        className="bg-zinc-950/80 border border-zinc-800 rounded-2xl p-4 space-y-3"
-                      >
-                        <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
-                          <div className="flex items-center space-x-2.5">
-                            <div className="w-9 h-9 rounded-xl bg-zinc-800 text-zinc-100 flex items-center justify-center font-bold text-sm">
+                      <article key={item.barber.id} className="min-w-0 space-y-3 rounded-2xl border border-zinc-800 bg-zinc-950/80 p-3.5 sm:p-4">
+                        <header className="flex items-center justify-between gap-2 border-b border-zinc-800 pb-3">
+                          <div className="flex min-w-0 items-center gap-2.5">
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-zinc-800 text-sm font-extrabold text-zinc-100">
                               {item.barber.name.charAt(0)}
                             </div>
-                            <div>
-                              <h4 className="font-bold text-sm">{item.barber.name}</h4>
-                              <span className="text-[11px] text-zinc-400">
-                                {isOwner ? 'Propietario: 100% al fondo común' : <>Comisión: <strong>{item.barber.commissionRate}%</strong></>}
-                              </span>
+                            <div className="min-w-0">
+                              <h4 className="truncate text-sm font-extrabold">{item.barber.name}</h4>
+                              <p className="text-[11px] text-zinc-400">
+                                {isOwner ? 'Propietario · 100% al fondo común' : 'Comisión: ' + item.barber.commissionRate + '%'}
+                              </p>
                             </div>
                           </div>
-                          <span className="px-2.5 py-1 rounded-lg bg-zinc-900 border border-zinc-800 text-xs font-semibold">
-                            {item.cutsCount} turnos
+                          <span className="shrink-0 rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] font-bold">
+                            {item.workCount} trabajos
                           </span>
+                        </header>
+
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-3">
+                            <p className="text-[11px] text-zinc-400">Trabajos realizados</p>
+                            <p className="mt-1 text-2xl font-extrabold tabular-nums">{item.workCount}</p>
+                          </div>
+                          <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-3">
+                            <p className="text-[11px] text-zinc-400">Facturación total</p>
+                            <p className="mt-1 text-xl font-extrabold tabular-nums">{money(item.grossGenerated)}</p>
+                          </div>
                         </div>
 
-                        <div className="space-y-2 text-xs">
-                          <div className="flex justify-between">
-                            <span className="text-zinc-400">Cortes completados:</span>
-                            <span className="font-semibold">${item.grossGenerated - item.barberManualChargesTotal}</span>
+                        <div className="flex min-h-8 flex-wrap gap-1.5" aria-label={'Servicios realizados por ' + item.barber.name}>
+                          {item.serviceBreakdown.length ? item.serviceBreakdown.map(([service, count]) => (
+                            <span key={service} className="rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-300">
+                              {service}: <strong className="text-zinc-100">{count}</strong>
+                            </span>
+                          )) : <span className="text-xs text-zinc-500">Sin trabajos clasificados en este período.</span>}
+                        </div>
+
+                        <div className="space-y-2 border-t border-zinc-800 pt-3 text-xs">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-zinc-400">{isOwner ? 'Comisión del propietario' : 'Comisión generada'}</span>
+                            <strong>{money(item.barberTakeHome)}</strong>
                           </div>
-                          {item.barberManualChargesTotal > 0 && (
-                            <div className="flex justify-between text-emerald-400 font-medium">
-                              <span>Cobros adicionales y fijos:</span>
-                              <span>+${item.barberManualChargesTotal}</span>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-zinc-400">Propinas personales</span>
+                            <strong className="text-amber-400">+{money(item.barberTipsTotal)}</strong>
+                          </div>
+                          {!isOwner && (
+                            <div className="flex items-center justify-between gap-2 rounded-xl border border-emerald-500/25 bg-emerald-950/20 px-3 py-3">
+                              <span className="font-bold text-emerald-200">Total generado para el barbero</span>
+                              <strong className="text-base tabular-nums text-emerald-300">{money(totalBarberPocket)}</strong>
                             </div>
                           )}
-                          <div className="flex justify-between">
-                            <span className="text-zinc-400">Comisión total:</span>
-                            <span className="font-medium text-zinc-300">${item.barberTakeHome}</span>
+                          <div className={['flex items-center justify-between gap-2 rounded-xl px-3 py-2.5',
+                            isOwner ? 'border border-emerald-500/25 bg-emerald-950/20' : 'bg-zinc-900/60'
+                          ].join(' ')}>
+                            <span className={isOwner ? 'font-bold text-emerald-200' : 'text-zinc-400'}>
+                              Para la barbería (antes de gastos)
+                            </span>
+                            <strong className={isOwner ? 'text-base text-emerald-300' : 'text-zinc-100'}>
+                              {money(item.leftForOwner)}
+                            </strong>
                           </div>
-                          <div className="flex justify-between">
-                            <span className="text-zinc-400">Propinas personales:</span>
-                            <span className="font-bold text-emerald-400">+${item.barberTipsTotal}</span>
-                          </div>
-
-                          <div className="flex justify-between pt-2 border-t border-zinc-800/80 text-amber-400 font-bold">
-                            <span>Total para barbero:</span>
-                            <span>${totalBarberPocket}</span>
-                          </div>
-
-                          <div className="flex justify-between pt-1 text-emerald-400 font-bold">
-                            <span>Al fondo común:</span>
-                            <span>+${item.leftForOwner}</span>
-                          </div>
+                          {!isOwner && (
+                            <p className="text-[11px] leading-relaxed text-zinc-500">Importe generado, no necesariamente pagado.</p>
+                          )}
                         </div>
-                      </div>
+
+                        <details className="group/source rounded-xl border border-zinc-800 bg-zinc-900/40">
+                          <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-xs font-bold text-zinc-300 [&::-webkit-details-marker]:hidden">
+                            Ver origen de los trabajos
+                            <ChevronDown className="h-3.5 w-3.5 text-zinc-500 transition-transform group-open/source:rotate-180" aria-hidden="true" />
+                          </summary>
+                          <div className="space-y-2 border-t border-zinc-800 px-3 py-3 text-[11px] text-zinc-400">
+                            <div className="flex justify-between gap-2">
+                              <span>Agenda · {item.appointmentCount}</span>
+                              <span className="tabular-nums">{money(item.grossFromAppointments)}</span>
+                            </div>
+                            <div className="flex justify-between gap-2">
+                              <span>Ingresos manuales · {item.manualCount}</span>
+                              <span className="tabular-nums">{money(item.barberManualChargesTotal)}</span>
+                            </div>
+                            {item.monthlyUsesCount > 0 && (
+                              <p>Abonos: {item.monthlyUsesCount} trabajos incluidos, sin cobro adicional.</p>
+                            )}
+                            {item.unclassifiedChargesCount > 0 && (
+                              <p className="text-amber-300">
+                                {item.unclassifiedChargesCount} cobros manuales sin servicio identificado. Incluidos en facturación, no en el contador de trabajos.
+                              </p>
+                            )}
+                          </div>
+                        </details>
+                      </article>
                     );
                   })}
                 </div>
