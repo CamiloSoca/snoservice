@@ -24,7 +24,10 @@ test('horarios y ubicación visibles lado a lado en móvil, con horarios del loc
   const info = home.split('{/* HORARIOS Y UBICACIÓN')[1]?.split('</section>')[0] || '';
   assert.match(info, /grid grid-cols-2 items-stretch gap-3/);
   assert.match(info, /flex flex-1 flex-col items-center justify-center/);
-  assert.match(info, /rounded-full border border-emerald-500\/15/);
+  assert.match(info, /rounded-xl border px-2 py-1.5/);
+  assert.match(info, /border-emerald-600\/25 bg-emerald-950\/40/);
+  assert.match(info, /border-rose-600\/25 bg-rose-950\/35/);
+  assert.match(info, /whitespace-nowrap text-right font-medium">Cerrado/);
   assert.match(info, /activeSchedule\[dayKey\]/);
   for (const name of ['lunes','martes','miercoles','jueves','viernes','sabado','domingo']) {
     assert.ok(info.includes(name), name);
@@ -63,6 +66,15 @@ test('ficha del barbero usa catálogo público y enlaza al flujo de reserva exis
   assert.match(profile, /shop\.services/);
   assert.match(profile, /'\/agendar\?barbero=' \+ encodeURIComponent/);
   assert.match(profile, /onClick=\{onClose\}/);
+  assert.match(profile, /pt-\[calc\(env\(safe-area-inset-top\)\+0\.75rem\)\]/);
+  assert.match(profile, /sticky top-0 z-30/);
+  assert.match(profile, /aria-label="Cerrar perfil"/);
+  assert.match(profile, /backButtonRef\.current\?\.focus\(\)/);
+  assert.match(profile, /document\.body\.style\.overflow = 'hidden'/);
+  assert.match(profile, /barber\.imageUrl \? \(/);
+  assert.match(profile, /Foto por agregar/);
+  assert.doesNotMatch(profile, /src=\{banner\}/);
+  assert.match(profile, /href="\/#info" onClick=\{onClose\}/);
   assert.match(booking, /searchParams\.get\('barbero'\)/);
   assert.match(provider, /pathname\.startsWith\('\/agendar'\)/);
 });
