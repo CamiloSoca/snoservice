@@ -711,7 +711,7 @@ function AgendarContent({initialShop}: {initialShop: PublicShopData}) {
                     </span>
                     <h2 className="text-xl sm:text-2xl font-bold tracking-tight">¡Turno Confirmado!</h2>
                     <p className="text-xs text-zinc-400">
-                      Te enviamos el comprobante a <strong className="text-white">{confirmedAppointment.clientEmail}</strong>.
+                      El turno quedó confirmado. El envío del comprobante por email depende de que el correo esté configurado.
                     </p>
                   </div>
 

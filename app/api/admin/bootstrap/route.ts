@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAdminSession } from '@/lib/session';
 import { getSupabaseServer, SHOP_UUID } from '@/lib/supabase-server';
+import type { FixedMonthlyUseItem } from '@/lib/booking-store';
 
 // Cachea sólo la ausencia del RPC, nunca datos financieros. Un despliegue de
 // la función se detecta nuevamente a los 60 segundos sin reiniciar el servidor.
@@ -47,7 +48,22 @@ export async function GET() {
       Array.isArray(fastData.manualCharges) &&
       Array.isArray(fastData.cashRegisters) &&
       fastData.shop) {
-      return NextResponse.json(fastData, {
+      const [uses, fixedBookings] = await Promise.all([
+        supabase.from('fixed_monthly_uses')
+          .select('fixed_booking_id,period_id,occurrence_date,completed_at')
+          .eq('shop_id', SHOP_UUID),
+        supabase.from('fixed_bookings').select('id,barber_id').eq('shop_id', SHOP_UUID),
+      ]);
+      if (uses.error || fixedBookings.error) {
+        return NextResponse.json({error:'No se pudieron cargar los cortes de abono.'},
+          {status:503,headers:{'Cache-Control':'private, no-store'}});
+      }
+      const fixedBookingRows=(fixedBookings.data||[]) as {id:string;barber_id:string}[];
+      const barberByFixed = new Map(fixedBookingRows.map((fixed)=>[fixed.id,fixed.barber_id]));
+      const fixedMonthlyUses=((uses.data||[]) as Omit<FixedMonthlyUseItem,'barber_id'>[]).map((use)=>({
+        ...use,barber_id:barberByFixed.get(use.fixed_booking_id)||null,
+      }));
+      return NextResponse.json({...fastData,fixedMonthlyUses}, {
         headers: {
           'Cache-Control': 'private, no-store',
           'Server-Timing': `database;dur=${(performance.now() - startedAt).toFixed(1)},rpc;dur=${rpcDuration.toFixed(1)}`,
@@ -72,6 +88,7 @@ export async function GET() {
 
     const [
       appointments, services, barbers, expenses, tips, manualCharges, shop, cashRegisters,
+      fixedMonthlyUses, fixedBookings,
     ] = await Promise.all([
       timed('appointments', supabase.from('appointments')
         .select('id,code,service_id,barber_id,date_string,time_slot,duration_minutes,status,created_at,client_name,client_phone,client_email,client_notes,price_snapshot,completed_at,commission_rate_snapshot,barber_earnings_snapshot,business_earnings_snapshot,completed_cash_register_id,services(name,price,duration_minutes),barbers(name)')
@@ -105,6 +122,10 @@ export async function GET() {
         .eq('shop_id', SHOP_UUID)
         .order('opened_at', {ascending: false})
         .limit(1)),
+      timed('monthlyUses',supabase.from('fixed_monthly_uses')
+        .select('fixed_booking_id,period_id,occurrence_date,completed_at')
+        .eq('shop_id',SHOP_UUID)),
+      timed('fixedBookings',supabase.from('fixed_bookings').select('id,barber_id').eq('shop_id',SHOP_UUID)),
     ]);
 
     const totalDuration = performance.now() - startedAt;
@@ -123,6 +144,8 @@ export async function GET() {
       ['cobros', manualCharges.error],
       ['configuración', shop.error],
       ['caja', cashRegisters.error],
+      ['cortes de abono',fixedMonthlyUses.error],
+      ['agenda fija',fixedBookings.error],
     ] as const;
     const failed = errors.find(([, error]) => error);
     if (failed) {
@@ -141,6 +164,10 @@ export async function GET() {
         expenses: expenses.data || [],
         tips: tips.data || [],
         manualCharges: manualCharges.data || [],
+        fixedMonthlyUses: ((fixedMonthlyUses.data||[]) as Omit<FixedMonthlyUseItem,'barber_id'>[]).map((use)=>({
+          ...use,barber_id:((fixedBookings.data||[]) as {id:string;barber_id:string}[])
+            .find((fixed)=>fixed.id===use.fixed_booking_id)?.barber_id||null,
+        })),
         shop: shop.data,
         cashRegisters: cashRegisters.data || [],
       },

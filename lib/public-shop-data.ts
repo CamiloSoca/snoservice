@@ -1,4 +1,5 @@
 import type { BarberItem, ServiceItem, ShopConfig } from '@/lib/booking-store';
+import {publicShopStorageKey} from '@/lib/public-shop-cache';
 
 export interface PublicShopData {
   shopConfig: ShopConfig;
@@ -14,7 +15,7 @@ interface PublicShopSnapshot {
 
 // Session storage is per tab. Store ONLY the public projection returned by
 // /api/public/shop; never bookings, clients, PINs, tokens or financial data.
-const STORAGE_KEY = 'snoservice.public-shop.v3';
+const STORAGE_VERSION = 4;
 const STORAGE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 const REVALIDATE_AFTER_MS = 15 * 1000;
 const EMPTY_SNAPSHOT: PublicShopSnapshot = {data: null, state: 'idle', updatedAt: 0};
@@ -25,15 +26,43 @@ let generation = 0;
 let request: Promise<PublicShopData> | null = null;
 const listeners = new Set<() => void>();
 
+interface PublicShopIdentity {
+  shopId: string;
+  storageKey: string;
+}
+
+function getPublicShopIdentity(): PublicShopIdentity {
+  const shopId = process.env.NEXT_PUBLIC_SHOP_ID?.trim() || '';
+  return {
+    shopId,
+    storageKey: publicShopStorageKey(process.env.NEXT_PUBLIC_SUPABASE_URL || '', shopId),
+  };
+}
+
+let activeStorageKey = getPublicShopIdentity().storageKey;
+
+function syncStorageScope(): PublicShopIdentity {
+  const identity = getPublicShopIdentity();
+  if (identity.storageKey !== activeStorageKey) {
+    generation += 1;
+    request = null;
+    snapshot = EMPTY_SNAPSHOT;
+    hydrated = false;
+    activeStorageKey = identity.storageKey;
+  }
+  return identity;
+}
+
 function publish(next: PublicShopSnapshot): void {
   snapshot = next;
   listeners.forEach((listener) => listener());
 }
 
-function isPublicData(value: unknown): value is PublicShopData {
+function isPublicData(value: unknown, expectedShopId: string): value is PublicShopData {
+  if (!expectedShopId) return false;
   if (!value || typeof value !== 'object') return false;
   const raw = value as Partial<PublicShopData>;
-  return typeof raw.shopConfig?.id === 'string' &&
+  return raw.shopConfig?.id === expectedShopId &&
     typeof raw.shopConfig.name === 'string' &&
     typeof raw.shopConfig.schedule === 'object' &&
     raw.shopConfig.schedule !== null &&
@@ -73,33 +102,31 @@ function onlyPublicFields(source: PublicShopData): PublicShopData {
 }
 
 function hydrateFromSession(): void {
+  const identity = syncStorageScope();
   if (hydrated || typeof window === 'undefined') return;
   hydrated = true;
   try {
-    const raw = window.sessionStorage.getItem(STORAGE_KEY);
+    const raw = window.sessionStorage.getItem(activeStorageKey);
     if (!raw) return;
     const saved: {version?: number; savedAt?: number; data?: unknown} = JSON.parse(raw);
     const now = Date.now();
-    if (saved.version !== 3 || !saved.savedAt || now < saved.savedAt ||
-      now - saved.savedAt > STORAGE_MAX_AGE_MS || !isPublicData(saved.data)) {
-      window.sessionStorage.removeItem(STORAGE_KEY);
-      return;
-    }
+    if (saved.version !== STORAGE_VERSION || !saved.savedAt || now < saved.savedAt ||
+      now - saved.savedAt > STORAGE_MAX_AGE_MS || !isPublicData(saved.data, identity.shopId)) return;
     snapshot = {
       data: onlyPublicFields(saved.data),
       state: 'ready',
       updatedAt: saved.savedAt,
     };
-  } catch {
-    try { window.sessionStorage.removeItem(STORAGE_KEY); } catch {}
-  }
+  } catch {}
 }
 
 function persistPublicData(data: PublicShopData, savedAt: number): void {
   if (typeof window === 'undefined') return;
+  const identity = syncStorageScope();
+  if (!isPublicData(data, identity.shopId)) return;
   try {
-    window.sessionStorage.setItem(STORAGE_KEY,
-      JSON.stringify({version: 3, savedAt, data}));
+    window.sessionStorage.setItem(identity.storageKey,
+      JSON.stringify({version: STORAGE_VERSION, savedAt, data}));
   } catch {
     // Private browsing/storage quota: in-memory caching still works.
   }
@@ -125,12 +152,13 @@ export function publicShopNeedsRefresh(): boolean {
 }
 
 export function invalidatePublicShopData(): void {
+  syncStorageScope();
   generation += 1;
   request = null;
   hydrated = true;
   publish(EMPTY_SNAPSHOT);
   if (typeof window !== 'undefined') {
-    try { window.sessionStorage.removeItem(STORAGE_KEY); } catch {}
+    try { window.sessionStorage.removeItem(activeStorageKey); } catch {}
     // Desde /admin no consultar innecesariamente el catálogo público.
     // El proveedor lo recargará cuando la navegación vuelva a una
     // pantalla pública; mientras tanto la caché previa queda invalidada.
@@ -148,6 +176,7 @@ export async function getPublicShopData(forceRefresh = false): Promise<PublicSho
   }
   if (request) return request;
 
+  const requestedIdentity = syncStorageScope();
   const startedGeneration = generation;
   publish({
     ...snapshot,
@@ -163,9 +192,14 @@ export async function getPublicShopData(forceRefresh = false): Promise<PublicSho
     });
     if (!response.ok) throw new Error('No se pudo consultar la informacion publica.');
     const incoming: unknown = await response.json();
-    if (!isPublicData(incoming)) throw new Error('La informacion del local es invalida.');
+    if (!isPublicData(incoming, requestedIdentity.shopId)) {
+      throw new Error('La informacion recibida no corresponde a la barberia configurada.');
+    }
 
     const clean = onlyPublicFields(incoming);
+    if (syncStorageScope().storageKey !== requestedIdentity.storageKey) {
+      throw new Error('La barberia configurada cambio durante la consulta.');
+    }
     if (generation === startedGeneration) {
       const savedAt = Date.now();
       persistPublicData(clean, savedAt);

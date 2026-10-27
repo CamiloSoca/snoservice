@@ -44,6 +44,7 @@ import {
   ExpenseCategory,
   TipItem,
   ManualChargeItem,
+  FixedMonthlyUseItem,
   ShopConfig,
   DEFAULT_SHOP_CONFIG,
   SHOP_UUID,
@@ -146,6 +147,7 @@ export default function AdminDashboard() {
   const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
   const [tips, setTips] = useState<TipItem[]>([]);
   const [manualCharges, setManualCharges] = useState<ManualChargeItem[]>([]);
+  const [fixedMonthlyUses, setFixedMonthlyUses] = useState<FixedMonthlyUseItem[]>([]);
   const [shopConfig, setShopConfig] = useState<ShopConfig>(DEFAULT_SHOP_CONFIG);
   const [savedBanner, setSavedBanner] = useState(false);
   const [shopHoursSaving,setShopHoursSaving]=useState(false);
@@ -242,6 +244,7 @@ export default function AdminDashboard() {
         setExpenses(snapshot.expenses);
         setTips(snapshot.tips);
         setManualCharges(snapshot.manualCharges);
+        setFixedMonthlyUses(snapshot.fixedMonthlyUses);
         setShopConfig(freshConfig);
 
         checkBarberLocks(freshBarbers);
@@ -282,6 +285,7 @@ export default function AdminDashboard() {
         setExpenses(financial.expenses);
         setTips(financial.tips);
         setManualCharges(financial.manualCharges);
+        setFixedMonthlyUses(financial.fixedMonthlyUses);
         setCashStatus(financial.cashStatus);
         setLastClosedDate(financial.lastClosedDate);
       } catch {
@@ -336,6 +340,7 @@ export default function AdminDashboard() {
         setExpenses(fresh.expenses);
         setTips(fresh.tips);
         setManualCharges(fresh.manualCharges);
+        setFixedMonthlyUses(fresh.fixedMonthlyUses);
         setCashStatus(fresh.cashStatus);
       } catch {
         console.warn('La operación quedó guardada; el resumen financiero se actualizará al reingresar.');
@@ -888,6 +893,8 @@ const handleAddBarber = async () => {
   const filteredManualCharges = safeManualCharges.filter((c) => {
     return isWithinPeriod(c.createdAt, period, selectedMonth);
   });
+  const filteredMonthlyUses = fixedMonthlyUses.filter((use) =>
+    isWithinPeriod(`${use.occurrence_date}T12:00:00-03:00`,period,selectedMonth));
 
   const auditedAppointments = safeAppointments.filter((apt) => {
     if (apt.status !== 'completado') return false;
@@ -907,6 +914,9 @@ const handleAddBarber = async () => {
     if (auditBarberId !== 'todos' && c.barberId !== auditBarberId) return false;
     return true;
   });
+  const auditedMonthlyUses = fixedMonthlyUses.filter((use) =>
+    (!auditDate || use.occurrence_date === auditDate) &&
+    (auditBarberId === 'todos' || use.barber_id === auditBarberId));
 
   const auditedTips = safeTips.filter((t) => {
     if (auditDate) {
@@ -951,7 +961,7 @@ const handleAddBarber = async () => {
 
       return {
         barber,
-        cutsCount: brbApts.length,
+        cutsCount: brbApts.length + auditedMonthlyUses.filter((use) => use.barber_id === barber.id).length,
         totalGen,
         commissionEarned,
         tipsEarned,
@@ -960,7 +970,7 @@ const handleAddBarber = async () => {
 
   const barberFinancials = safeBarbers.map((barber) => {
     const barberApts = filteredAppointments.filter((apt) => apt.barberId === barber.id);
-    const cutsCount = barberApts.length;
+    const cutsCount = barberApts.length + filteredMonthlyUses.filter((use) => use.barber_id === barber.id).length;
     
     const grossFromAppointments = barberApts.reduce(
       (sum, apt) => sum + Number(apt.priceSnapshot ?? apt.servicePrice),
@@ -1178,7 +1188,7 @@ const handleAddBarber = async () => {
               <button type="button" onClick={() => setActiveTab('agenda')} className="rounded-xl border border-zinc-700 p-3 text-left text-sm hover:bg-zinc-800">📅 Agenda y clientes →</button>
               <button type="button" onClick={() => setActiveTab('caja')} className="rounded-xl border border-zinc-700 p-3 text-left text-sm hover:bg-zinc-800">💳 Caja y movimientos →</button>
               <button type="button" onClick={() => setActiveTab('facturacion')} className="rounded-xl border border-zinc-700 p-3 text-left text-sm hover:bg-zinc-800">📊 Ganancias por barbero →</button>
-            </div></div><div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5"><h3 className="mb-3 font-bold">Caja actual</h3><span className={'rounded-full px-3 py-1 text-xs font-bold '+(cashStatus==='abierta'?'bg-emerald-500/20 text-emerald-300':'bg-rose-500/20 text-rose-300')}>{cashStatus}</span><p className="mt-4 text-sm text-zinc-400">{filteredAppointments.length} turnos completados en el período consultado.</p><p className="mt-2 text-xs text-zinc-500">Las ganancias del negocio no equivalen al efectivo contado ni a retiros de propietarios.</p><button type="button" onClick={() => setActiveTab('caja')} className="mt-5 w-full rounded-xl bg-emerald-400 p-3 text-xs font-bold text-zinc-950">Ir a caja →</button></div></div>
+            </div></div><div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5"><h3 className="mb-3 font-bold">Caja actual</h3><span className={'rounded-full px-3 py-1 text-xs font-bold '+(cashStatus==='abierta'?'bg-emerald-500/20 text-emerald-300':'bg-rose-500/20 text-rose-300')}>{cashStatus}</span><p className="mt-4 text-sm text-zinc-400">{filteredAppointments.length + filteredMonthlyUses.length} cortes realizados en el período consultado.</p><p className="mt-2 text-xs text-zinc-500">Las ganancias del negocio no equivalen al efectivo contado ni a retiros de propietarios.</p><button type="button" onClick={() => setActiveTab('caja')} className="mt-5 w-full rounded-xl bg-emerald-400 p-3 text-xs font-bold text-zinc-950">Ir a caja →</button></div></div>
           </div>}
 
           {activeTab === 'caja' && (
@@ -1811,7 +1821,7 @@ const handleAddBarber = async () => {
                     <TrendingUp className="w-4 h-4 text-zinc-200" />
                   </div>
                   <p className="text-2xl font-extrabold text-white">${grossRevenueTotal}</p>
-                  <p className="text-[11px] text-zinc-500">{filteredAppointments.length} turnos completados</p>
+                  <p className="text-[11px] text-zinc-500">{filteredAppointments.length + filteredMonthlyUses.length} cortes realizados</p>
                 </div>
 
                 <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 space-y-1">

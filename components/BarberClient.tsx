@@ -22,6 +22,7 @@ import {
   AppointmentItem,
   TipItem,
   ManualChargeItem,
+  FixedMonthlyUseItem,
   unlockBarberPanelWithPin,
   getBarberDashboardSnapshot,
   getLiveAgendaSnapshot,
@@ -96,6 +97,7 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
   const [barberAppointments, setBarberAppointments] = useState<AppointmentItem[]>([]);
   const [barberTips, setBarberTips] = useState<TipItem[]>([]);
   const [barberCharges, setBarberCharges] = useState<ManualChargeItem[]>([]);
+  const [fixedMonthlyUses, setFixedMonthlyUses] = useState<FixedMonthlyUseItem[]>([]);
   const [commissionRate, setCommissionRate] = useState<number>(50);
   const [isOwner, setIsOwner] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
@@ -148,6 +150,7 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
       setBarberAppointments(sortAppointmentsChronologically(snapshot.appointments));
       setBarberTips(snapshot.tips);
       setBarberCharges(snapshot.manualCharges);
+      setFixedMonthlyUses(snapshot.fixedMonthlyUses);
     } catch (err: any) {
       // Ante una lectura incompleta no mostrar cifras vacías como reales.
       setIsUnlocked(false);
@@ -187,6 +190,7 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
         setBarberAppointments(sortAppointmentsChronologically(financial.appointments));
         setBarberTips(financial.tips);
         setBarberCharges(financial.manualCharges);
+        setFixedMonthlyUses(financial.fixedMonthlyUses);
         setCashOpen(financial.cashOpen);
         setCommissionRate(financial.commissionRate);
         setIsOwner(financial.isOwner);
@@ -216,6 +220,7 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
         setBarberAppointments(sortAppointmentsChronologically(fresh.appointments));
         setBarberTips(fresh.tips);
         setBarberCharges(fresh.manualCharges);
+        setFixedMonthlyUses(fresh.fixedMonthlyUses);
         setCashOpen(fresh.cashOpen);
       } catch {
         console.warn('Turno guardado; no se pudieron refrescar las finanzas.');
@@ -324,6 +329,9 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
   const monthlyCharges = barberCharges.filter((c) =>
     isWithinSelectedMonth(c.createdAt, selectedMonth)
   );
+  const monthlyFixedUses = fixedMonthlyUses.filter((use) =>
+    isWithinSelectedMonth(`${use.occurrence_date}T12:00:00-03:00`,selectedMonth));
+  const dailyFixedUses = fixedMonthlyUses.filter((use) => !auditDate || use.occurrence_date===auditDate);
 
   const grossFromAppointments = completedAppointments.reduce(
     (sum, a) => sum + Number(a.priceSnapshot ?? a.servicePrice),
@@ -708,7 +716,7 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
                 <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 space-y-1">
                   <span className="text-xs text-zinc-400">{isOwner ? 'Aporte al negocio en esta fecha' : 'Comisión generada en esta fecha'}</span>
                   <p className="text-2xl font-extrabold text-emerald-400">${isOwner ? dailyToBusiness : dailyCommission}</p>
-                  <span className="text-[11px] text-zinc-500">{dailyAppointments.length} turnos normales completados + {dailyCharges.length} cobros (incluidos fijos)</span>
+                  <span className="text-[11px] text-zinc-500">{dailyAppointments.length + dailyFixedUses.length} cortes realizados + {dailyCharges.length} cobros (incluidos fijos y mensualidades)</span>
                 </div>
                 <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 space-y-1">
                   <span className="text-xs text-zinc-400">Propinas de la fecha</span>
@@ -719,8 +727,8 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-1">
-                <span className="text-xs text-zinc-400">Turnos realizados este mes</span>
-                <p className="text-3xl font-extrabold text-white">{completedAppointments.length}</p>
+                <span className="text-xs text-zinc-400">Cortes realizados este mes</span>
+                <p className="text-3xl font-extrabold text-white">{completedAppointments.length + monthlyFixedUses.length}</p>
               </div>
 
               <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-1">

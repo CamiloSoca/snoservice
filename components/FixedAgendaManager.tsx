@@ -4,6 +4,7 @@ import type {BarberItem,ServiceItem,ShopConfig} from '@/lib/booking-store';
 import {resolvedHours} from '@/lib/weekly-hours';
 import {fixedBookingStartSlots} from '@/lib/fixed-booking-time-slots';
 import {upcomingFixedDates} from '@/lib/fixed-booking-occurrence';
+import FixedMonthlyPanel, {type MonthlyPlan} from '@/components/FixedMonthlyPanel';
 type Fixed={
   id:string;barber_id:string;service_id:string;client_name:string;client_phone:string;
   client_email:string;weekday:number;time_slot:string;duration_minutes:number;
@@ -31,6 +32,8 @@ export default function FixedAgendaManager({barbers,services,shopSchedule}:{
  const [dateByFixed,setDateByFixed]=useState<Record<string,string>>({});
  const [error,setError]=useState('');
  const [notice,setNotice]=useState('');
+ const [monthlyPlans,setMonthlyPlans]=useState<MonthlyPlan[]>([]);
+ const [monthlyMonth,setMonthlyMonth]=useState('');
  const refresh=useCallback(async()=>{
    try{
      const r=await fetch('/api/admin/fixed-bookings',{cache:'no-store',credentials:'same-origin'});
@@ -40,7 +43,16 @@ export default function FixedAgendaManager({barbers,services,shopSchedule}:{
    }catch(e){setError(e instanceof Error?e.message:'Error de agenda fija.');}
    finally{setLoading(false);}
  },[]);
- useEffect(()=>{void refresh();},[refresh]);
+ const refreshMonthly=useCallback(async()=>{
+   try{
+     const response=await fetch('/api/admin/fixed-subscriptions',{cache:'no-store',credentials:'same-origin'});
+     const data=await response.json().catch(()=>({}));
+     if(!response.ok)throw new Error(data.error||'No se pudieron cargar las mensualidades.');
+     setMonthlyPlans(Array.isArray(data.items)?data.items:[]);
+     setMonthlyMonth(data.month||'');
+   }catch(e){setError(e instanceof Error?e.message:'Error al cargar abonos.');}
+ },[]);
+ useEffect(()=>{void refresh();void refreshMonthly();},[refresh,refreshMonthly]);
  const selectedBarber=barbers.find(b=>b.id===draft.barberId&&b.active!==false);
  const selectedService=services.find(s=>s.id===draft.serviceId&&s.active!==false);
  const daySchedule=selectedBarber
@@ -206,6 +218,10 @@ export default function FixedAgendaManager({barbers,services,shopSchedule}:{
            {item.active?'Activo':'Pausado'}
          </span>
        </div>
+      {barbers.some(barber=>barber.id===item.barber_id&&barber.isOwner===true)&&monthlyMonth&&
+        <FixedMonthlyPanel fixedBookingId={item.id} key={item.id}
+          plan={monthlyPlans.find(plan=>plan.fixed_booking_id===item.id)}
+          month={monthlyMonth} onUpdated={refreshMonthly}/>}
        <div className="flex flex-wrap gap-2">
          <button type="button" onClick={()=>{setDraft({id:item.id,barberId:item.barber_id,serviceId:item.service_id,
            clientName:item.client_name,clientPhone:item.client_phone,clientEmail:item.client_email,

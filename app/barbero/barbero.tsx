@@ -396,7 +396,7 @@ function BarberPageContent() {
                   ¡Turno confirmado con {confirmedApt.barberName}!
                 </h3>
                 <p className="text-xs text-zinc-400">
-                  Te enviamos el comprobante a <strong className="text-white">{confirmedApt.clientEmail}</strong>
+                  El turno quedó confirmado. El envío del comprobante por email depende de que el correo esté configurado.
                 </p>
                 <button
                   type="button"

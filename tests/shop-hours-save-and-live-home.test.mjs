@@ -19,7 +19,7 @@ test('local hours have an independent validated write and read-after-write respo
  assert.match(server,/normalizeHours\(body\.schedule\)/);
  assert.match(server,/\.update\(\{schedule\}\)\.eq\('id',SHOP_UUID\)/);
  assert.match(server,/\.select\('schedule'\)\.maybeSingle\(\)/);
- assert.match(server,/revalidateTag\('public-shop-'\+SHOP_UUID,\{expire:0\}\)/);
+ assert.match(server,/revalidateTag\(publicShopCacheTag\(process\.env\.NEXT_PUBLIC_SUPABASE_URL/);
  assert.match(store,/operation:'SAVE_SHOP_HOURS'/);
  assert.match(store,/invalidatePublicShopData\(\)/);
 });
@@ -50,6 +50,7 @@ test('public hours come from the dynamic catalog and refresh frequently',()=>{
  assert.match(publicRoute,/'Cache-Control': 'no-store'/);
  assert.match(provider,/setInterval\(refreshIfNeeded, 10_000\)/);
  assert.match(browserStore,/REVALIDATE_AFTER_MS = 15 \* 1000/);
+ assert.match(browserStore,/publicShopStorageKey\(process\.env\.NEXT_PUBLIC_SUPABASE_URL/);
  assert.match(server,/case 'SAVE_BARBERS'/);
 });
 test('saving shop or barber weekly hours increments agenda revision without touching money',()=>{

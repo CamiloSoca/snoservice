@@ -21,8 +21,8 @@ test('solo efectivo y transferencia en el local',()=>{
 test('el detalle obliga a elegir método para completar',()=>{
   assert.match(modal,/paymentMethod === option.value/);
   assert.match(modal,/Seleccioná cómo pagó el cliente/);
-  assert.match(modal,/disabled=\{busy \|\| !completeAllowed \|\| !paymentMethod\}/);
-  assert.match(modal,/onComplete\(appointment, paymentMethod!\)/);
+  assert.match(modal,/disabled=\{busy \|\| !completeAllowed \|\| \(!paymentMethod&&!prepaid\)\}/);
+  assert.match(modal,/onComplete\(appointment, paymentMethod\)/);
   assert.match(modal,/El cobro se realiza en el local/);
 });
 

@@ -23,7 +23,9 @@ export async function POST(request:Request){
   const fixedBookingId=String(body.fixedBookingId||'');
   const occurrenceDate=String(body.occurrenceDate||'');
   const paymentMethod=body.paymentMethod;
-  if(!isValidUUID(fixedBookingId)||!isRealDate(occurrenceDate)||!isOnSitePaymentMethod(paymentMethod)){
+  const mode=body.mode||'charge';
+  if((mode!=='charge'&&mode!=='subscription')||!isValidUUID(fixedBookingId)||!isRealDate(occurrenceDate)||
+     (mode==='charge'&&!isOnSitePaymentMethod(paymentMethod))){
     return NextResponse.json({error:'Turno, fecha o medio de pago inválidos.'},{status:400,headers});
   }
   const db=getSupabaseServer();
@@ -37,14 +39,16 @@ export async function POST(request:Request){
   // Igual que un turno normal: no completar si la caja no está abierta.
   const denied=await requireOpenCash();
   if(denied)return denied;
-  const {data,error}=await db.rpc('complete_fixed_booking_occurrence',{
-    p_shop_id:SHOP_UUID,
-    p_fixed_id:fixedBookingId,
-    p_occurrence:occurrenceDate,
-    p_payment_method:paymentMethod,
-  });
+  const {data,error}=mode==='subscription'
+    ?await db.rpc('complete_fixed_monthly_occurrence',{
+      p_shop_id:SHOP_UUID,p_fixed_id:fixedBookingId,p_occurrence:occurrenceDate,
+    })
+    :await db.rpc('complete_fixed_booking_occurrence',{
+      p_shop_id:SHOP_UUID,p_fixed_id:fixedBookingId,
+      p_occurrence:occurrenceDate,p_payment_method:paymentMethod,
+    });
   if(error){
-    if(error.code==='23505')return NextResponse.json({error:'Esta semana ya fue completada y cobrada.'},{status:409,headers});
+    if(error.code==='23505')return NextResponse.json({error:'Esta fecha ya fue completada.'},{status:409,headers});
     if(error.code==='23514')return NextResponse.json({
       error:'No se pudo completar: verificá que el turno ya haya empezado, esté activo y la caja esté abierta.',
     },{status:409,headers});
@@ -53,5 +57,6 @@ export async function POST(request:Request){
       {status:503,headers});
   }
   if(!isValidUUID(String(data||'')))return NextResponse.json({error:'No se confirmó el cobro.'},{status:503,headers});
-  return NextResponse.json({ok:true,chargeId:data},{headers});
+  return NextResponse.json({ok:true,coveredBySubscription:mode==='subscription',
+    ...(mode==='subscription'?{usageId:data}:{chargeId:data})},{headers});
 }

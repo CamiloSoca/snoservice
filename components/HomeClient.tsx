@@ -11,7 +11,6 @@ import {
   Moon,
   Phone,
   Lock,
-  Star,
   ExternalLink,
   UserCheck,
   Calendar,
@@ -22,58 +21,6 @@ import {
   DEFAULT_SHOP_CONFIG,
 } from '@/lib/booking-store';
 import type { PublicShopData } from '@/lib/public-shop-data';
-
-const INSTAGRAM_POSTS = [
-  {
-    id: 'ig-1',
-    image:
-      'https://zdhuymfapknpogdrbksn.supabase.co/storage/v1/object/public/media/0f5ab934-db55-46d2-a829-ecd59150d61a/service/5aac5325-e7d8-4d2c-a6e8-2262c48ef195.jpg?v=1791944149645',
-    tag: 'Corte',
-  },
-  {
-    id: 'ig-2',
-    image:
-      'https://zdhuymfapknpogdrbksn.supabase.co/storage/v1/object/public/media/0f5ab934-db55-46d2-a829-ecd59150d61a/service/d1272363-e728-46e0-8b74-1ef16cd029f7.jpg?v=1792010387277',
-    tag: 'Mechas',
-  },
-  {
-    id: 'ig-3',
-    image:
-      'https://zdhuymfapknpogdrbksn.supabase.co/storage/v1/object/public/media/0f5ab934-db55-46d2-a829-ecd59150d61a/service/2dcba77d-0406-4b85-bb26-cd291eb34c5f.jpg?v=1791944389044',
-    tag: 'Color Global',
-  },
-  {
-    id: 'ig-4',
-    image:
-      'https://zdhuymfapknpogdrbksn.supabase.co/storage/v1/object/public/media/0f5ab934-db55-46d2-a829-ecd59150d61a/branch/f9079cf5-877b-4054-aa9b-8345d7679b0e.jpg?v=1792010015139',
-    tag: 'Local',
-  },
-];
-
-const GOOGLE_REVIEWS = [
-  {
-    id: 'rev-1',
-    author: 'Matías Cabrera',
-    rating: 5,
-    comment:
-      'Excelente atención. Reservé turno por la web y me atendieron en hora.',
-  },
-  {
-    id: 'rev-2',
-    author: 'Facundo Silvera',
-    rating: 5,
-    comment: 'Impecable el trabajo y muy práctico para agendar desde el celular.',
-  },
-  {
-    id: 'rev-3',
-    author: 'Rodrigo Techera',
-    rating: 5,
-    comment: 'Muy buena atención y los horarios son súper cómodos.',
-  },
-];
-
-const DEFAULT_BANNER_URL =
-  'https://zdhuymfapknpogdrbksn.supabase.co/storage/v1/object/public/media/0f5ab934-db55-46d2-a829-ecd59150d61a/branch/f9079cf5-877b-4054-aa9b-8345d7679b0e.jpg?v=1792010015139';
 
 function InstagramSvg({ className = 'w-5 h-5' }: { className?: string }) {
   return (
@@ -89,29 +36,6 @@ function InstagramSvg({ className = 'w-5 h-5' }: { className?: string }) {
       <rect width="20" height="20" x="2" y="2" rx="5" ry="5" />
       <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
       <line x1="17.5" x2="17.51" y1="6.5" y2="6.5" />
-    </svg>
-  );
-}
-
-function GoogleLogoSvg({ className = 'w-5 h-5' }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24">
-      <path
-        fill="#4285F4"
-        d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"
-      />
-      <path
-        fill="#34A853"
-        d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.29v3.14C3.26 21.3 7.31 24 12 24z"
-      />
-      <path
-        fill="#FBBC05"
-        d="M5.28 14.24c-.24-.72-.38-1.49-.38-2.24s.14-1.52.38-2.24V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.99-3.14z"
-      />
-      <path
-        fill="#EA4335"
-        d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96z"
-      />
     </svg>
   );
 }
@@ -140,16 +64,9 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
     ? 'bg-zinc-100 hover:bg-white text-zinc-950 font-bold'
     : 'bg-zinc-950 hover:bg-zinc-800 text-white font-bold';
 
-  const bgImage =
-    shopConfig.backgroundImageUrl ||
-    'https://www.bookly.uy/uploads/medium/c380e86bd0228e2fce4f447ba1742899_medium-1401x1123.png';
-  
-  const bannerUrl = shopConfig.coverImageUrl || shopConfig.backgroundImageUrl || DEFAULT_BANNER_URL;
-  
-  // Forzamos a que si hay logo en Supabase lo use, sino cae al default
-  const logoImage = shopConfig.logoUrl && shopConfig.logoUrl.trim() !== '' 
-    ? shopConfig.logoUrl 
-    : DEFAULT_SHOP_CONFIG.logoUrl;
+  const bgImage = shopConfig.backgroundImageUrl || '';
+  const bannerUrl = shopConfig.coverImageUrl || shopConfig.backgroundImageUrl || '';
+  const logoImage = shopConfig.logoUrl?.trim() || '';
 
   const shopCity = shopConfig.city || 'Montevideo';
   const shopAddress = shopConfig.address || DEFAULT_SHOP_CONFIG.address;
@@ -257,15 +174,19 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
         <section className="max-w-5xl mx-auto px-4 pt-4 sm:pt-5">
           <div className="relative rounded-3xl overflow-hidden border border-zinc-800 text-white shadow-2xl">
             <div className="absolute inset-0">
-              <Image
-                src={bannerUrl}
-                alt={shopConfig.name}
-                fill
-                preload
-                sizes="(max-width: 640px) 100vw, 1024px"
-                quality={72}
-                className="object-cover object-center opacity-75"
-              />
+              {bannerUrl ? (
+                <Image
+                  src={bannerUrl}
+                  alt={shopConfig.name}
+                  fill
+                  preload
+                  sizes="(max-width: 640px) 100vw, 1024px"
+                  quality={72}
+                  className="object-cover object-center opacity-75"
+                />
+              ) : (
+                <div className="absolute inset-0 bg-gradient-to-br from-zinc-800 via-zinc-900 to-zinc-950" />
+              )}
               <div className="absolute inset-0 bg-gradient-to-r from-zinc-950/95 via-zinc-950/80 to-zinc-950/40" />
             </div>
 
@@ -505,91 +426,12 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
             </div>
 
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              {INSTAGRAM_POSTS.map((post) => (
-                <div
-                  key={post.id}
-                  className="relative aspect-square rounded-2xl overflow-hidden border border-zinc-800 bg-zinc-900"
-                >
-                  <Image
-                    src={post.image}
-                    alt={post.tag}
-                    fill
-                    sizes="(max-width: 640px) 50vw, 25vw"
-                    quality={65}
-                    loading="lazy"
-                    className="object-cover"
-                  />
-                  <div className="absolute bottom-2.5 left-2.5">
-                    <span className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-zinc-950/80 text-white backdrop-blur-sm border border-white/10">
-                      {post.tag}
-                    </span>
-                  </div>
-                </div>
-              ))}
+              <p className="col-span-full py-8 text-center text-sm text-zinc-400">No hay publicaciones con imágenes configuradas.</p>
             </div>
           </div>
         </section>
 
-        {/* RESEÑAS EN GOOGLE */}
-        <section id="resenas-google" className="max-w-5xl mx-auto px-4 py-3 pb-10">
-          <div
-            className={`border rounded-3xl p-5 sm:p-7 space-y-5 backdrop-blur-sm ${
-              isDark ? 'bg-zinc-900/75 border-zinc-800/90' : 'bg-white/90 border-zinc-200 shadow-sm'
-            }`}
-          >
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center space-x-3">
-                <div
-                  className={`w-10 h-10 rounded-xl border flex items-center justify-center shrink-0 ${
-                    isDark ? 'bg-zinc-950 border-zinc-800' : 'bg-zinc-50 border-zinc-200'
-                  }`}
-                >
-                  <GoogleLogoSvg className="w-5 h-5" />
-                </div>
-                <div>
-                  <h2 className="text-base sm:text-lg font-extrabold tracking-tight">
-                    Opiniones en Google
-                  </h2>
-                  <p className={`text-xs ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                    {shopAddress}
-                  </p>
-                </div>
-              </div>
 
-              <div className="flex items-center space-x-1">
-                <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
-                <span className="text-xs font-bold">4.9</span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-              {GOOGLE_REVIEWS.map((review) => (
-                <div
-                  key={review.id}
-                  className={`rounded-2xl border p-4 space-y-2.5 ${
-                    isDark ? 'bg-zinc-950/70 border-zinc-800/90' : 'bg-zinc-50/70 border-zinc-200'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-xs">{review.author}</span>
-                    <div className="flex items-center space-x-0.5">
-                      {Array.from({ length: review.rating }).map((_, i) => (
-                        <Star key={i} className="w-3 h-3 text-amber-400 fill-amber-400" />
-                      ))}
-                    </div>
-                  </div>
-                  <p
-                    className={`text-xs leading-relaxed ${
-                      isDark ? 'text-zinc-300' : 'text-zinc-600'
-                    }`}
-                  >
-                    &ldquo;{review.comment}&rdquo;
-                  </p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
       </div>
 
       <footer

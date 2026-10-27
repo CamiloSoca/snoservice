@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server';
 import {revalidateTag} from 'next/cache';
 import { getSupabaseServer, SHOP_UUID } from '@/lib/supabase-server';
+import {publicShopCacheTag} from '@/lib/public-shop-cache';
 import { requireAdminSession, verifyCsrfOrigin } from '@/lib/session';
 import { requireOpenCash } from '@/lib/cash-guard';
 import {appointmentTimeState} from '@/lib/appointment-rules';
@@ -266,7 +267,7 @@ export async function POST(request: Request) {
             }, {status: 503});
           }
         }
-        revalidateTag('public-shop-'+SHOP_UUID,{expire:0});
+        revalidateTag(publicShopCacheTag(process.env.NEXT_PUBLIC_SUPABASE_URL || '', SHOP_UUID),{expire:0});
         return NextResponse.json({ok: true});
       }
       case 'DELETE_BARBER': {
@@ -375,7 +376,7 @@ export async function POST(request: Request) {
         }
         if(!data?.schedule) return NextResponse.json({error:'No se encontró la configuración del local.'},{status:404});
         // Expiración inmediata para que los próximos visitantes no reciban el horario viejo.
-        revalidateTag('public-shop-'+SHOP_UUID,{expire:0});
+        revalidateTag(publicShopCacheTag(process.env.NEXT_PUBLIC_SUPABASE_URL || '', SHOP_UUID),{expire:0});
         return NextResponse.json({ok:true,schedule:data.schedule},{
           headers:{'Cache-Control':'no-store'},
         });
@@ -416,7 +417,7 @@ export async function POST(request: Request) {
           return NextResponse.json({error:'No se pudo guardar el local. Comprobá los datos e intentá nuevamente.'},{status:503});
         }
         if (!data) return NextResponse.json({error:'No se encontró la barbería.'},{status:404});
-        revalidateTag('public-shop-'+SHOP_UUID,{expire:0});
+        revalidateTag(publicShopCacheTag(process.env.NEXT_PUBLIC_SUPABASE_URL || '', SHOP_UUID),{expire:0});
         return NextResponse.json({ok:true,schedule:data.schedule},{headers:{'Cache-Control':'no-store'}});
       }
 

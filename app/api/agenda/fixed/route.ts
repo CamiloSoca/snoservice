@@ -40,14 +40,41 @@ export async function GET(request:Request){
   : {data:[],error:null};
  if(chargesError)return NextResponse.json({error:'No se pudo comprobar cuáles fijos están completados.'},
    {status:503,headers});
- const items=rows.map((r:any)=>({
+  const ids=rows.map(r=>r.id);
+  const plansResult=ids.length?await db.from('fixed_monthly_plans')
+    .select('fixed_booking_id,monthly_price,included_cuts,active')
+    .eq('shop_id',SHOP_UUID).in('fixed_booking_id',ids)
+    :{data:[],error:null};
+  if(plansResult.error)return NextResponse.json({error:'No se pudieron consultar los abonos.'},{status:503,headers});
+  const periodsResult=ids.length?await db.from('fixed_monthly_periods')
+    .select('id,fixed_booking_id,period_month,included_cuts')
+    .eq('shop_id',SHOP_UUID).in('fixed_booking_id',ids)
+    .gte('period_month',start.slice(0,7)+'-01').lte('period_month',end.slice(0,7)+'-01')
+    :{data:[],error:null};
+  if(periodsResult.error)return NextResponse.json({error:'No se pudieron consultar los pagos de abono.'},{status:503,headers});
+  const periodIds=(periodsResult.data||[]).map(p=>p.id);
+  const usesResult=periodIds.length?await db.from('fixed_monthly_uses')
+    .select('id,fixed_booking_id,period_id,occurrence_date')
+    .eq('shop_id',SHOP_UUID).in('period_id',periodIds)
+    :{data:[],error:null};
+  if(usesResult.error)return NextResponse.json({error:'No se pudieron consultar los cortes abonados.'},{status:503,headers});
+  const periods=(periodsResult.data||[]).map(p=>({
+    fixedBookingId:p.fixed_booking_id,month:p.period_month,
+    includedCuts:p.included_cuts,used:(usesResult.data||[]).filter(u=>u.period_id===p.id).length,
+  }));
+  const items=rows.map(r=>{
+   const service=Array.isArray(r.services)?r.services[0]:r.services;
+   const barber=Array.isArray(r.barbers)?r.barbers[0]:r.barbers;
+   return ({
    id:r.id,barberId:r.barber_id,serviceId:r.service_id,
    clientName:r.client_name,clientPhone:r.client_phone,clientEmail:r.client_email,
    weekday:r.weekday,timeSlot:r.time_slot,durationMinutes:r.duration_minutes,
    startDate:r.start_date,endDate:r.end_date,skippedDates:r.skipped_dates||[],
-   serviceName:r.services?.name||'Servicio',servicePrice:Number(r.services?.price||0),
-   barberName:r.barbers?.name||'Barbero',
- }));
+   serviceName:service?.name||'Servicio',servicePrice:Number(service?.price||0),
+   barberName:barber?.name||'Barbero',
+   monthlyPlan:(plansResult.data||[]).find(p=>p.fixed_booking_id===r.id)||null,
+  });
+ });
  const completed=(charges||[]).map(c=>({
    fixedBookingId:c.fixed_booking_id,
    occurrenceDate:c.fixed_occurrence_date,
@@ -55,5 +82,9 @@ export async function GET(request:Request){
    amount:Number(c.amount||0),
    paymentMethod:c.payment_method,
  }));
- return NextResponse.json({items,completed},{headers});
+ const completedBySubscription=(usesResult.data||[])
+   .filter(u=>u.occurrence_date>=start&&u.occurrence_date<=end)
+   .map(u=>({fixedBookingId:u.fixed_booking_id,occurrenceDate:u.occurrence_date,
+     chargeId:u.id,amount:0,coveredBySubscription:true}));
+ return NextResponse.json({items,completed:[...completed,...completedBySubscription],periods},{headers});
 }

@@ -76,6 +76,7 @@ export interface AppointmentItem {
   isFixed?: boolean;
   fixedBookingId?: string;
   fixedDate?: string;
+  fixedSubscription?: {active:boolean;paid:boolean;used:number;remaining:number;eligible:boolean;covered?:boolean};
   paymentMethod?: 'cash' | 'transfer' | null;
   id: string;
   code: string;
@@ -529,9 +530,18 @@ export interface AdminDashboardSnapshot {
   expenses: ExpenseItem[];
   tips: TipItem[];
   manualCharges: ManualChargeItem[];
+  fixedMonthlyUses: FixedMonthlyUseItem[];
   config: ShopConfig;
   cashStatus: 'abierta' | 'cerrada';
   lastClosedDate: string;
+}
+
+export interface FixedMonthlyUseItem {
+  fixed_booking_id: string;
+  period_id: string;
+  occurrence_date: string;
+  completed_at: string;
+  barber_id?: string | null;
 }
 
 // Reemplaza las ocho peticiones iniciales del admin por una sola petición.
@@ -621,6 +631,7 @@ export async function getAdminDashboardSnapshot(): Promise<AdminDashboardSnapsho
   }));
   const tips = (payload.tips || []).map(mapFinancialEntry);
   const manualCharges = (payload.manualCharges || []).map(mapFinancialEntry);
+  const fixedMonthlyUses = (payload.fixedMonthlyUses || []) as FixedMonthlyUseItem[];
 
   const shop = payload.shop;
   const config: ShopConfig = shop ? {
@@ -647,6 +658,7 @@ export async function getAdminDashboardSnapshot(): Promise<AdminDashboardSnapsho
     expenses,
     tips,
     manualCharges,
+    fixedMonthlyUses,
     config,
     cashStatus: cash?.status === 'abierta' ? 'abierta' : 'cerrada',
     lastClosedDate: cash?.closed_at ? getMontevideoDateKey(cash.closed_at) : '',
@@ -823,6 +835,7 @@ export interface BarberDashboardSnapshot {
   appointments: AppointmentItem[];
   tips: TipItem[];
   manualCharges: ManualChargeItem[];
+  fixedMonthlyUses: FixedMonthlyUseItem[];
   cashOpen: boolean;
   commissionRate: number;
   isOwner: boolean;
@@ -843,6 +856,7 @@ export async function getBarberDashboardSnapshot(): Promise<BarberDashboardSnaps
     appointments: (response.appointments || []) as AppointmentItem[],
     tips: (response.tips || []) as TipItem[],
     manualCharges: (response.manualCharges || []) as ManualChargeItem[],
+    fixedMonthlyUses: (response.fixedMonthlyUses || []) as FixedMonthlyUseItem[],
     cashOpen: response.cashOpen === true,
     commissionRate: Number(response.commissionRate ?? 50),
     isOwner: response.isOwner === true,
