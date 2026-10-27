@@ -182,3 +182,23 @@ AS $function$
     ), '[]'::jsonb)
   );
 $function$;
+
+
+-- Clasificación explícitamente confirmada por el propietario el 27/10/2026.
+-- No actualiza importes, métodos de pago, autores ni comisiones.
+UPDATE public.manual_charges AS m
+SET
+  service_id = CASE WHEN known.kind = 'Corte' THEN '94455fac-f8c6-41de-9dbd-41de989fe771'::uuid ELSE NULL END,
+  service_name_snapshot = known.kind
+FROM (VALUES
+  ('de9a17c2-8b48-40e7-b11c-71241fc98747'::uuid, 'Cliente'::text, 400::numeric, 'Corte'::text),
+  ('e6e3ad73-6a2b-443d-9c69-cda4fe9fedea'::uuid, 'Carlos'::text, 200::numeric, 'Barba'::text),
+  ('b3e1364d-11af-4bcf-b61c-34d5411100f2'::uuid, 'Eze'::text, 400::numeric, 'Corte'::text),
+  ('27b7eb02-cc07-4863-ae0f-19c1c330b924'::uuid, 'Elias'::text, 400::numeric, 'Corte'::text),
+  ('3539edeb-844f-4324-896d-1ed5b413a705'::uuid, 'Cliente'::text, 400::numeric, 'Corte'::text)
+) AS known(id,note,amount,kind)
+WHERE m.id = known.id
+  AND m.shop_id = '11111111-1111-1111-1111-111111111113'::uuid
+  AND m.barber_id = '04cca9b1-bb52-468b-8653-86c507bbb535'::uuid
+  AND m.note = known.note AND m.amount = known.amount
+  AND m.service_name_snapshot IS NULL;
