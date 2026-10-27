@@ -107,7 +107,7 @@ AS $function$
       ) c
     ), '[]'::jsonb)
   );
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION public.barber_bootstrap_snapshot(p_shop_id uuid, p_barber_id uuid)
@@ -182,5 +182,5 @@ AS $function$
       ) c
     ), '[]'::jsonb)
   );
-$function$
+$function$;
 
