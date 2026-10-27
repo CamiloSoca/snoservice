@@ -5,7 +5,8 @@ import { readFileSync } from 'node:fs';
 const read = path => readFileSync(new URL('../' + path, import.meta.url), 'utf8');
 const home = read('components/HomeClient.tsx');
 const nav = read('components/BottomNav.tsx');
-const profile = read('app/equipo/[slug]/page.tsx');
+const profile = read('components/PublicBarberProfile.tsx');
+const profileRoute = read('app/equipo/[slug]/page.tsx');
 const booking = read('components/BookingClient.tsx');
 const provider = read('components/PublicShopProvider.tsx');
 
@@ -34,6 +35,7 @@ test('navegación pública ofrece Equipo y Más, con acceso staff y admin intact
 });
 test('ficha del barbero usa catálogo público y enlaza al flujo de reserva existente', () => {
   assert.match(profile, /PublicShopGate variant="home"/);
+  assert.match(profileRoute, /export const instant = false/);
   assert.match(profile, /shop\.barbers\.find/);
   assert.match(profile, /barber\.imageUrl/);
   assert.match(profile, /shop\.services/);
