@@ -392,17 +392,21 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
           </div>
         </section>
 
-        {/* HORARIOS Y UBICACIÓN: dos tarjetas visibles, sin menús desplegables */}
-        <section id="info" className="mx-auto max-w-5xl scroll-mt-24 px-4 pb-6 pt-5" aria-label="Horarios y ubicación">
+        {/* HORARIOS Y UBICACIÓN: información real, dos tarjetas compactas visibles */}
+        <section id="info" className="mx-auto max-w-5xl scroll-mt-24 px-4 pb-7 pt-5" aria-label="Horarios y ubicación">
           <div className="grid grid-cols-2 items-stretch gap-3 sm:gap-4">
-            <div className={['min-w-0 rounded-2xl border p-3.5 sm:p-6',
-              isDark ? 'border-zinc-800 bg-zinc-900/75' : 'border-zinc-200 bg-white/90'
+            <div className={['min-w-0 rounded-2xl border p-3 sm:p-5',
+              isDark ? 'border-zinc-800 bg-zinc-900/80' : 'border-zinc-200 bg-white/95 shadow-sm'
             ].join(' ')}>
-              <div className="mb-3 flex items-center gap-2">
-                <Clock className="h-4 w-4 shrink-0 text-emerald-400" aria-hidden="true" />
-                <h2 className="text-sm font-extrabold sm:text-base">Horarios</h2>
+              <div className={['flex items-center gap-2 border-b pb-3',
+                isDark ? 'border-zinc-800' : 'border-zinc-200'
+              ].join(' ')}>
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10">
+                  <Clock className="h-4 w-4 text-emerald-400" aria-hidden="true" />
+                </span>
+                <h2 className="text-sm font-extrabold tracking-tight sm:text-base">Horarios</h2>
               </div>
-              <ul className={['space-y-1.5', isDark ? 'text-zinc-300' : 'text-zinc-700'].join(' ')}>
+              <ul className="mt-3 space-y-1.5">
                 {([
                   ['lunes', 'Lun'],
                   ['martes', 'Mar'],
@@ -415,42 +419,51 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
                   const day = activeSchedule[dayKey];
                   return (
                     <li key={dayKey} className="flex min-w-0 items-baseline justify-between gap-1 text-[11px] leading-5 sm:text-xs">
-                      <span>{label}</span>
+                      <span className={isDark ? 'text-zinc-400' : 'text-zinc-500'}>{label}</span>
                       {day?.isOpen ? (
                         <span className="whitespace-nowrap text-right font-semibold tabular-nums">
                           {day.openTime.replace(/:00$/, '')}–{day.closeTime.replace(/:00$/, '')}
                         </span>
                       ) : (
-                        <span className="text-right font-semibold text-rose-400">Cerrado</span>
+                        <span className="text-right font-medium text-rose-400">Cerrado</span>
                       )}
                     </li>
                   );
                 })}
               </ul>
             </div>
-            <div className={['flex min-w-0 flex-col rounded-2xl border p-3.5 sm:p-6',
-              isDark ? 'border-zinc-800 bg-zinc-900/75' : 'border-zinc-200 bg-white/90'
+            <div className={['flex min-w-0 flex-col rounded-2xl border p-3 sm:p-5',
+              isDark ? 'border-zinc-800 bg-zinc-900/80' : 'border-zinc-200 bg-white/95 shadow-sm'
             ].join(' ')}>
-              <div className="mb-3 flex items-center gap-2">
-                <MapPin className="h-4 w-4 shrink-0 text-emerald-400" aria-hidden="true" />
-                <h2 className="text-sm font-extrabold sm:text-base">Ubicación</h2>
-              </div>
-              <p className={['break-words text-xs leading-relaxed sm:text-sm',
-                isDark ? 'text-zinc-300' : 'text-zinc-700'
+              <div className={['flex items-center gap-2 border-b pb-3',
+                isDark ? 'border-zinc-800' : 'border-zinc-200'
               ].join(' ')}>
-                {shopAddress}
-                <span className="mt-1 block">{shopCity}</span>
-              </p>
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10">
+                  <MapPin className="h-4 w-4 text-emerald-400" aria-hidden="true" />
+                </span>
+                <h2 className="text-sm font-extrabold tracking-tight sm:text-base">Ubicación</h2>
+              </div>
+              <div className="flex flex-1 flex-col items-center justify-center gap-3 py-4 text-center">
+                <span className="flex h-12 w-12 items-center justify-center rounded-full border border-emerald-500/15 bg-emerald-500/5 sm:h-14 sm:w-14">
+                  <MapPin className="h-6 w-6 text-emerald-400" aria-hidden="true" />
+                </span>
+                <address className="max-w-full not-italic text-xs font-semibold leading-relaxed sm:text-sm">
+                  <span className="block break-words">{shopAddress}</span>
+                  <span className={['mt-1 block font-normal', isDark ? 'text-zinc-400' : 'text-zinc-500'].join(' ')}>
+                    {shopCity}
+                  </span>
+                </address>
+              </div>
               <a
                 href={'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(shopAddress + ', ' + shopCity)}
                 target="_blank"
                 rel="noopener noreferrer"
-                className={['mt-auto flex min-h-10 items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 pt-3 text-center text-xs font-bold transition-colors',
+                className={['flex min-h-10 items-center justify-center gap-1.5 rounded-xl border px-2 py-2.5 text-xs font-bold transition-colors',
                   isDark ? 'border-zinc-700 bg-zinc-950 text-zinc-100 hover:bg-zinc-800' : 'border-zinc-200 bg-zinc-100 text-zinc-900 hover:bg-zinc-200'
                 ].join(' ')}
               >
-                <MapPin className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                 Cómo llegar
+                <ArrowRight className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               </a>
             </div>
           </div>
