@@ -34,6 +34,8 @@ test('mantiene calculo financiero original, propinas por separado y distinción 
   assert.match(admin,/const totalBarberPocket = item\.barberTakeHome \+ item\.barberTipsTotal/);
   assert.match(admin,/const grossRevenueTotal = totalGrossAppointments \+ totalManualChargesAll/);
   assert.match(admin,/!isOwner && \(/);
+  assert.match(admin,/\{!isOwner && \(\s*<div className="flex items-center justify-between gap-2">\s*<span className="text-zinc-400">Comisión generada/);
+  assert.doesNotMatch(admin,/Comisión del propietario/);
 });
 test('filtro de fecha está antes del reporte y aplica a todas las liquidaciones',()=>{
   const report=admin.split("{activeTab === 'facturacion'")[1] || '';
