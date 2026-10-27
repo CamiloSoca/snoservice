@@ -40,8 +40,25 @@ function InstagramSvg({ className = 'w-5 h-5' }: { className?: string }) {
   );
 }
 
+type InstagramPost = { id: string; imageUrl: string; permalink: string; caption: string };
+
 export default function HomeClient({initialShop}: {initialShop: PublicShopData}) {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const [instagramPosts, setInstagramPosts] = useState<InstagramPost[]>([]);
+  const [instagramLoaded, setInstagramLoaded] = useState(false);
+
+  useEffect(() => {
+    const abort = new AbortController();
+    fetch('/api/public/instagram', { signal: abort.signal })
+      .then(response => response.ok ? response.json() : { posts: [] })
+      .then(data => {
+        if (abort.signal.aborted) return;
+        setInstagramPosts(Array.isArray(data.posts) ? data.posts.slice(0, 4) : []);
+      })
+      .catch(() => {})
+      .finally(() => { if (!abort.signal.aborted) setInstagramLoaded(true); });
+    return () => abort.abort();
+  }, []);
   // Usar siempre la version mas reciente del cache compartido.
   const shopConfig = initialShop.shopConfig;
   const barbers = initialShop.barbers.filter(b => b.active !== false);
@@ -405,13 +422,13 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
                     Instagram
                   </h2>
                   <p className={`text-xs ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                    {shopConfig.instagramHandle || '@barberia'}
+                    {shopConfig.instagramHandle || '@13.cut'}
                   </p>
                 </div>
               </div>
 
               <a
-                href={shopConfig.instagramUrl || 'https://instagram.com'}
+                href={shopConfig.instagramUrl || 'https://www.instagram.com/13.cut/'}
                 target="_blank"
                 rel="noopener noreferrer"
                 className={`inline-flex items-center space-x-1.5 px-3.5 py-2.5 rounded-xl border text-xs font-semibold shrink-0 active:scale-95 touch-manipulation ${
@@ -426,7 +443,40 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
             </div>
 
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <p className="col-span-full py-8 text-center text-sm text-zinc-400">No hay publicaciones con imágenes configuradas.</p>
+              {instagramPosts.map((post) => (
+                <a
+                  key={post.id}
+                  href={post.permalink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={'Ver publicación de Instagram: ' + post.caption}
+                  className={'group relative block aspect-square overflow-hidden rounded-2xl border transition-colors hover:border-emerald-400 ' +
+                    (isDark ? 'border-zinc-800 bg-zinc-950' : 'border-zinc-200 bg-zinc-100')}
+                >
+                  {/* Miniaturas de la API oficial: sin embebidos ni widgets externos. */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={post.imageUrl}
+                    alt={post.caption}
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                    className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
+                  />
+                  <span className="absolute bottom-2 right-2 rounded-lg bg-zinc-950/75 p-1.5 text-white">
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </span>
+                </a>
+              ))}
+              {instagramLoaded && !instagramPosts.length && (
+                <p className="col-span-full py-6 text-center text-sm text-zinc-400">
+                  Mirá nuestros trabajos en Instagram.
+                </p>
+              )}
+              {!instagramLoaded && (
+                <p className="col-span-full py-6 text-center text-sm text-zinc-400">
+                  Cargando publicaciones...
+                </p>
+              )}
             </div>
           </div>
         </section>
