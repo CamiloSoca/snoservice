@@ -2008,10 +2008,12 @@ const handleAddBarber = async () => {
                         </div>
 
                         <div className="space-y-2 border-t border-zinc-800 pt-3 text-xs">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-zinc-400">{isOwner ? 'Comisión del propietario' : 'Comisión generada'}</span>
-                            <strong>{money(item.barberTakeHome)}</strong>
-                          </div>
+                          {!isOwner && (
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-zinc-400">Comisión generada</span>
+                              <strong>{money(item.barberTakeHome)}</strong>
+                            </div>
+                          )}
                           <div className="flex items-center justify-between gap-2">
                             <span className="text-zinc-400">Propinas personales</span>
                             <strong className="text-amber-400">+{money(item.barberTipsTotal)}</strong>
