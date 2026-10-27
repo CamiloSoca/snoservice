@@ -17,6 +17,7 @@ import {
   Clock,
   ArrowRight,
   Heart,
+  ChevronDown,
 } from 'lucide-react';
 import {
   DEFAULT_SHOP_CONFIG,
@@ -190,10 +191,10 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
               <div className="absolute inset-0 bg-gradient-to-r from-zinc-950/95 via-zinc-950/80 to-zinc-950/40" />
             </div>
 
-            <div className="relative p-5 sm:p-10 flex flex-col sm:flex-row sm:items-center justify-between gap-5">
+            <div className="relative min-h-[240px] p-5 sm:p-9 flex flex-col sm:flex-row sm:items-center justify-between gap-5">
               <div className="flex items-center gap-4 sm:gap-6">
                 {logoImage && (
-                  <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-2xl overflow-hidden border-2 border-white/20 shadow-2xl bg-zinc-950 shrink-0">
+                  <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-full overflow-hidden border-2 border-white/20 shadow-2xl bg-zinc-950 shrink-0">
                     <Image src={logoImage} alt={shopConfig.name} fill sizes="80px" quality={75} className="object-cover" />
                   </div>
                 )}
@@ -221,15 +222,162 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
                 className="w-full sm:w-auto px-6 py-4 rounded-2xl bg-zinc-100 hover:bg-white text-zinc-950 font-extrabold text-sm flex items-center justify-center gap-2 shadow-xl transition-transform active:scale-[0.98] touch-manipulation shrink-0"
               >
                 <Calendar className="w-4 h-4" />
-                <span>Reservar Turno</span>
+                <span>Reservar turno</span>
                 <ArrowRight className="w-4 h-4" />
               </Link>
             </div>
           </div>
         </section>
 
-        {/* UBICACIÓN Y HORARIOS */}
-        <section className="max-w-5xl mx-auto px-4 py-4">
+        {/* SERVICIOS públicos, sin preselecciones que alteren el flujo de turnos */}
+        <section className="mx-auto max-w-5xl px-4 pt-5" aria-labelledby="servicios-title">
+          <div className="mb-3 flex items-end justify-between gap-2">
+            <h2 id="servicios-title" className="text-lg font-extrabold tracking-tight">Nuestros servicios</h2>
+            <Link href="/agendar" className="inline-flex items-center gap-1 text-xs font-bold text-zinc-400">Ver todos <ArrowRight className="h-4 w-4" /></Link>
+          </div>
+          <div className="flex snap-x gap-2.5 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {initialShop.services.filter(service => service.active !== false).slice(0, 6).map(service => (
+              <Link key={service.id} href="/agendar" prefetch={true}
+                className={['flex min-w-[136px] max-w-[210px] shrink-0 snap-start flex-col justify-between gap-3 rounded-2xl border p-4 text-sm font-bold',
+                  isDark ? 'border-zinc-800 bg-zinc-900/75' : 'border-zinc-200 bg-white'
+                ].join(' ')}>
+                <Scissors className="h-4 w-4 text-emerald-400" aria-hidden="true" />
+                <span>{service.name}</span>
+                <span className="text-[11px] font-medium text-zinc-400">Ver disponibilidad</span>
+              </Link>
+            ))}
+          </div>
+        </section>
+
+        {/* INSTAGRAM — reutiliza logo, portada y publicaciones reales de cada barbería */}
+        <section className="max-w-5xl mx-auto px-4 py-3">
+          <div
+            className={['overflow-hidden rounded-3xl border backdrop-blur-sm',
+              isDark ? 'border-zinc-800/90 bg-zinc-900/75' : 'border-zinc-200 bg-white/90 shadow-sm'
+            ].join(' ')}
+          >
+            <div className="p-4 sm:p-6">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 className="text-base font-extrabold tracking-tight sm:text-lg">
+                    Últimos trabajos
+                  </h2>
+                  <p className={['mt-1 text-xs', isDark ? 'text-zinc-400' : 'text-zinc-500'].join(' ')}>
+                    Las últimas publicaciones de {shopConfig.name}
+                  </p>
+                </div>
+                <a
+                  href={shopConfig.instagramUrl || 'https://www.instagram.com/13.cut/'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={['inline-flex shrink-0 items-center gap-1.5 rounded-xl border px-3.5 py-2.5 text-xs font-semibold transition-colors active:scale-95 touch-manipulation',
+                    isDark
+                      ? 'border-zinc-700 bg-zinc-950 text-zinc-200 hover:bg-zinc-800'
+                      : 'border-zinc-200 bg-zinc-50 text-zinc-800 hover:bg-zinc-100'
+                  ].join(' ')}
+                >
+                  <span>Ver perfil</span>
+                  <ExternalLink className="h-3.5 w-3.5 opacity-60" />
+                </a>
+              </div>
+
+              <div className="flex snap-x gap-3 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:grid sm:grid-cols-4 sm:overflow-visible">
+                {instagramPosts.map((post) => (
+                  <a
+                    key={post.id}
+                    href={post.permalink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={'Ver publicación de Instagram: ' + post.caption}
+                    className={'group relative block aspect-square w-[60%] max-w-[250px] shrink-0 snap-start overflow-hidden rounded-2xl border transition-colors hover:border-emerald-400 sm:w-full ' +
+                      (isDark ? 'border-zinc-800 bg-zinc-950' : 'border-zinc-200 bg-zinc-100')}
+                  >
+                    {/* Miniaturas de la API oficial: sin embebidos ni widgets externos. */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={post.imageUrl}
+                      alt={post.caption}
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                      className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
+                    />
+                    {typeof post.likeCount === 'number' && Number.isFinite(post.likeCount) && (
+                      <span
+                        className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-lg bg-zinc-950/75 px-2 py-1.5 text-[11px] font-semibold text-white"
+                        aria-label={post.likeCount.toLocaleString('es-UY') + ' me gusta'}
+                      >
+                        <Heart className="h-3.5 w-3.5" aria-hidden="true" />
+                        {post.likeCount.toLocaleString('es-UY')}
+                      </span>
+                    )}
+                    <span className="absolute bottom-2 right-2 rounded-lg bg-zinc-950/75 p-1.5 text-white">
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </span>
+                  </a>
+                ))}
+                {instagramLoaded && !instagramPosts.length && (
+                  <p className="col-span-full py-6 text-center text-sm text-zinc-400">
+                    Mirá nuestros trabajos en Instagram.
+                  </p>
+                )}
+                {!instagramLoaded && (
+                  <p className="col-span-full py-6 text-center text-sm text-zinc-400">
+                    Cargando publicaciones...
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* EQUIPO: tarjetas breves, foto real o inicial */}
+        <section id="equipo" className="mx-auto max-w-5xl scroll-mt-24 px-4 pt-6" aria-labelledby="equipo-title">
+          <div className="mb-3">
+            <h2 id="equipo-title" className="text-lg font-extrabold tracking-tight">Nuestro equipo</h2>
+            <p className={['mt-1 text-xs', isDark ? 'text-zinc-400' : 'text-zinc-500'].join(' ')}>Conocé a tu barbero y reservá</p>
+          </div>
+          {activeBarbers.length ? (
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              {activeBarbers.map(b => {
+                const slug = b.slug || b.name.toLowerCase();
+                return (
+                  <div key={b.id} className={['min-w-0 overflow-hidden rounded-2xl border',
+                    isDark ? 'border-zinc-800 bg-zinc-900/75' : 'border-zinc-200 bg-white'
+                  ].join(' ')}>
+                    <Link href={'/equipo/' + encodeURIComponent(slug)} className="block">
+                      <div className="relative flex aspect-[5/4] items-center justify-center overflow-hidden bg-zinc-800">
+                        {b.imageUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={b.imageUrl} alt={'Foto de ' + b.name} loading="lazy" className="h-full w-full object-cover" />
+                        ) : (
+                          <span className="text-4xl font-extrabold text-zinc-400">{b.name.charAt(0)}</span>
+                        )}
+                      </div>
+                      <div className="px-3 pt-3">
+                        <h3 className="truncate text-sm font-bold" title={b.name}>{b.name}</h3>
+                        <p className="mt-1 text-xs text-zinc-400">Ver perfil</p>
+                      </div>
+                    </Link>
+                    <Link href={'/agendar?barbero=' + encodeURIComponent(slug)} prefetch={true}
+                      className={['mx-3 mb-3 mt-3 flex min-h-10 items-center justify-center gap-1 rounded-xl px-2 text-xs font-bold',primaryBtn].join(' ')}>
+                      Reservar <ArrowRight className="h-3.5 w-3.5" />
+                    </Link>
+                  </div>
+                );
+              })}
+            </div>
+          ) : <p className="text-sm text-zinc-400">No hay barberos disponibles por el momento.</p>}
+        </section>
+
+        {/* Horarios y ubicación accesibles, sin desplazar las fotos ni el equipo */}
+        <section id="info" className="mx-auto max-w-5xl scroll-mt-24 px-4 py-6">
+          <details className={['group rounded-2xl border', isDark ? 'border-zinc-800 bg-zinc-900/75' : 'border-zinc-200 bg-white'].join(' ')}>
+            <summary className="flex cursor-pointer list-none items-center gap-3 p-4 font-bold [&::-webkit-details-marker]:hidden">
+              <Clock className="h-5 w-5 text-emerald-400" />
+              <span className="flex-1">Horarios y ubicación</span>
+              <ChevronDown className="h-4 w-4 text-zinc-400 transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="border-t border-zinc-800 p-3 sm:p-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div
               className={`border rounded-3xl p-5 sm:p-6 space-y-3 backdrop-blur-sm ${
@@ -317,197 +465,15 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
                   <MapPin className="w-3.5 h-3.5" />
                   <span>Cómo llegar</span>
                 </a>
-                <Link
-                  href="/agendar"
-                  prefetch={true}
-                  className={`flex-1 py-3 px-4 rounded-xl text-xs flex items-center justify-center gap-1.5 active:scale-95 touch-manipulation ${primaryBtn}`}
-                >
-                  <Scissors className="w-3.5 h-3.5" />
-                  <span>Agendar ahora</span>
-                </Link>
+  
               </div>
             </div>
           </div>
-        </section>
-
-        {/* EQUIPO DE BARBEROS */}
-        <section className="max-w-5xl mx-auto px-4 py-3">
-          <div
-            className={`border rounded-3xl p-5 sm:p-7 space-y-4 backdrop-blur-sm ${
-              isDark ? 'bg-zinc-900/75 border-zinc-800/90' : 'bg-white/90 border-zinc-200 shadow-sm'
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-extrabold tracking-tight">
-                Equipo de {shopConfig.name}
-              </h2>
-              <span className={`text-xs ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                Elegí tu barbero
-              </span>
             </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
-              {activeBarbers.length === 0 && (
-                <p className="col-span-full text-sm text-zinc-400">No hay barberos disponibles por el momento.</p>
-              )}
-              {activeBarbers.map((b) => {
-                const slug = b.slug || b.name.toLowerCase();
-                return (
-                  <div
-                    key={b.id}
-                    className={`rounded-2xl border p-4 flex flex-col justify-between space-y-4 ${
-                      isDark ? 'bg-zinc-950/70 border-zinc-800' : 'bg-zinc-50 border-zinc-200'
-                    }`}
-                  >
-                    <div className="flex items-center space-x-3">
-                      <div className="w-11 h-11 rounded-xl overflow-hidden bg-zinc-800 border border-zinc-700 flex items-center justify-center font-extrabold text-base text-white shrink-0">
-                        {b.imageUrl ? (
-                          <img src={b.imageUrl} alt={'Foto de ' + b.name} loading="lazy" className="w-full h-full object-cover" />
-                        ) : b.name.charAt(0)}
-                      </div>
-                      <div>
-                        <h3 className="font-bold text-base">{b.name}</h3>
-                        <p className={`text-xs ${isDark ? 'text-zinc-400' : 'text-zinc-500'}`}>
-                          Barbero
-                        </p>
-                      </div>
-                    </div>
-
-                    <Link
-                      href={`/agendar?barbero=${slug}`}
-                      prefetch={true}
-                      className={`w-full py-3 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] touch-manipulation ${primaryBtn}`}
-                    >
-                      <span>Agendar con {b.name}</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </Link>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </section>
-
-        {/* INSTAGRAM — reutiliza logo, portada y publicaciones reales de cada barbería */}
-        <section className="max-w-5xl mx-auto px-4 py-3">
-          <div
-            className={['overflow-hidden rounded-3xl border backdrop-blur-sm',
-              isDark ? 'border-zinc-800/90 bg-zinc-900/75' : 'border-zinc-200 bg-white/90 shadow-sm'
-            ].join(' ')}
-          >
-            {/* Portada y marca que el administrador ya configuró para este local. */}
-            <div className="relative h-40 overflow-hidden bg-zinc-900 text-white sm:h-48">
-              {bannerUrl ? (
-                <Image
-                  src={bannerUrl}
-                  alt={'Portada de ' + shopConfig.name}
-                  fill
-                  sizes="(max-width: 640px) 100vw, 1024px"
-                  quality={70}
-                  loading="lazy"
-                  className="object-cover object-center"
-                />
-              ) : (
-                <div className="absolute inset-0 bg-gradient-to-br from-zinc-800 to-zinc-950" />
-              )}
-              <div className="absolute inset-0 bg-gradient-to-t from-zinc-950/90 via-zinc-950/20 to-transparent" />
-              <div className="absolute inset-x-4 bottom-4 z-10 flex min-w-0 items-end gap-3 sm:inset-x-7">
-                <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/25 bg-zinc-950 shadow-lg">
-                  {logoImage ? (
-                    <Image
-                      src={logoImage}
-                      alt={'Logo de ' + shopConfig.name}
-                      fill
-                      sizes="56px"
-                      quality={75}
-                      className="object-cover"
-                    />
-                  ) : (
-                    <Scissors className="h-6 w-6 text-white" />
-                  )}
-                </div>
-                <div className="min-w-0 pb-0.5">
-                  <p className="truncate text-lg font-extrabold tracking-tight text-white sm:text-xl">
-                    {shopConfig.name}
-                  </p>
-                  <p className="mt-0.5 truncate text-xs text-zinc-200">
-                    {shopConfig.instagramHandle || '@13.cut'}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-5 sm:p-7">
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <h2 className="text-base font-extrabold tracking-tight sm:text-lg">
-                    Últimos trabajos
-                  </h2>
-                  <p className={['mt-1 text-xs', isDark ? 'text-zinc-400' : 'text-zinc-500'].join(' ')}>
-                    Lo último de nuestro Instagram
-                  </p>
-                </div>
-                <a
-                  href={shopConfig.instagramUrl || 'https://www.instagram.com/13.cut/'}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={['inline-flex shrink-0 items-center gap-1.5 rounded-xl border px-3.5 py-2.5 text-xs font-semibold transition-colors active:scale-95 touch-manipulation',
-                    isDark
-                      ? 'border-zinc-700 bg-zinc-950 text-zinc-200 hover:bg-zinc-800'
-                      : 'border-zinc-200 bg-zinc-50 text-zinc-800 hover:bg-zinc-100'
-                  ].join(' ')}
-                >
-                  <span>Ver perfil</span>
-                  <ExternalLink className="h-3.5 w-3.5 opacity-60" />
-                </a>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-                {instagramPosts.map((post) => (
-                  <a
-                    key={post.id}
-                    href={post.permalink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label={'Ver publicación de Instagram: ' + post.caption}
-                    className={'group relative block aspect-square overflow-hidden rounded-2xl border transition-colors hover:border-emerald-400 ' +
-                      (isDark ? 'border-zinc-800 bg-zinc-950' : 'border-zinc-200 bg-zinc-100')}
-                  >
-                    {/* Miniaturas de la API oficial: sin embebidos ni widgets externos. */}
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={post.imageUrl}
-                      alt={post.caption}
-                      loading="lazy"
-                      referrerPolicy="no-referrer"
-                      className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
-                    />
-                    {typeof post.likeCount === 'number' && Number.isFinite(post.likeCount) && (
-                      <span
-                        className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-lg bg-zinc-950/75 px-2 py-1.5 text-[11px] font-semibold text-white"
-                        aria-label={post.likeCount.toLocaleString('es-UY') + ' me gusta'}
-                      >
-                        <Heart className="h-3.5 w-3.5" aria-hidden="true" />
-                        {post.likeCount.toLocaleString('es-UY')}
-                      </span>
-                    )}
-                    <span className="absolute bottom-2 right-2 rounded-lg bg-zinc-950/75 p-1.5 text-white">
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </span>
-                  </a>
-                ))}
-                {instagramLoaded && !instagramPosts.length && (
-                  <p className="col-span-full py-6 text-center text-sm text-zinc-400">
-                    Mirá nuestros trabajos en Instagram.
-                  </p>
-                )}
-                {!instagramLoaded && (
-                  <p className="col-span-full py-6 text-center text-sm text-zinc-400">
-                    Cargando publicaciones...
-                  </p>
-                )}
-              </div>
-            </div>
+          </details>
+          <div className="mt-4 flex justify-center gap-4 text-xs text-zinc-500 sm:hidden">
+            <Link href="/barbero" prefetch={false} className="underline underline-offset-4">Acceso barberos</Link>
+            <Link href="/admin" prefetch={false} className="underline underline-offset-4">Administración</Link>
           </div>
         </section>
 

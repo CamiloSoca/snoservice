@@ -163,7 +163,7 @@ export function invalidatePublicShopData(): void {
     // El proveedor lo recargará cuando la navegación vuelva a una
     // pantalla pública; mientras tanto la caché previa queda invalidada.
     const pathname = window.location.pathname;
-    if (pathname === '/' || pathname.startsWith('/agendar') || pathname.startsWith('/barbero')) {
+    if (pathname === '/' || pathname.startsWith('/agendar') || pathname.startsWith('/barbero') || pathname.startsWith('/equipo')) {
       void getPublicShopData(true).catch(() => {});
     }
   }

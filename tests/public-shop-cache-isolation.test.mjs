@@ -138,10 +138,11 @@ test('la portada sin imágenes configuradas no carga recursos de otra barbería'
   assert.match(home, /fetch\('\/api\/public\/instagram'/);
   assert.match(home, /instagramPosts\.map/);
   assert.match(home, /shopConfig\.instagramUrl/);
-  // La galería usa la marca por local; nunca imágenes inventadas ni enlaces fijos.
+  // La portada usa una sola marca real y la galería continúa siendo de la API.
+  const hero = home.split('{/* HERO BANNER */}')[1]?.split('</section>')[0] || '';
+  assert.match(hero, /src=\{bannerUrl\}/);
+  assert.match(hero, /src=\{logoImage\}/);
   const instagramSection = home.split('{/* INSTAGRAM')[1]?.split('</section>')[0] || '';
-  assert.match(instagramSection, /src=\{bannerUrl\}/);
-  assert.match(instagramSection, /src=\{logoImage\}/);
   assert.match(instagramSection, /instagramPosts\.map/);
   assert.match(instagramSection, /post\.permalink/);
   assert.match(instagramSection, /Últimos trabajos/);

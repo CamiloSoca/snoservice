@@ -21,7 +21,7 @@ export function PublicShopProvider({children}: {children: React.ReactNode}) {
   useEffect(() => {
     // La zona privada no necesita consultas publicas extras para autenticarse
     // ni al cargar su informacion financiera.
-    if (!(pathname === '/' || pathname.startsWith('/agendar') || pathname.startsWith('/barbero'))) return;
+    if (!(pathname === '/' || pathname.startsWith('/agendar') || pathname.startsWith('/barbero') || pathname.startsWith('/equipo'))) return;
     let stopped = false;
     const refreshIfNeeded = () => {
       if (stopped || document.visibilityState === 'hidden' || !publicShopNeedsRefresh()) return;
