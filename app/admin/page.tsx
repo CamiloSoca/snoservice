@@ -34,6 +34,7 @@ import {
   Lock,
   Coins,
   BarChart3,
+  ChevronDown,
 } from 'lucide-react';
 import {
   ServiceItem,
@@ -2038,11 +2039,30 @@ const handleAddBarber = async () => {
 
           {activeTab === 'fijos' && <FixedAgendaManager barbers={barbers} services={services} shopSchedule={shopConfig.schedule}/>}
           {activeTab === 'barberos' && (
-            <div className="space-y-5">
-              <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-4">
-                <h3 className="font-semibold text-sm flex items-center gap-1.5">
-                  <Plus className="w-4 h-4" /> Agregar Barbero
-                </h3>
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 px-1">
+                <div>
+                  <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-emerald-400">Gestión del equipo</span>
+                  <h2 className="mt-1 text-xl font-extrabold tracking-tight sm:text-2xl">Barberos</h2>
+                  <p className="mt-1 text-xs text-zinc-400">Abrí un perfil solo cuando necesites editar sus datos, horarios o servicios.</p>
+                </div>
+                <span className="rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-zinc-300">
+                  {safeBarbers.filter(b => b.active !== false).length} activos de {safeBarbers.length}
+                </span>
+              </div>
+
+              <details className="group/new overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/90">
+                <summary className="flex min-h-20 cursor-pointer list-none items-center gap-3 px-4 py-3 transition-colors hover:bg-zinc-800/60 focus-visible:outline-2 focus-visible:outline-emerald-400 sm:px-5 [&::-webkit-details-marker]:hidden">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-400/15 text-emerald-300">
+                    <Plus className="h-5 w-5" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-bold text-zinc-100">Agregar barbero</span>
+                    <span className="mt-0.5 block text-xs text-zinc-400">Nombre, PIN, comisión y días de atención</span>
+                  </span>
+                  <ChevronDown className="h-4 w-4 shrink-0 text-zinc-400 transition-transform group-open/new:rotate-180" />
+                </summary>
+                <div className="space-y-4 border-t border-zinc-800 p-4 sm:p-5">
 
                 <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
                   <input
@@ -2092,16 +2112,40 @@ const handleAddBarber = async () => {
                 <p className="text-center text-xs text-zinc-500">
                   Nombre, PIN y días de atención se guardan juntos. Después podés modificarlos.
                 </p>
-              </div>
+                </div>
+              </details>
 
-              <div className="grid grid-cols-1 gap-4">
+              <div className="grid grid-cols-1 gap-3">
                 {safeBarbers.map((brb) => {
                   const isLocked = Boolean(blockedBarbers[brb.id]);
                   return (
-                    <div
-                      key={brb.id}
-                      className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-4"
-                    >
+                    <details key={brb.id} className="group/barber overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/90 transition-colors open:border-zinc-700">
+                      <summary className="flex min-h-[82px] cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 transition-colors hover:bg-zinc-800/60 focus-visible:outline-2 focus-visible:outline-emerald-400 sm:px-5 [&::-webkit-details-marker]:hidden">
+                        <span className="flex min-w-0 items-center gap-3">
+                          <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-zinc-700 bg-zinc-950 text-base font-bold">
+                            {brb.imageUrl ? (
+                              <img src={brb.imageUrl} alt="" className="h-full w-full object-cover" />
+                            ) : brb.name.charAt(0)}
+                          </span>
+                          <span className="min-w-0">
+                            <span className="flex flex-wrap items-center gap-2">
+                              <span className="block truncate text-sm font-bold sm:text-base">{brb.name}</span>
+                              {isLocked && <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-semibold text-rose-300">PIN bloqueado</span>}
+                            </span>
+                            <span className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+                              <span className={brb.active !== false ? 'text-emerald-300' : 'text-zinc-500'}>{brb.active !== false ? '● Habilitado' : '○ Deshabilitado'}</span>
+                              <span className="text-zinc-600">·</span>
+                              <span className="text-zinc-400">{brb.isOwner ? 'Propietario' : 'Barbero'}</span>
+                            </span>
+                          </span>
+                        </span>
+                        <span className="flex shrink-0 items-center gap-2">
+                          {!brb.isOwner && <span className="hidden rounded-lg border border-zinc-700 bg-zinc-950 px-2.5 py-1.5 text-[11px] font-semibold text-zinc-300 sm:inline">{brb.commissionRate}% comisión</span>}
+                          <span className="hidden text-xs font-semibold text-emerald-300 sm:inline">Administrar</span>
+                          <ChevronDown className="h-4 w-4 text-zinc-400 transition-transform group-open/barber:rotate-180" />
+                        </span>
+                      </summary>
+                      <div className="space-y-4 border-t border-zinc-800 p-4 sm:p-5">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div className="flex items-center space-x-3">
                           <div className="flex flex-col items-center gap-1.5">
@@ -2222,6 +2266,16 @@ const handleAddBarber = async () => {
                         </div>
                       </div>
 
+                      <details className="group/tools overflow-hidden rounded-xl border border-zinc-700 bg-zinc-950/60">
+                        <summary className="flex cursor-pointer list-none items-center gap-3 px-3 py-3 transition-colors hover:bg-zinc-800/50 focus-visible:outline-2 focus-visible:outline-emerald-400 sm:px-4 [&::-webkit-details-marker]:hidden">
+                          <Clock className="h-4 w-4 shrink-0 text-emerald-300"/>
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-sm font-semibold">Horarios y servicios</span>
+                            <span className="mt-0.5 block text-[11px] text-zinc-400">Editar disponibilidad y servicios habilitados</span>
+                          </span>
+                          <ChevronDown className="h-4 w-4 shrink-0 text-zinc-400 transition-transform group-open/tools:rotate-180"/>
+                        </summary>
+                        <div className="space-y-4 border-t border-zinc-800 p-3 sm:p-4">
                       <WeeklyScheduleEditor title={'Horarios de '+brb.name}
                         help="Desmarcá los días que no trabaja. Guardá para actualizar las próximas reservas disponibles."
                         value={brb.workingSchedule ?? shopConfig.schedule}
@@ -2267,7 +2321,10 @@ const handleAddBarber = async () => {
                           })}
                         </div>
                       </div>
-                    </div>
+                        </div>
+                      </details>
+                      </div>
+                    </details>
                   );
                 })}
               </div>
