@@ -1160,7 +1160,9 @@ const handleAddBarber = async () => {
               Agenda fija
             </button>
           </div>}
-          {(activeTab==='configuracion'||activeTab==='servicios'||activeTab==='marca') && <div className="flex flex-wrap gap-2 rounded-xl border border-zinc-800 bg-zinc-900 p-2">
+          {(activeTab==='servicios'||activeTab==='marca') && <div className="flex flex-wrap items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900 p-2">
+             <button type="button" onClick={() => setActiveTab('configuracion')} className="rounded-lg px-3 py-2 text-xs font-bold text-zinc-400 hover:bg-zinc-800 hover:text-white">Configuración</button>
+             <span className="text-zinc-600" aria-hidden="true">/</span>
             <button type="button" onClick={() => setActiveTab('servicios')} className={'rounded-lg px-4 py-2 text-xs '+(activeTab==='servicios'?'bg-emerald-400 text-zinc-950':'bg-zinc-800 text-zinc-200')}>Servicios y precios</button>
             <button type="button" onClick={() => setActiveTab('marca')} className={'rounded-lg px-4 py-2 text-xs '+(activeTab==='marca'?'bg-emerald-400 text-zinc-950':'bg-zinc-800 text-zinc-200')}>Datos del local</button>
           </div>}
@@ -2343,11 +2345,13 @@ const handleAddBarber = async () => {
 
           {activeTab === 'servicios' && (
             <div className="space-y-5">
-              <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-3.5">
-                <h3 className="font-semibold text-sm flex items-center gap-1.5">
-                  <Plus className="w-4 h-4" /> Nuevo servicio
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+              <details className="group/newservice overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/90 open:border-zinc-700">
+                <summary className="flex min-h-20 cursor-pointer list-none items-center gap-3 px-4 py-3 hover:bg-zinc-800/60 focus-visible:outline-2 focus-visible:outline-emerald-400 [&::-webkit-details-marker]:hidden">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-400/15 text-emerald-300"><Plus className="h-5 w-5"/></span>
+                  <span className="min-w-0 flex-1"><span className="block text-sm font-bold">Agregar servicio</span><span className="mt-0.5 block text-xs text-zinc-400">Nombre, precio y duración</span></span>
+                  <ChevronDown className="h-4 w-4 shrink-0 text-zinc-400 transition-transform group-open/newservice:rotate-180"/>
+                </summary>
+                <div className="grid grid-cols-1 gap-2.5 border-t border-zinc-800 p-4 sm:grid-cols-12 sm:p-5">
                   <input
                     type="text"
                     placeholder="Nombre (ej: Corte)"
@@ -2377,22 +2381,20 @@ const handleAddBarber = async () => {
                     Agregar
                   </button>
                 </div>
-              </div>
+              </details>
 
               <div className="space-y-2.5">
                 {services.map((srv) => (
-                  <div
-                    key={srv.id}
-                    className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                  >
-                    <div>
-                      <h4 className="font-bold text-sm sm:text-base">{srv.name}</h4>
-                      <span className="text-[11px] text-zinc-400 flex items-center mt-0.5">
-                        <Clock className="w-3 h-3 mr-1" /> Bloquea {srv.durationMinutes} min en agenda
+                  <details key={srv.id} className="group/service overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/90 open:border-zinc-700">
+                    <summary className="flex min-h-[76px] cursor-pointer list-none items-center gap-3 px-4 py-3 hover:bg-zinc-800/60 focus-visible:outline-2 focus-visible:outline-emerald-400 [&::-webkit-details-marker]:hidden">
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-zinc-800 text-zinc-200"><Scissors className="h-5 w-5"/></span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-bold sm:text-base">{srv.name}</span>
+                        <span className="mt-1 block text-xs text-zinc-400">{srv.durationMinutes} min · ${srv.price} · {srv.active !== false ? 'Habilitado' : 'Deshabilitado'}</span>
                       </span>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2.5">
+                      <ChevronDown className="h-4 w-4 shrink-0 text-zinc-400 transition-transform group-open/service:rotate-180"/>
+                    </summary>
+                    <div className="flex flex-wrap items-center gap-2.5 border-t border-zinc-800 p-4">
                       <label className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-xs text-zinc-300 cursor-pointer">
                         <input type="checkbox" className="size-4 accent-emerald-500" checked={srv.active !== false} onChange={(e) => handleToggleServiceActive(srv.id, e.target.checked)} />
                         Habilitado
@@ -2430,7 +2432,7 @@ const handleAddBarber = async () => {
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
-                  </div>
+                  </details>
                 ))}
               </div>
             </div>
@@ -2443,7 +2445,13 @@ const handleAddBarber = async () => {
             >
               <h3 className="font-semibold text-base">Datos de {shopConfig.name}</h3>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <details className="group/brand overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950/50 open:border-zinc-700">
+                <summary className="flex min-h-16 cursor-pointer list-none items-center gap-3 px-4 py-3 hover:bg-zinc-800/60 focus-visible:outline-2 focus-visible:outline-emerald-400 [&::-webkit-details-marker]:hidden">
+                  <Settings className="h-5 w-5 text-emerald-400"/>
+                  <span className="flex-1 text-sm font-bold">Datos generales y contacto</span>
+                  <ChevronDown className="h-4 w-4 text-zinc-400 transition-transform group-open/brand:rotate-180"/>
+                </summary>
+              <div className="grid grid-cols-1 gap-4 border-t border-zinc-800 p-4 sm:grid-cols-2">
                 <div>
                   <label className="block text-xs font-medium text-zinc-400 mb-1.5">Nombre del Local</label>
                   <input
@@ -2496,8 +2504,15 @@ const handleAddBarber = async () => {
                   />
                 </div>
               </div>
+              </details>
 
-              <div className="space-y-3 rounded-3xl border border-emerald-500/20 bg-emerald-500/[0.04] p-3 sm:p-4">
+              <details className="group/hours overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950/50 open:border-zinc-700">
+                <summary className="flex min-h-16 cursor-pointer list-none items-center gap-3 px-4 py-3 hover:bg-zinc-800/60 focus-visible:outline-2 focus-visible:outline-emerald-400 [&::-webkit-details-marker]:hidden">
+                  <Clock className="h-5 w-5 text-emerald-400"/>
+                  <span className="flex-1 text-sm font-bold">Horarios de atención {shopHoursDirty ? '· Cambios sin guardar' : ''}</span>
+                  <ChevronDown className="h-4 w-4 text-zinc-400 transition-transform group-open/hours:rotate-180"/>
+                </summary>
+                <div className="space-y-3 border-t border-zinc-800 p-3 sm:p-4">
                 <WeeklyScheduleEditor title="Horarios de la barbería"
                   help="Elegí qué días abrís y desde qué hora hasta qué hora. Los barberos solo podrán atender cuando el local esté abierto."
                   value={shopConfig.schedule}
@@ -2518,7 +2533,8 @@ const handleAddBarber = async () => {
                     {shopHoursSaving?'Guardando horarios…':'Guardar horarios de la barbería'}
                   </button>
                 </div>
-              </div>
+                </div>
+              </details>
               <div className="flex items-center justify-between border-t border-zinc-800 pt-4">
                 {savedBanner ? (
                   <span className="text-xs text-emerald-400 font-medium flex items-center gap-1.5">
