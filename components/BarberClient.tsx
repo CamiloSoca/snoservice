@@ -253,6 +253,7 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
         paymentMethod:newTipPayment,
         note: newTipNote.trim(),
         requestId: tipAttempt.current!.id,
+        scope: 'barber',
       });
       setBarberTips(Array.isArray(updatedTips) ? updatedTips : []);
       setNewTipAmount('');
@@ -269,7 +270,7 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
   const handleDeleteMyTip = async (tipId: string) => {
     try {
       setErrorMsg('');
-      const updatedTips = await deleteTip(tipId);
+      const updatedTips = await deleteTip(tipId, selectedBarberId, 'barber');
       setBarberTips(Array.isArray(updatedTips) ? updatedTips : []);
     } catch (err: any) {
       setErrorMsg(err?.message || 'No se pudo borrar la propina.');
@@ -294,6 +295,7 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
         paymentMethod:newChargePayment,
         note: newChargeNote.trim() || 'Corte extra sin turno',
         requestId: chargeAttempt.current!.id,
+        scope: 'barber',
       });
       setBarberCharges(Array.isArray(updatedCharges) ? updatedCharges : []);
       setNewChargeAmount('');
@@ -310,7 +312,7 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
   const handleDeleteMyCharge = async (chargeId: string) => {
     try {
       setErrorMsg('');
-      const updatedCharges = await deleteManualCharge(chargeId);
+      const updatedCharges = await deleteManualCharge(chargeId, selectedBarberId, 'barber');
       setBarberCharges(Array.isArray(updatedCharges) ? updatedCharges : []);
     } catch (err: any) {
       setErrorMsg(err?.message || 'No se pudo borrar el cobro.');

@@ -106,7 +106,7 @@ export async function GET() {
         .eq('shop_id', SHOP_UUID)
         .order('expense_date', {ascending: false})),
       timed('tips', supabase.from('tips')
-        .select('id,barber_id,amount,note,date_string,created_at,cash_register_id,barbers(name)')
+        .select('id,barber_id,amount,note,date_string,created_at,cash_register_id,created_by_role,created_by_barber_id,barbers(name)')
         .eq('shop_id', SHOP_UUID)
         .order('created_at', {ascending: false})),
       timed('charges', supabase.from('manual_charges')

@@ -126,6 +126,8 @@ export interface TipItem {
 }
 
 export interface ManualChargeItem {
+  createdByRole?: 'admin' | 'barber' | null;
+  createdByBarberId?: string | null;
   paymentMethod?: OnSitePaymentMethod | null;
   commissionRateSnapshot?: number | null;
   barberEarningsSnapshot?: number | null;
@@ -771,12 +773,15 @@ function mapFinancialEntry(d: any): TipItem & ManualChargeItem {
     barberEarningsSnapshot: d.barber_earnings_snapshot == null ? null : Number(d.barber_earnings_snapshot),
     businessEarningsSnapshot: d.business_earnings_snapshot == null ? null : Number(d.business_earnings_snapshot),
     cashRegisterId: d.cash_register_id ?? null,
+    createdByRole: d.created_by_role === 'admin' || d.created_by_role === 'barber' ? d.created_by_role : null,
+    createdByBarberId: d.created_by_barber_id ?? null,
   };
 }
 
-export async function getTips(barberId?: string): Promise<TipItem[]> {
+export async function getTips(barberId?: string, scope?: 'barber'): Promise<TipItem[]> {
   const query = new URLSearchParams({resource: 'tips'});
   if (barberId) query.set('barberId', barberId);
+  if (scope === 'barber') query.set('scope', 'barber');
   const { data } = await apiRequest('/api/finance?' + query.toString(), {cache: 'no-store'});
   return (data || []).map(mapFinancialEntry);
 }
@@ -787,21 +792,23 @@ export async function createTip(item: {
   paymentMethod: OnSitePaymentMethod;
   note?: string;
   requestId?: string;
+  scope?: 'barber';
 }): Promise<TipItem[]> {
-  await apiRequest('/api/finance', jsonRequest('POST', {resource: 'tips', item: {
+  await apiRequest('/api/finance', jsonRequest('POST', {resource: 'tips', scope: item.scope, item: {
     ...item, requestId: item.requestId || generateUUID(),
   }}));
-  return getTips();
+  return getTips(item.scope === 'barber' ? item.barberId : undefined, item.scope);
 }
 
-export async function deleteTip(id: string): Promise<TipItem[]> {
-  await apiRequest('/api/finance', jsonRequest('DELETE', {resource: 'tips', id}));
-  return getTips();
+export async function deleteTip(id: string, barberId?: string, scope?: 'barber'): Promise<TipItem[]> {
+  await apiRequest('/api/finance', jsonRequest('DELETE', {resource: 'tips', id, scope}));
+  return getTips(scope === 'barber' ? barberId : undefined, scope);
 }
 
-export async function getManualCharges(barberId?: string): Promise<ManualChargeItem[]> {
+export async function getManualCharges(barberId?: string, scope?: 'barber'): Promise<ManualChargeItem[]> {
   const query = new URLSearchParams({resource: 'manual_charges'});
   if (barberId) query.set('barberId', barberId);
+  if (scope === 'barber') query.set('scope', 'barber');
   const { data } = await apiRequest('/api/finance?' + query.toString(), {cache: 'no-store'});
   return (data || []).map(mapFinancialEntry);
 }
@@ -812,16 +819,17 @@ export async function createManualCharge(item: {
   paymentMethod: OnSitePaymentMethod;
   note?: string;
   requestId?: string;
+  scope?: 'barber';
 }): Promise<ManualChargeItem[]> {
-  await apiRequest('/api/finance', jsonRequest('POST', {resource: 'manual_charges', item: {
+  await apiRequest('/api/finance', jsonRequest('POST', {resource: 'manual_charges', scope: item.scope, item: {
     ...item, requestId: item.requestId || generateUUID(),
   }}));
-  return getManualCharges();
+  return getManualCharges(item.scope === 'barber' ? item.barberId : undefined, item.scope);
 }
 
-export async function deleteManualCharge(id: string): Promise<ManualChargeItem[]> {
-  await apiRequest('/api/finance', jsonRequest('DELETE', {resource: 'manual_charges', id}));
-  return getManualCharges();
+export async function deleteManualCharge(id: string, barberId?: string, scope?: 'barber'): Promise<ManualChargeItem[]> {
+  await apiRequest('/api/finance', jsonRequest('DELETE', {resource: 'manual_charges', id, scope}));
+  return getManualCharges(scope === 'barber' ? barberId : undefined, scope);
 }
 
 export async function unlockBarberPanelWithPin(barberId: string, pin: string) {
