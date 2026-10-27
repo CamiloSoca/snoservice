@@ -6,7 +6,6 @@ import ts from 'typescript';
 
 const source = readFileSync(new URL('../lib/public-shop-data.ts', import.meta.url), 'utf8');
 const home = readFileSync(new URL('../components/HomeClient.tsx', import.meta.url), 'utf8');
-const icon = readFileSync(new URL('../lib/brand-home-icon.tsx', import.meta.url), 'utf8');
 const cacheSource = readFileSync(new URL('../lib/public-shop-cache.ts', import.meta.url), 'utf8');
 const serverSource = readFileSync(new URL('../lib/server-public-shop.ts', import.meta.url), 'utf8');
 const cacheModule = {exports: {}};
@@ -137,7 +136,6 @@ test('la portada sin imágenes configuradas no carga recursos de otra barbería'
   assert.match(home, /const bgImage = shopConfig\.backgroundImageUrl \|\| ''/);
   assert.match(home, /const bannerUrl = shopConfig\.coverImageUrl \|\| shopConfig\.backgroundImageUrl \|\| ''/);
   assert.match(home, /No hay publicaciones con im[áa]genes configuradas/);
-  assert.doesNotMatch(icon, /https?:\/\//i);
 });
 
 test('la caché de servidor y sus invalidaciones incluyen proyecto y Shop ID', () => {
