@@ -27,7 +27,6 @@ export default function BottomNav() {
       {isPublic && moreOpen && (
         <div id="public-nav-more" className="mx-auto mb-2 grid max-w-md rounded-2xl border border-zinc-800 bg-zinc-900 p-2 shadow-xl">
           <Link href="/#info" onClick={() => setMoreOpen(false)} className="flex items-center gap-2 rounded-xl px-3 py-3 text-sm text-white hover:bg-zinc-800"><MapPin className="h-4 w-4"/> Horarios y ubicación</Link>
-          <Link href="/barbero" prefetch={false} onClick={() => setMoreOpen(false)} className="flex items-center gap-2 rounded-xl px-3 py-3 text-sm text-white hover:bg-zinc-800"><UserCheck className="h-4 w-4"/> Acceso barberos</Link>
           <Link href="/admin" prefetch={false} onClick={() => setMoreOpen(false)} className="flex items-center gap-2 rounded-xl px-3 py-3 text-sm text-white hover:bg-zinc-800"><Lock className="h-4 w-4"/> Administración</Link>
         </div>
       )}
@@ -56,8 +55,8 @@ export default function BottomNav() {
 
         {isPublic ? (
           <>
-            <Link href="/#equipo" className="flex flex-col items-center justify-center gap-1 rounded-2xl py-2 text-zinc-400 hover:text-white">
-              <UserCheck className="h-5 w-5" /><span className="text-[10px]">Equipo</span>
+            <Link href="/barbero" prefetch={true} className="flex flex-col items-center justify-center gap-1 rounded-2xl py-2 text-zinc-400 hover:text-white">
+              <UserCheck className="h-5 w-5" /><span className="text-[10px]">Barberos</span>
             </Link>
             <button type="button" aria-expanded={moreOpen} aria-controls="public-nav-more"
               onClick={() => setMoreOpen(open => !open)} className="flex flex-col items-center justify-center gap-1 rounded-2xl py-2 text-zinc-400 hover:text-white">
