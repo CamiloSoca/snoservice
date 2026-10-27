@@ -11,6 +11,7 @@ const admin=read('app/api/admin/route.ts');
 const adminUI=read('app/admin/page.tsx');
 const barberUI=read('components/BarberClient.tsx');
 const cashUI=read('components/CashDrawerCard.tsx');
+const closeUI=read('components/CashCloseDialog.tsx');
 
 test('se registra y cuenta el medio de pago al completar, sin asumir cash de históricos',()=>{
   assert.match(migrations,/ADD COLUMN IF NOT EXISTS payment_confirmed_at/);
@@ -44,8 +45,9 @@ test('apertura exige efectivo contado; cierre distingue cierre físico y legado'
   assert.match(admin,/close_cash_reconciled/);
   assert.match(admin,/acknowledgeLegacy/);
   assert.match(adminUI,/¿Cuánto hay al abrir esta jornada/);
-  assert.match(adminUI,/countedCash:counted\.trim\(\)/);
-  assert.match(adminUI,/closing\.physicalCashVerified/);
+  assert.match(closeUI,/countedCash:normalized/);
+  assert.match(closeUI,/acknowledgeLegacy:legacy/);
+  assert.match(adminUI,/summary\.physicalCashVerified/);
 });
 test('cada movimiento identifica si fue efectivo o transferencia',()=>{
   for(const t of ['manual_charges','tips','expenses'])assert.match(migrations,new RegExp(''+t+'.*payment_method|payment_method.*'+t,'s'));
