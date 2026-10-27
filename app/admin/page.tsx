@@ -205,6 +205,7 @@ export default function AdminDashboard() {
 
   const [chargeBarberId, setChargeBarberId] = useState<string>('');
   const [chargeAmount, setChargeAmount] = useState<string>('');
+  const [chargeService, setChargeService] = useState<string>('');
   const [chargeNote, setChargeNote] = useState<string>('');
   const [chargePaymentMethod,setChargePaymentMethod] = useState<OnSitePaymentMethod | ''>('');
   const [savingCharge, setSavingCharge] = useState(false);
@@ -787,8 +788,8 @@ const handleAddBarber = async () => {
 
   const handleAddChargeAdmin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!chargeBarberId || !chargeAmount || Number(chargeAmount) <= 0 || !chargePaymentMethod) return;
-    const fingerprint = JSON.stringify([chargeBarberId, Number(chargeAmount), chargeNote.trim(), chargePaymentMethod]);
+    if (!chargeBarberId || !chargeService || !chargeAmount || Number(chargeAmount) <= 0 || !chargePaymentMethod) return;
+    const fingerprint = JSON.stringify([chargeBarberId, chargeService, Number(chargeAmount), chargeNote.trim(), chargePaymentMethod]);
     if (chargeAttempt.current?.pending) return;
     if (chargeAttempt.current?.fingerprint !== fingerprint) {
       chargeAttempt.current = {fingerprint, id: generateUUID(), pending: false};
@@ -801,7 +802,10 @@ const handleAddBarber = async () => {
         barberId: chargeBarberId,
         amount: Number(chargeAmount),
         paymentMethod:chargePaymentMethod,
-        note: chargeNote.trim() || 'Cobro manual extra',
+        note: chargeNote.trim() || 'Cliente',
+        ...(chargeService === 'barba_local'
+          ? {manualServiceType: 'barba_local' as const}
+          : {serviceId: chargeService}),
         requestId: chargeAttempt.current!.id,
       });
       if (result.charges !== null) {
@@ -810,6 +814,7 @@ const handleAddBarber = async () => {
         setAdminError('Cobro registrado, pero no se pudo actualizar la lista. No lo ingreses otra vez; revisá la pantalla antes de repetir.');
       }
       setChargeAmount('');
+      setChargeService('');
       setChargeNote('');
       chargeAttempt.current = null;
     } catch (err: any) {
@@ -1394,6 +1399,21 @@ const handleAddBarber = async () => {
                 <div className="space-y-4 border-t border-zinc-800 p-4 sm:p-5">
 
                 <form onSubmit={handleAddChargeAdmin} className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
+                  <label className="sm:col-span-12 text-xs font-semibold text-zinc-300">Servicio realizado
+                    <select required value={chargeService}
+                      onChange={e => {
+                        const choice = e.target.value;
+                        setChargeService(choice);
+                        setChargeAmount(choice === 'barba_local' ? '200'
+                          : String(services.find(s => s.id === choice)?.price ?? ''));
+                      }}
+                      className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-white">
+                      <option value="">Elegir servicio</option>
+                      {services.filter(s => s.active !== false).map(s =>
+                        <option key={s.id} value={s.id}>{s.name} · ${s.price}</option>)}
+                      <option value="barba_local">Barba (solo en local) · $200</option>
+                    </select>
+                  </label>
                   <select
                     value={chargeBarberId}
                     onChange={(e) => setChargeBarberId(e.target.value)}
@@ -1410,6 +1430,7 @@ const handleAddBarber = async () => {
                     type="number"
                     placeholder="Monto $"
                     value={chargeAmount}
+                    readOnly={chargeService === 'barba_local'}
                     onChange={(e) => setChargeAmount(e.target.value)}
                     className="sm:col-span-3 px-3.5 py-2.5 rounded-xl bg-zinc-950 border border-zinc-800 text-base sm:text-sm outline-none"
                   />
@@ -1457,8 +1478,11 @@ const handleAddBarber = async () => {
                               {brbName}
                             </span>
                             <span className="text-xs text-zinc-400">{chg.dateString}</span>
+                            {chg.serviceNameSnapshot && (
+                              <span className="text-xs text-emerald-300 font-medium">• {chg.serviceNameSnapshot}</span>
+                            )}
                             {chg.note && (
-                              <span className="text-xs text-zinc-300 font-medium">• {chg.note}</span>
+                              <span className="text-xs text-zinc-300 font-medium">· {chg.note}</span>
                             )}
                             <span className="text-[11px] text-zinc-500">
                               Registrado por: {chg.createdByRole === 'admin'

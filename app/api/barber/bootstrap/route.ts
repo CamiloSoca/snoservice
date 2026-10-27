@@ -69,7 +69,7 @@ export async function GET() {
           .eq('shop_id', SHOP_UUID).eq('barber_id', session.sub)
           .order('created_at', {ascending: false})),
         timed('charges', db.from('manual_charges')
-          .select('id,barber_id,amount,note,date_string,created_at,commission_rate_snapshot,barber_earnings_snapshot,business_earnings_snapshot,cash_register_id,created_by_role,created_by_barber_id')
+          .select('id,barber_id,amount,note,date_string,created_at,commission_rate_snapshot,barber_earnings_snapshot,business_earnings_snapshot,cash_register_id,created_by_role,created_by_barber_id,service_id,service_name_snapshot')
           .eq('shop_id', SHOP_UUID).eq('barber_id', session.sub)
           .order('created_at', {ascending: false})),
         timed('cash', db.from('cash_registers')
@@ -172,6 +172,8 @@ export async function GET() {
       cashRegisterId: (item as any).cash_register_id ?? null,
       createdByRole: (item as any).created_by_role === 'admin' || (item as any).created_by_role === 'barber' ? (item as any).created_by_role : null,
       createdByBarberId: (item as any).created_by_barber_id ?? null,
+      serviceId: (item as any).service_id ?? null,
+      serviceNameSnapshot: (item as any).service_name_snapshot ?? null,
     });
 
     return NextResponse.json(
