@@ -79,6 +79,7 @@ import WeeklyScheduleEditor from '@/components/WeeklyScheduleEditor';
 import FixedAgendaManager from '@/components/FixedAgendaManager';
 import {normalizeHours, type WeeklyHours} from '@/lib/weekly-hours';
 import CashDrawerCard from '@/components/CashDrawerCard';
+import CashCloseDialog from '@/components/CashCloseDialog';
 import FinanceLedgerCard from '@/components/FinanceLedgerCard';
 import InstagramConnection from '@/components/admin/InstagramConnection';
 import type {OnSitePaymentMethod} from '@/lib/payment-method';
@@ -161,6 +162,8 @@ export default function AdminDashboard() {
   const [loadingTooLong, setLoadingTooLong] = useState(false);
 
   const [cashStatus, setCashStatus] = useState<'abierta' | 'cerrada'>('cerrada');
+  const [cashCloseOpen,setCashCloseOpen]=useState(false);
+  const [cashCloseFeedback,setCashCloseFeedback]=useState('');
   const [cashView, setCashView] = useState<'overview'|'pay'|'owner'|'movements'>('overview');
   const [lastClosedDate, setLastClosedDate] = useState<string>('');
   const [cashHistoryOpen, setCashHistoryOpen] = useState(false);
@@ -1322,40 +1325,9 @@ const handleAddBarber = async () => {
                     )}
 
                     {cashStatus === 'abierta' && (
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          const todayIso = new Date().toISOString();
-                          const finance=await fetch('/api/finance/cash',{cache:'no-store'}).then(r=>r.json()).catch(()=>({}));
-                          const drawer=finance.drawer;
-                          const legacy=Boolean(drawer && !drawer.openingVerified);
-                          if(legacy&&!window.confirm('Caja anterior al arqueo: se cerrará económicamente pero SIN efectivo verificado. ¿Confirmás?'))return;
-                          if(!legacy&&(!drawer||!drawer.reliable)){
-                            alert('Revisá el arqueo: falta verificar el saldo inicial o hay movimientos sin clasificar.');return;
-                          }
-                          const counted=window.prompt('Contá el efectivo físico que quedó en caja al cerrar (UYU).',
-                            !legacy&&drawer?.reliable?String(drawer.expectedCash):'0');
-                          if(counted===null)return;
-                          if(!/^\d{1,8}(\.\d{1,2})?$/.test(counted.trim())){alert('Importe contado inválido.');return;}
-                          const res = await fetch('/api/admin', {
-                            method: 'POST', headers: {'Content-Type':'application/json'},
-                            body: JSON.stringify({operation:'CLOSE_CASH',countedCash:counted.trim(),acknowledgeLegacy:legacy}),
-                          });
-                          if (!res.ok) {
-                            const payload = await res.json().catch(() => ({}));
-                            alert(payload.error || 'No se pudo cerrar la caja.');
-                            return;
-                          }
-                          const payload = await res.json();
-                          setCashStatus('cerrada');
-                          setLastClosedDate(getMontevideoDateKey(todayIso));
-                          const closing = payload.summary;
-                          alert(closing.physicalCashVerified
-                            ? `Caja cerrada. Efectivo esperado: ${closing.expectedCash}. Contado: ${closing.countedCash}. Diferencia: ${closing.difference}. Resultado económico: ${closing.fundNet}.`
-                            : `Cierre histórico SIN efectivo conciliado. Resultado económico: ${closing.fundNet}. Al abrir la próxima caja contá el efectivo real.`);
-                        }}
-                        className="px-4 py-2.5 rounded-xl bg-rose-500 hover:bg-rose-400 text-white font-bold text-xs cursor-pointer"
-                      >
+                      <button type="button"
+                        onClick={()=>{setCashCloseFeedback('');setCashCloseOpen(true);}}
+                        className="rounded-xl bg-rose-500 px-4 py-2.5 text-xs font-bold text-white hover:bg-rose-400">
                         Cerrar esta caja
                       </button>
                     )}
@@ -1363,6 +1335,26 @@ const handleAddBarber = async () => {
                 </div>
               </div>
 
+              {cashCloseFeedback && (
+                <div role="status" className="rounded-xl border border-emerald-600/30 bg-emerald-950/25 px-4 py-3 text-sm text-emerald-200">
+                  {cashCloseFeedback}
+                </div>
+              )}
+              {cashCloseOpen && (
+                <CashCloseDialog
+                  onCancel={()=>setCashCloseOpen(false)}
+                  onClosed={summary=>{
+                    setCashCloseOpen(false);
+                    setCashStatus('cerrada');
+                    setLastClosedDate(getMontevideoDateKey());
+                    setCashCloseFeedback(summary.physicalCashVerified
+                      ? 'Caja cerrada y arqueo registrado. Efectivo esperado: $'+Number(summary.expectedCash||0).toLocaleString('es-UY')+
+                        ' · Contado: $'+Number(summary.countedCash||0).toLocaleString('es-UY')+
+                        ' · Diferencia: $'+Number(summary.difference||0).toLocaleString('es-UY')+'.'
+                      : 'Caja histórica cerrada sin conciliación física. Al abrir la próxima caja contá el efectivo real.');
+                  }}
+                />
+              )}
               <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>

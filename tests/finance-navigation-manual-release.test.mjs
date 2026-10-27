@@ -6,6 +6,7 @@ const read = (name) => readFileSync(new URL('../'+name, import.meta.url), 'utf8'
 const config = JSON.parse(read('vercel.json'));
 const admin = read('app/admin/page.tsx');
 const cash = read('components/CashDrawerCard.tsx');
+const closeUI = read('components/CashCloseDialog.tsx');
 const ledger = read('components/FinanceLedgerCard.tsx');
 const api = read('app/api/finance/cash/route.ts');
 const payoutApi = read('app/api/finance/payouts/route.ts');
@@ -49,8 +50,8 @@ test('no cambiaron rutas de servidor ni permisos por la reorganización', () => 
 });
 
 test('caja conserva cierre histórico no conciliado y cierre contado', () => {
-  assert.match(admin, /acknowledgeLegacy:legacy/);
-  assert.match(admin, /countedCash:counted\.trim\(\)/);
+  assert.match(closeUI, /acknowledgeLegacy:legacy/);
+  assert.match(closeUI, /countedCash:normalized/);
   assert.match(admin, /operation:'OPEN_CASH', initialAmount:initialCash/);
-  assert.match(admin, /closing\.physicalCashVerified/);
+  assert.match(admin, /summary\.physicalCashVerified/);
 });
