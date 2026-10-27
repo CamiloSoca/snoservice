@@ -85,14 +85,17 @@ export async function POST(request: Request) {
   }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const barberView = new URL(request.url).searchParams.get('scope') === 'barber';
   const [admin, staff] = await Promise.all([requireAdminSession(), getBarberSession()]);
+  // La agenda personal no hereda privilegios de una cookie de admin simultánea.
+  if (barberView && !staff) return NextResponse.json({error: 'Sesión de barbero requerida'}, {status: 403});
   if (!admin && !staff) return NextResponse.json({error: 'No autorizado'}, {status: 401});
   const supabase = getSupabaseServer();
   let query = supabase.from('appointments')
     .select('id,code,service_id,barber_id,date_string,time_slot,duration_minutes,client_name,client_phone,client_email,client_notes,price_snapshot,status,created_at,completed_at,commission_rate_snapshot,barber_earnings_snapshot,business_earnings_snapshot,completed_cash_register_id,services(name,price,duration_minutes),barbers(name)')
     .eq('shop_id', SHOP_UUID).order('created_at', {ascending: false});
-  if (!admin && staff) query = query.eq('barber_id', staff.sub);
+  if (barberView || (!admin && staff)) query = query.eq('barber_id', staff!.sub);
   const [appointmentsResult, cashResult] = await Promise.all([
     query,
     supabase.from('cash_registers').select('id').eq('shop_id', SHOP_UUID)
