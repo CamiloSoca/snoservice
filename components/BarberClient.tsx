@@ -17,6 +17,7 @@ import {
   Plus,
   Trash2,
   BarChart3,
+  ChevronDown,
 } from 'lucide-react';
 import {
   AppointmentItem,
@@ -165,7 +166,7 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
     useAgendaAutoSync({
       enabled: isUnlocked && !panelLoading,
       refreshData: async () => {
-        const live = await getLiveAgendaSnapshot();
+        const live = await getLiveAgendaSnapshot('barber');
         setBarberAppointments(sortAppointmentsChronologically(live.appointments));
         setCashOpen(live.cashOpen);
       },
@@ -566,7 +567,16 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
                 {historicEstimateCount} movimientos anteriores no guardaron su comisión histórica. Estos importes son estimados.
               </div>
             )}
-            <FinanceLedgerCard mode="barber" />
+            <details className="group/earnings overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/90 open:border-zinc-700">
+              <summary className="flex min-h-16 cursor-pointer list-none items-center gap-3 px-4 py-3 text-sm font-bold hover:bg-zinc-800/60 focus-visible:outline-2 focus-visible:outline-emerald-400 [&::-webkit-details-marker]:hidden">
+                <Coins className="h-5 w-5 text-emerald-400" />
+                <span className="flex-1">Mis ganancias y retiros</span>
+                <ChevronDown className="h-4 w-4 text-zinc-400 transition-transform group-open/earnings:rotate-180" />
+              </summary>
+              <div className="border-t border-zinc-800 p-3 sm:p-4">
+                <FinanceLedgerCard mode="barber" />
+              </div>
+            </details>
 
             <AgendaCalendar
               mode="barber"
@@ -583,11 +593,13 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
               onRefresh={refreshAgenda}
             />
 
-            <details className="rounded-3xl border border-zinc-800 bg-zinc-900/90">
-              <summary className="cursor-pointer px-5 py-4 text-sm font-bold text-zinc-200 hover:text-emerald-400">
-                Ver listado de turnos e historial
+            <details className="group/history overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/90 open:border-zinc-700">
+              <summary className="flex min-h-16 cursor-pointer list-none items-center gap-3 px-4 py-3 text-sm font-bold hover:bg-zinc-800/60 focus-visible:outline-2 focus-visible:outline-emerald-400 [&::-webkit-details-marker]:hidden">
+                <CalendarIcon className="h-5 w-5 text-emerald-400" />
+                <span className="flex-1">Listado de turnos e historial</span>
+                <ChevronDown className="h-4 w-4 text-zinc-400 transition-transform group-open/history:rotate-180" />
               </summary>
-            <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 sm:p-6 space-y-4">
+            <div className="space-y-4 border-t border-zinc-800 p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <h3 className="font-bold text-base flex items-center gap-2">
                   <CalendarIcon className="w-4 h-4 text-emerald-400" />
@@ -692,7 +704,13 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
             </div>
             </details>
 
-            <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 space-y-4">
+<details className="group/day overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/90 open:border-zinc-700">
+              <summary className="flex min-h-16 cursor-pointer list-none items-center gap-3 px-4 py-3 text-sm font-bold hover:bg-zinc-800/60 focus-visible:outline-2 focus-visible:outline-emerald-400 [&::-webkit-details-marker]:hidden">
+                <BarChart3 className="h-5 w-5 text-emerald-400" />
+                <span className="flex-1">{isOwner ? 'Mis ingresos por día' : 'Mis ganancias por día'}</span>
+                <ChevronDown className="h-4 w-4 text-zinc-400 transition-transform group-open/day:rotate-180" />
+              </summary>
+              <div className="space-y-4 border-t border-zinc-800 p-4 sm:p-5">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800 pb-3">
                 <h3 className="font-bold text-sm flex items-center gap-2">
                   <BarChart3 className="w-4 h-4 text-emerald-400" />
@@ -723,7 +741,8 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
                   <p className="text-2xl font-extrabold text-amber-400">+${dailyTipsTotal}</p>
                 </div>
               </div>
-            </div>
+              </div>
+            </details>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-5 space-y-1">
@@ -748,13 +767,13 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
               </div>
             </div>
 
-            <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 sm:p-6 space-y-4">
-              <div>
-                <h3 className="font-bold text-base flex items-center gap-2">
-                  <Coins className="w-4 h-4 text-emerald-400" />
-                  Registrar cobros adicionales y consultar cortes fijos cobrados
-                </h3>
-              </div>
+<details className="group/charges overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/90 open:border-zinc-700">
+              <summary className="flex min-h-16 cursor-pointer list-none items-center gap-3 px-4 py-3 text-sm font-bold hover:bg-zinc-800/60 focus-visible:outline-2 focus-visible:outline-emerald-400 [&::-webkit-details-marker]:hidden">
+                <Coins className="h-5 w-5 text-emerald-400" />
+                <span className="flex-1">Cobros adicionales y cortes fijos</span>
+                <ChevronDown className="h-4 w-4 text-zinc-400 transition-transform group-open/charges:rotate-180" />
+              </summary>
+              <div className="space-y-4 border-t border-zinc-800 p-4 sm:p-6">
 
               <form onSubmit={handleAddMyCharge} className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
                 <input
@@ -813,15 +832,16 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
                   ))}
                 </div>
               )}
-            </div>
-
-            <div className="bg-zinc-900/90 border border-zinc-800 rounded-3xl p-5 sm:p-6 space-y-4">
-              <div>
-                <h3 className="font-bold text-base flex items-center gap-2">
-                  <Coins className="w-4 h-4 text-amber-400" />
-                  Cuenta de Propinas ({selectedBarberObj?.name})
-                </h3>
               </div>
+            </details>
+
+            <details className="group/tips overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/90 open:border-zinc-700">
+              <summary className="flex min-h-16 cursor-pointer list-none items-center gap-3 px-4 py-3 text-sm font-bold hover:bg-zinc-800/60 focus-visible:outline-2 focus-visible:outline-emerald-400 [&::-webkit-details-marker]:hidden">
+                <Coins className="h-5 w-5 text-amber-400" />
+                <span className="flex-1">Mis propinas</span>
+                <ChevronDown className="h-4 w-4 text-zinc-400 transition-transform group-open/tips:rotate-180" />
+              </summary>
+              <div className="space-y-4 border-t border-zinc-800 p-4 sm:p-6">
 
               <form onSubmit={handleAddMyTip} className="grid grid-cols-1 sm:grid-cols-12 gap-2.5">
                 <input
@@ -879,7 +899,8 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
                   ))}
                 </div>
               )}
-            </div>
+              </div>
+            </details>
 
           </div>
         )}

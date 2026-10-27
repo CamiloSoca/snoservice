@@ -37,7 +37,7 @@ export default function FinanceLedgerCard({mode,display='summary'}:{mode:'admin'
 
   const load=useCallback(async()=>{
     try {
-      const r=await fetch('/api/finance/payouts',{credentials:'same-origin',cache:'no-store'});
+      const r=await fetch(mode==='barber'?'/api/finance/payouts?scope=barber':'/api/finance/payouts',{credentials:'same-origin',cache:'no-store'});
       const json=await r.json().catch(()=>({}));
       if (!r.ok) throw new Error(json.error||'No se pudieron consultar las liquidaciones.');
       setData(json);
@@ -47,7 +47,7 @@ export default function FinanceLedgerCard({mode,display='summary'}:{mode:'admin'
     } finally {
       setLoading(false);
     }
-  },[]);
+  },[mode]);
 
   useEffect(()=>{
     void load();

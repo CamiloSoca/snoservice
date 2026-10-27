@@ -561,14 +561,14 @@ export function getMontevideoDateKey(value: Date | string = new Date()): string 
 /** Consulta ligera para refrescar la agenda sin volver a cargar gastos, propinas,
  *  servicios y balances en cada modificación de un turno. Su API comprueba
  *  sesión en servidor y filtra por el barbero autenticado. */
-export async function getLiveAgendaSnapshot(): Promise<{
+export async function getLiveAgendaSnapshot(scope: 'admin' | 'barber' = 'admin'): Promise<{
   appointments: AppointmentItem[];
   cashOpen: boolean;
 }> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10_000);
   try {
-    const payload = await apiRequest('/api/barber', {
+    const payload = await apiRequest(scope === 'barber' ? '/api/barber?scope=barber' : '/api/barber', {
       cache: 'no-store', signal: controller.signal,
     });
     if (!Array.isArray(payload.appointments) || typeof payload.cashOpen !== 'boolean') {
