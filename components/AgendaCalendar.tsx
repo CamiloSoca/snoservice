@@ -15,10 +15,10 @@ type CalendarView = 'dia' | 'semana';
 interface FixedRule {
  id:string;barberId:string;serviceId:string;clientName:string;clientPhone:string;clientEmail:string;
  weekday:number;timeSlot:string;durationMinutes:number;startDate:string;endDate:string|null;
- serviceName:string;servicePrice:number;barberName:string;skippedDates?:string[];
+ serviceName:string;servicePrice:number;barberName:string;skippedDates?:string[];complimentary?:boolean;
  monthlyPlan?:{fixed_booking_id:string;monthly_price:number;included_cuts:number;active:boolean}|null;
 }
-type FixedCompleted={fixedBookingId:string;occurrenceDate:string;chargeId:string;amount:number;coveredBySubscription?:boolean};
+type FixedCompleted={fixedBookingId:string;occurrenceDate:string;chargeId:string;amount:number;coveredBySubscription?:boolean;coveredByCourtesy?:boolean};
 type FixedPeriod={fixedBookingId:string;month:string;includedCuts:number;used:number};
 type BarberRef = Pick<BarberItem, 'id' | 'name'>;
 
@@ -160,11 +160,11 @@ export default function AgendaCalendar({
           const period=fixedPeriods.find(p=>p.fixedBookingId===f.id&&p.month===date.slice(0,7)+'-01');
           const remaining=Math.max(0,(period?.includedCuts||4)-(period?.used||0));
           const prepaid=Boolean(period&&remaining>0);
-          const price=paid&&!paid.coveredBySubscription?paid.amount:f.servicePrice;
+          const price=f.complimentary?0:paid&&!paid.coveredBySubscription?paid.amount:f.servicePrice;
           return {
-            id:'fixed-'+f.id+'-'+date,code:'FIJO',isFixed:true,
+            id:'fixed-'+f.id+'-'+date,code:'FIJO',isFixed:true,isCourtesy:f.complimentary===true,
             fixedBookingId:f.id,fixedDate:date,
-            fixedSubscription:{active:Boolean(f.monthlyPlan?.active),paid:Boolean(period),used:period?.used||0,remaining,eligible:!paid&&prepaid,covered:paid?.coveredBySubscription===true},
+            fixedSubscription:{active:Boolean(f.monthlyPlan?.active),paid:Boolean(period),used:period?.used||0,remaining,eligible:!paid&&prepaid&&!f.complimentary,covered:paid?.coveredBySubscription===true},
             serviceId:f.serviceId,serviceName:f.serviceName,servicePrice:price,priceSnapshot:price,
             durationMinutes:f.durationMinutes,barberId:f.barberId,barberName:f.barberName,
             dateString:bookingDateLabel(date),timeSlot:f.timeSlot,
@@ -499,7 +499,7 @@ export default function AgendaCalendar({
                 body:JSON.stringify({
                   fixedBookingId:appointment.fixedBookingId,
                   occurrenceDate:appointment.fixedDate,
-                  mode:appointment.fixedSubscription?.eligible?'subscription':'charge',
+                  mode:appointment.isCourtesy?'courtesy':appointment.fixedSubscription?.eligible?'subscription':'charge',
                   paymentMethod:method,
                 }),
               });
@@ -508,7 +508,7 @@ export default function AgendaCalendar({
               setFixedReload(value=>value+1);
               return {ok:true};
             }catch{
-              return {ok:false,error:'No se pudo comprobar el cobro. Revisá la caja antes de repetirlo.'};
+              return {ok:false,error:'No se pudo comprobar el servicio. Revisá la agenda antes de repetirlo.'};
             }
           }}
           onCancel={onCancel}

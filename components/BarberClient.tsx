@@ -24,6 +24,7 @@ import {
   TipItem,
   ManualChargeItem,
   FixedMonthlyUseItem,
+  FixedCourtesyUseItem,
   unlockBarberPanelWithPin,
   getBarberDashboardSnapshot,
   getLiveAgendaSnapshot,
@@ -99,6 +100,7 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
   const [barberTips, setBarberTips] = useState<TipItem[]>([]);
   const [barberCharges, setBarberCharges] = useState<ManualChargeItem[]>([]);
   const [fixedMonthlyUses, setFixedMonthlyUses] = useState<FixedMonthlyUseItem[]>([]);
+  const [fixedCourtesyUses,setFixedCourtesyUses]=useState<FixedCourtesyUseItem[]>([]);
   const [commissionRate, setCommissionRate] = useState<number>(50);
   const [isOwner, setIsOwner] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
@@ -158,6 +160,7 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
       setBarberTips(snapshot.tips);
       setBarberCharges(snapshot.manualCharges);
       setFixedMonthlyUses(snapshot.fixedMonthlyUses);
+      setFixedCourtesyUses(snapshot.fixedCourtesyUses);
     } catch (err: any) {
       // Ante una lectura incompleta no mostrar cifras vacías como reales.
       setIsUnlocked(false);
@@ -198,6 +201,7 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
         setBarberTips(financial.tips);
         setBarberCharges(financial.manualCharges);
         setFixedMonthlyUses(financial.fixedMonthlyUses);
+        setFixedCourtesyUses(financial.fixedCourtesyUses);
         setCashOpen(financial.cashOpen);
         setCommissionRate(financial.commissionRate);
         setIsOwner(financial.isOwner);
@@ -228,6 +232,7 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
         setBarberTips(fresh.tips);
         setBarberCharges(fresh.manualCharges);
         setFixedMonthlyUses(fresh.fixedMonthlyUses);
+        setFixedCourtesyUses(fresh.fixedCourtesyUses);
         setCashOpen(fresh.cashOpen);
       } catch {
         console.warn('Turno guardado; no se pudieron refrescar las finanzas.');
@@ -363,6 +368,7 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
     a.status === 'completado' && periodIncludes(a.completedAt || a.createdAt));
   const periodCharges = barberCharges.filter(c => periodIncludes(c.createdAt));
   const periodTips = barberTips.filter(t => periodIncludes(t.createdAt));
+  const periodCourtesyUses=fixedCourtesyUses.filter(u=>periodIncludes(u.occurrence_date+'T12:00:00-03:00'));
   const periodCommission = periodAppointments.reduce((sum, a) =>
     sum + splitBusinessRevenue(Number(a.priceSnapshot ?? a.servicePrice), {commissionRate,isOwner}, a).barber, 0)
     + periodCharges.reduce((sum, c) =>
@@ -379,6 +385,10 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
   for (const c of periodCharges) {
     const name = c.serviceNameSnapshot || 'Sin clasificar';
     serviceCounts.set(name, (serviceCounts.get(name) || 0) + 1);
+  }
+  for (const use of periodCourtesyUses) {
+    const name=use.service_name_snapshot||'Cortesía';
+    serviceCounts.set(name,(serviceCounts.get(name)||0)+1);
   }
   const countedServices = [...serviceCounts.entries()].filter(([name]) => name !== 'Sin clasificar')
     .sort((a,b) => b[1] - a[1]);
@@ -450,7 +460,8 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
   const dailyTipsTotal = dailyTips.reduce((sum, t) => sum + Number(t.amount), 0);
   const dailyClassifiedCharges = dailyCharges.filter(c => Boolean(c.serviceNameSnapshot));
   const dailyUnclassifiedChargesCount = dailyCharges.length - dailyClassifiedCharges.length;
-  const dailyWorkCount = dailyAppointments.length + dailyClassifiedCharges.length + dailyFixedUses.length;
+  const dailyCourtesyUses=fixedCourtesyUses.filter(u=>!auditDate||u.occurrence_date===auditDate);
+  const dailyWorkCount = dailyAppointments.length + dailyClassifiedCharges.length + dailyFixedUses.length + dailyCourtesyUses.length;
   const dailyToBusiness = dailyAppointments.reduce((sum, a) =>
     sum + splitBusinessRevenue(Number(a.priceSnapshot ?? a.servicePrice), {commissionRate,isOwner}, a).business, 0)
     + dailyCharges.reduce((sum, c) =>
@@ -845,7 +856,7 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
                 <div className="rounded-2xl border border-zinc-800 bg-zinc-900/90 p-4">
                   <span className="text-xs text-zinc-400">Servicios realizados</span>
                   <p className="mt-1 text-2xl font-extrabold">{categorizedCount}</p>
-                  <p className="text-[11px] text-zinc-500">Agenda + manuales</p>
+                  <p className="text-[11px] text-zinc-500">Agenda + manuales + cortesías</p>
                 </div>
                 <div className="rounded-2xl border border-zinc-800 bg-zinc-900/90 p-4">
                   <span className="text-xs font-bold text-emerald-400">{isOwner ? 'Ingresos generados' : 'Comisiones generadas'}</span>

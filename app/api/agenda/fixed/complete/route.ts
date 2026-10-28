@@ -13,7 +13,7 @@ const isRealDate=(date:string):boolean=>{
 };
 
 // Es una sola ocurrencia semanal, no toda la recurrencia.
-// El RPC Postgres escribe un cobro financiero atómico vinculado a la fecha
+// El RPC Postgres escribe un registro atómico vinculado a la fecha
 // y aplica el UNIQUE para evitar doble facturación simultánea.
 export async function POST(request:Request){
   if(!verifyCsrfOrigin(request))return NextResponse.json({error:'Origen inválido'},{status:403,headers});
@@ -24,7 +24,7 @@ export async function POST(request:Request){
   const occurrenceDate=String(body.occurrenceDate||'');
   const paymentMethod=body.paymentMethod;
   const mode=body.mode||'charge';
-  if((mode!=='charge'&&mode!=='subscription')||!isValidUUID(fixedBookingId)||!isRealDate(occurrenceDate)||
+  if((mode!=='charge'&&mode!=='subscription'&&mode!=='courtesy')||!isValidUUID(fixedBookingId)||!isRealDate(occurrenceDate)||
      (mode==='charge'&&!isOnSitePaymentMethod(paymentMethod))){
     return NextResponse.json({error:'Turno, fecha o medio de pago inválidos.'},{status:400,headers});
   }
@@ -37,9 +37,15 @@ export async function POST(request:Request){
     if(!data)return NextResponse.json({error:'Este fijo no pertenece a tu agenda.'},{status:403,headers});
   }
   // Igual que un turno normal: no completar si la caja no está abierta.
-  const denied=await requireOpenCash();
-  if(denied)return denied;
-  const {data,error}=mode==='subscription'
+  if(mode!=='courtesy'){
+    const denied=await requireOpenCash();
+    if(denied)return denied;
+  }
+  const {data,error}=mode==='courtesy'
+    ?await db.rpc('complete_fixed_courtesy_occurrence',{
+      p_shop_id:SHOP_UUID,p_fixed_id:fixedBookingId,p_occurrence:occurrenceDate,
+    })
+    :mode==='subscription'
     ?await db.rpc('complete_fixed_monthly_occurrence',{
       p_shop_id:SHOP_UUID,p_fixed_id:fixedBookingId,p_occurrence:occurrenceDate,
     })
@@ -56,7 +62,8 @@ export async function POST(request:Request){
     return NextResponse.json({error:'No se pudo confirmar el corte fijo. Revisá la caja antes de reintentar.'},
       {status:503,headers});
   }
-  if(!isValidUUID(String(data||'')))return NextResponse.json({error:'No se confirmó el cobro.'},{status:503,headers});
+  if(!isValidUUID(String(data||'')))return NextResponse.json({error:'No se confirmó el servicio.'},{status:503,headers});
   return NextResponse.json({ok:true,coveredBySubscription:mode==='subscription',
-    ...(mode==='subscription'?{usageId:data}:{chargeId:data})},{headers});
+    coveredByCourtesy:mode==='courtesy',
+    ...(mode==='charge'?{chargeId:data}:{usageId:data})},{headers});
 }

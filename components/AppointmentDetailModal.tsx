@@ -64,7 +64,8 @@ export default function AppointmentDetailModal({
   }, [mounted, busy, onClose]);
 
   const timeState = appointmentTimeState(appointment);
-  const completeAllowed = appointment.status === 'confirmado' && canComplete && timeState === 'started';
+  const courtesy=appointment.isFixed===true&&appointment.isCourtesy===true;
+  const completeAllowed = appointment.status === 'confirmado' && (canComplete||courtesy) && timeState === 'started';
   const cancelAllowed = !appointment.isFixed && appointment.status === 'confirmado' && timeState === 'future';
   const prepaid=appointment.isFixed===true&&appointment.fixedSubscription?.eligible===true;
   const whatsappLink = getWhatsAppLink?.(appointment)
@@ -77,7 +78,7 @@ export default function AppointmentDetailModal({
 
   async function perform(action: 'complete' | 'cancel') {
     if (busy) return;
-    if (action === 'complete' && (!completeAllowed || (!paymentMethod&&!prepaid))) {
+    if (action === 'complete' && (!completeAllowed || (!paymentMethod&&!prepaid&&!courtesy))) {
       setError('Seleccioná cómo pagó el cliente: efectivo o transferencia.');
       return;
     }
@@ -94,7 +95,7 @@ export default function AppointmentDetailModal({
       if (action === 'cancel') {
         onSuccess('Horario liberado. ' + notificationMessage(result.cancellationEmailStatus));
       } else {
-        onSuccess(prepaid?'Corte descontado del abono. No se generará otro cobro.':'Turno completado. El importe y las comisiones quedaron registrados en la caja abierta.');
+        onSuccess(courtesy?'Cortesía completada. Se contó un servicio sin generar cobro ni comisión.':prepaid?'Corte descontado del abono. No se generará otro cobro.':'Turno completado. El importe y las comisiones quedaron registrados en la caja abierta.');
       }
       onClose();
     } catch {
@@ -168,7 +169,7 @@ export default function AppointmentDetailModal({
               <p className="mt-3 text-xs text-amber-300">No hay un celular uruguayo válido para contactar por WhatsApp.</p>
             )}
           </div>
-          {appointment.status === 'confirmado' && timeState === 'started' && !prepaid && (
+          {appointment.status === 'confirmado' && timeState === 'started' && !prepaid && !courtesy && (
             <fieldset className="rounded-xl border border-zinc-700 bg-zinc-900 p-3">
               <legend className="px-1 text-xs font-bold text-zinc-200">¿Cómo pagó el cliente? *</legend>
               <div className="mt-2 grid grid-cols-2 gap-2">
@@ -198,19 +199,23 @@ export default function AppointmentDetailModal({
               </p>
             </div>
           )}
-          {appointment.isFixed && appointment.status === 'confirmado' && (prepaid
+          {appointment.isFixed && appointment.status === 'confirmado' && (courtesy
+             ? <p className="rounded-lg border border-sky-500/30 bg-sky-500/10 p-3 text-xs text-sky-200">Cortesía · este servicio cuenta como realizado, pero no requiere cobrar ni genera ingresos o comisión.</p>
+             : prepaid
             ? <p className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-200">Abono del mes pagado · {appointment.fixedSubscription?.used||0}/4 cortes utilizados. Este corte ya está incluido: se registrará sin generar un cobro adicional.</p>
             : <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">{appointment.fixedSubscription?.active
               ? appointment.fixedSubscription.paid?'El abono agotó sus cuatro cortes. Confirmá un cobro individual.':'El abono de este mes está pendiente. Si completás, se cobra este corte individualmente.'
               : 'Cliente de agenda fija. Completar cobra solo este día.'}</p>)}
-          {appointment.status === 'confirmado' && !canComplete && (
+          {appointment.status === 'confirmado' && !canComplete && !courtesy && (
             <p className="text-xs text-amber-300">Abrí la caja antes de completar turnos.</p>
           )}
           {appointment.status === 'confirmado' && timeState === 'future' && (
             <p className="text-xs text-zinc-400">Completar se habilita cuando comienza el turno. Podés cancelar antes de que empiece.</p>
           )}
           {appointment.status === 'completado' && (
-            <p className="text-sm font-semibold text-emerald-400">{appointment.fixedSubscription?.covered
+            <p className="text-sm font-semibold text-emerald-400">{courtesy
+               ? 'Cortesía completada. Servicio realizado sin cobro ni comisión.'
+               : appointment.fixedSubscription?.covered
               ? 'Corte realizado y cubierto por el abono. El pago mensual ya figura una sola vez en caja.'
               : 'Este turno ya está completado y contabilizado.'}</p>
           )}
@@ -233,10 +238,10 @@ export default function AppointmentDetailModal({
                 className="flex items-center justify-center gap-1.5 rounded-xl border border-rose-500/40 px-2 py-3 text-sm font-bold text-rose-300 disabled:cursor-not-allowed disabled:opacity-35">
                 <XCircle className="h-4 w-4"/> Cancelar
               </button>
-              <button type="button" disabled={busy || !completeAllowed || (!paymentMethod&&!prepaid)}
+              <button type="button" disabled={busy || !completeAllowed || (!paymentMethod&&!prepaid&&!courtesy)}
                 onClick={() => {void perform('complete');}}
                 className="flex items-center justify-center gap-1.5 rounded-xl bg-emerald-400 px-2 py-3 text-sm font-bold text-zinc-950 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500">
-                <CheckCircle2 className="h-4 w-4"/> {busy ? 'Guardando…' : prepaid?'Usar corte abonado':'Completar'}
+                <CheckCircle2 className="h-4 w-4"/> {busy ? 'Guardando…' : courtesy?'Completar cortesía':prepaid?'Usar corte abonado':'Completar'}
               </button>
             </>
           )}

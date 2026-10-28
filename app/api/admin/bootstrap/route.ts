@@ -49,13 +49,16 @@ export async function GET() {
       Array.isArray(fastData.manualCharges) &&
       Array.isArray(fastData.cashRegisters) &&
       fastData.shop) {
-      const [uses, fixedBookings] = await Promise.all([
+      const [uses, fixedBookings, courtesy] = await Promise.all([
         supabase.from('fixed_monthly_uses')
           .select('fixed_booking_id,period_id,occurrence_date,completed_at')
           .eq('shop_id', SHOP_UUID),
         supabase.from('fixed_bookings').select('id,barber_id').eq('shop_id', SHOP_UUID),
+        supabase.from('fixed_courtesy_uses')
+          .select('fixed_booking_id,occurrence_date,completed_at,barber_id,service_name_snapshot')
+          .eq('shop_id',SHOP_UUID),
       ]);
-      if (uses.error || fixedBookings.error) {
+      if (uses.error || fixedBookings.error || courtesy.error) {
         return NextResponse.json({error:'No se pudieron cargar los cortes de abono.'},
           {status:503,headers:{'Cache-Control':'private, no-store'}});
       }
@@ -68,6 +71,7 @@ export async function GET() {
         ...fastData,
         manualCharges: await resolveManualServiceAnnotations(fastData.manualCharges, supabase),
         fixedMonthlyUses,
+        fixedCourtesyUses:courtesy.data||[],
       }, {
         headers: {
           'Cache-Control': 'private, no-store',
@@ -93,7 +97,7 @@ export async function GET() {
 
     const [
       appointments, services, barbers, expenses, tips, manualCharges, shop, cashRegisters,
-      fixedMonthlyUses, fixedBookings,
+      fixedMonthlyUses, fixedBookings, fixedCourtesyUses,
     ] = await Promise.all([
       timed('appointments', supabase.from('appointments')
         .select('id,code,service_id,barber_id,date_string,time_slot,duration_minutes,status,created_at,client_name,client_phone,client_email,client_notes,price_snapshot,completed_at,commission_rate_snapshot,barber_earnings_snapshot,business_earnings_snapshot,completed_cash_register_id,services(name,price,duration_minutes),barbers(name)')
@@ -131,6 +135,9 @@ export async function GET() {
         .select('fixed_booking_id,period_id,occurrence_date,completed_at')
         .eq('shop_id',SHOP_UUID)),
       timed('fixedBookings',supabase.from('fixed_bookings').select('id,barber_id').eq('shop_id',SHOP_UUID)),
+      timed('courtesy',supabase.from('fixed_courtesy_uses')
+        .select('fixed_booking_id,occurrence_date,completed_at,barber_id,service_name_snapshot')
+        .eq('shop_id',SHOP_UUID)),
     ]);
 
     const totalDuration = performance.now() - startedAt;
@@ -151,6 +158,7 @@ export async function GET() {
       ['caja', cashRegisters.error],
       ['cortes de abono',fixedMonthlyUses.error],
       ['agenda fija',fixedBookings.error],
+      ['cortesías',fixedCourtesyUses.error],
     ] as const;
     const failed = errors.find(([, error]) => error);
     if (failed) {
@@ -173,6 +181,7 @@ export async function GET() {
           ...use,barber_id:((fixedBookings.data||[]) as {id:string;barber_id:string}[])
             .find((fixed)=>fixed.id===use.fixed_booking_id)?.barber_id||null,
         })),
+        fixedCourtesyUses:fixedCourtesyUses.data||[],
         shop: shop.data,
         cashRegisters: cashRegisters.data || [],
       },

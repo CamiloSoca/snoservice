@@ -9,7 +9,7 @@ import {ChevronDown,Plus,UserRound} from 'lucide-react';
 type Fixed={
   id:string;barber_id:string;service_id:string;client_name:string;client_phone:string;
   client_email:string;weekday:number;time_slot:string;duration_minutes:number;
-  start_date:string;end_date:string|null;active:boolean;skipped_dates:string[];
+  start_date:string;end_date:string|null;active:boolean;skipped_dates:string[];complimentary:boolean;
 };
 const week=['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'];
 const dayKeys=['domingo','lunes','martes','miercoles','jueves','viernes','sabado'];
@@ -19,7 +19,7 @@ const todayLocal=()=>{
  return n('year')+'-'+n('month')+'-'+n('day');
 };
 const empty=()=>({id:'',barberId:'',serviceId:'',clientName:'',clientPhone:'',
-  clientEmail:'',weekday:6,timeSlot:'',startDate:todayLocal(),endDate:''});
+  clientEmail:'',weekday:6,timeSlot:'',startDate:todayLocal(),endDate:'',complimentary:false});
 const shortDate=(iso:string)=>iso.slice(8,10)+'/'+iso.slice(5,7)+'/'+iso.slice(0,4);
 
 export default function FixedAgendaManager({barbers,services,shopSchedule}:{
@@ -62,7 +62,7 @@ export default function FixedAgendaManager({barbers,services,shopSchedule}:{
  const startSlots=selectedService
    ? fixedBookingStartSlots(daySchedule,selectedService.durationMinutes):[];
  const upcomingDates=(item:Fixed)=>upcomingFixedDates(item,todayLocal());
- const set=(key:keyof ReturnType<typeof empty>,value:string|number)=>
+ const set=(key:keyof ReturnType<typeof empty>,value:string|number|boolean)=>
    setDraft(current=>({...current,[key]:value,
      ...(['barberId','serviceId','weekday'].includes(key)?{timeSlot:''}:{})}));
  const submit=async(e:React.FormEvent)=>{
@@ -126,8 +126,8 @@ export default function FixedAgendaManager({barbers,services,shopSchedule}:{
  return <div className="space-y-4">
    <header className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 sm:p-6">
      <h2 className="text-xl font-extrabold">Agenda fija semanal</h2>
-     <p className="mt-2 text-sm text-zinc-400">Reservá el mismo día y horario cada semana. Podés pausar todas las semanas o liberar únicamente una fecha si el cliente falta.</p>
-     <p className="mt-2 text-xs text-amber-300">Estos horarios bloquean la reserva online. No se cobran automáticamente: para registrar un servicio atendido hay que completar su cobro por separado.</p>
+     <p className="mt-2 text-sm text-zinc-400">Reservá el mismo día y horario cada semana. Podés pausar todas las semanas, liberar una fecha o marcar una cortesía sin cargo.</p>
+     <p className="mt-2 text-xs text-amber-300">Los servicios pagos requieren registrar el cobro al completarlos. Las cortesías se completan sin cobro ni comisión.</p>
    </header>
    {error&&<p role="alert" className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-300">{error}</p>}
    {notice&&<p role="status" className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs text-emerald-300">{notice}</p>}
@@ -200,6 +200,13 @@ export default function FixedAgendaManager({barbers,services,shopSchedule}:{
            <p role="status" className="text-xs text-amber-300">Este turno existente figura a las {draft.timeSlot} y se mantiene intacto. Para modificarlo, elegí un bloque compatible.</p>}
          <p className="text-[11px] text-zinc-500">El bloqueo definitivo de reservas fijas y comunes se valida al guardar.</p>
        </div>
+       <label className="flex items-start gap-3 rounded-xl border border-zinc-700 bg-zinc-950 p-3 text-sm text-zinc-200 sm:col-span-2">
+         <input type="checkbox" checked={draft.complimentary} onChange={e=>set('complimentary',e.target.checked)}
+           className="mt-1 h-4 w-4 accent-emerald-400"/>
+         <span><strong className="block">Cortesía · sin cargo</strong>
+           <span className="mt-1 block text-xs text-zinc-400">Al completar, suma un servicio realizado, sin pedir medio de pago ni generar ingresos o comisión. Solo lo configura administración.</span>
+         </span>
+       </label>
        <label className="text-xs text-zinc-400">Válido desde *
          <input required type="date" value={draft.startDate} onChange={e=>set('startDate',e.target.value)}
            className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-950 p-3 text-sm text-white"/>
@@ -240,6 +247,7 @@ export default function FixedAgendaManager({barbers,services,shopSchedule}:{
            <span className={'rounded-lg px-2 py-1 text-[10px] font-bold '+(item.active?'bg-emerald-500/15 text-emerald-300':'bg-zinc-800 text-zinc-400')}>
              {item.active?'Activo':'Pausado'}
            </span>
+           {item.complimentary&&<span className="rounded-lg bg-sky-500/15 px-2 py-1 text-[10px] font-bold text-sky-300">Cortesía</span>}
            <span className="hidden text-xs font-semibold text-emerald-300 sm:inline">Administrar</span>
            <ChevronDown className="h-4 w-4 text-zinc-400 transition-transform group-open/fixed:rotate-180"/>
          </span>
@@ -255,6 +263,7 @@ export default function FixedAgendaManager({barbers,services,shopSchedule}:{
              <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Servicio semanal</p>
              <p className="mt-1 text-sm font-semibold text-zinc-100">{services.find(s=>s.id===item.service_id)?.name||'Servicio'}</p>
              <p className="mt-1 text-xs text-zinc-400">{item.duration_minutes} min · {barbers.find(b=>b.id===item.barber_id)?.name||'Barbero'}</p>
+             {item.complimentary&&<p className="mt-1 text-xs font-semibold text-sky-300">Sin cargo · cuenta como trabajo</p>}
            </div>
            <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3 sm:col-span-2">
              <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Vigencia</p>
@@ -268,7 +277,7 @@ export default function FixedAgendaManager({barbers,services,shopSchedule}:{
        <div className="flex flex-wrap gap-2">
          <button type="button" onClick={()=>{setDraft({id:item.id,barberId:item.barber_id,serviceId:item.service_id,
            clientName:item.client_name,clientPhone:item.client_phone,clientEmail:item.client_email,
-           weekday:item.weekday,timeSlot:item.time_slot,startDate:item.start_date,endDate:item.end_date||''});
+           weekday:item.weekday,timeSlot:item.time_slot,startDate:item.start_date,endDate:item.end_date||'',complimentary:item.complimentary===true});
            window.scrollTo({top:0,behavior:'smooth'});}}
            className="rounded-lg border border-zinc-700 px-3 py-2 text-xs font-semibold">Editar</button>
          <button type="button" onClick={()=>{void toggle(item);}}

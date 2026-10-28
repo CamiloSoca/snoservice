@@ -25,7 +25,7 @@ test('completar un viernes no completa la próxima semana',()=>{
 test('se usa el precio verdadero y el botón Completar también en fijos',()=>{
  assert.match(fixed,/services\(name,price\)/);
  assert.match(fixed,/servicePrice:Number\(service\?\.price\|\|0\)/);
- assert.match(agenda,/const price=paid&&!paid\.coveredBySubscription\?paid\.amount:f\.servicePrice/);
+ assert.match(agenda,/const price=f\.complimentary\?0:paid&&!paid\.coveredBySubscription\?paid\.amount:f\.servicePrice/);
  assert.match(modal,/fixedSubscription\?\.covered/);
  assert.doesNotMatch(modal,/const completeAllowed = !appointment\.isFixed/);
 });

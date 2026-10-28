@@ -45,6 +45,7 @@ import {
   TipItem,
   ManualChargeItem,
   FixedMonthlyUseItem,
+  FixedCourtesyUseItem,
   ShopConfig,
   DEFAULT_SHOP_CONFIG,
   SHOP_UUID,
@@ -150,6 +151,7 @@ export default function AdminDashboard() {
   const [tips, setTips] = useState<TipItem[]>([]);
   const [manualCharges, setManualCharges] = useState<ManualChargeItem[]>([]);
   const [fixedMonthlyUses, setFixedMonthlyUses] = useState<FixedMonthlyUseItem[]>([]);
+  const [fixedCourtesyUses,setFixedCourtesyUses]=useState<FixedCourtesyUseItem[]>([]);
   const [shopConfig, setShopConfig] = useState<ShopConfig>(DEFAULT_SHOP_CONFIG);
   const [savedBanner, setSavedBanner] = useState(false);
   const [shopHoursSaving,setShopHoursSaving]=useState(false);
@@ -250,6 +252,7 @@ export default function AdminDashboard() {
         setTips(snapshot.tips);
         setManualCharges(snapshot.manualCharges);
         setFixedMonthlyUses(snapshot.fixedMonthlyUses);
+        setFixedCourtesyUses(snapshot.fixedCourtesyUses);
         setShopConfig(freshConfig);
 
         checkBarberLocks(freshBarbers);
@@ -291,6 +294,7 @@ export default function AdminDashboard() {
         setTips(financial.tips);
         setManualCharges(financial.manualCharges);
         setFixedMonthlyUses(financial.fixedMonthlyUses);
+        setFixedCourtesyUses(financial.fixedCourtesyUses);
         setCashStatus(financial.cashStatus);
         setLastClosedDate(financial.lastClosedDate);
       } catch {
@@ -346,6 +350,7 @@ export default function AdminDashboard() {
         setTips(fresh.tips);
         setManualCharges(fresh.manualCharges);
         setFixedMonthlyUses(fresh.fixedMonthlyUses);
+        setFixedCourtesyUses(fresh.fixedCourtesyUses);
         setCashStatus(fresh.cashStatus);
       } catch {
         console.warn('La operación quedó guardada; el resumen financiero se actualizará al reingresar.');
@@ -910,6 +915,8 @@ const handleAddBarber = async () => {
   });
   const filteredMonthlyUses = fixedMonthlyUses.filter((use) =>
     isWithinPeriod(`${use.occurrence_date}T12:00:00-03:00`,period,selectedMonth));
+  const filteredCourtesyUses = fixedCourtesyUses.filter((use) =>
+    isWithinPeriod(`${use.occurrence_date}T12:00:00-03:00`,period,selectedMonth));
 
   const auditedAppointments = safeAppointments.filter((apt) => {
     if (apt.status !== 'completado') return false;
@@ -932,6 +939,9 @@ const handleAddBarber = async () => {
   const auditedMonthlyUses = fixedMonthlyUses.filter((use) =>
     (!auditDate || use.occurrence_date === auditDate) &&
     (auditBarberId === 'todos' || use.barber_id === auditBarberId));
+  const auditedCourtesyUses = fixedCourtesyUses.filter((use) =>
+    (!auditDate || use.occurrence_date===auditDate) &&
+    (auditBarberId==='todos'||use.barber_id===auditBarberId));
 
   const auditedTips = safeTips.filter((t) => {
     if (auditDate) {
@@ -967,7 +977,8 @@ const handleAddBarber = async () => {
       const brbCharges = auditedManualCharges.filter((c) => c.barberId === barber.id);
       const brbTips = auditedTips.filter((t) => t.barberId === barber.id);
       const brbClassifiedCharges = brbCharges.filter((c) => Boolean(c.serviceNameSnapshot));
-      const brbFixedCount = auditedMonthlyUses.filter((use) => use.barber_id === barber.id).length;
+      const brbFixedCount = auditedMonthlyUses.filter((use) => use.barber_id === barber.id).length
+        + auditedCourtesyUses.filter((use) => use.barber_id === barber.id).length;
       const workCount = brbApts.length + brbClassifiedCharges.length + brbFixedCount;
       const unclassifiedChargeCount = brbCharges.length - brbClassifiedCharges.length;
 
@@ -995,6 +1006,7 @@ const handleAddBarber = async () => {
     // necesariamente un servicio realizado.
     const categorizedCharges = barberCharges.filter(c => Boolean(c.serviceNameSnapshot));
     const monthlyUsesCount = filteredMonthlyUses.filter(use => use.barber_id === barber.id).length;
+    const courtesyUses=filteredCourtesyUses.filter(use=>use.barber_id===barber.id);
     const serviceCounts = new Map<string, number>();
     for (const appointment of barberApts) {
       const type = appointment.serviceName || 'Sin clasificar';
@@ -1004,10 +1016,14 @@ const handleAddBarber = async () => {
       const type = charge.serviceNameSnapshot!;
       serviceCounts.set(type, (serviceCounts.get(type) || 0) + 1);
     }
+    for(const use of courtesyUses){
+      const type=use.service_name_snapshot||'Cortesía';
+      serviceCounts.set(type,(serviceCounts.get(type)||0)+1);
+    }
     if (monthlyUsesCount > 0) {
       serviceCounts.set('Abonos realizados', (serviceCounts.get('Abonos realizados') || 0) + monthlyUsesCount);
     }
-    const workCount = barberApts.length + categorizedCharges.length + monthlyUsesCount;
+    const workCount = barberApts.length + categorizedCharges.length + monthlyUsesCount + courtesyUses.length;
     const unclassifiedChargesCount = barberCharges.length - categorizedCharges.length;
     const serviceBreakdown = [...serviceCounts.entries()].sort((a,b) => b[1] - a[1]);
     
