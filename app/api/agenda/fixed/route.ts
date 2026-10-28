@@ -24,7 +24,7 @@ export async function GET(request:Request){
  }
  const db=getSupabaseServer();
  let query=db.from('fixed_bookings')
-   .select('id,barber_id,service_id,client_name,client_phone,client_email,weekday,time_slot,duration_minutes,start_date,end_date,skipped_dates,services(name,price),barbers(name)')
+   .select('id,barber_id,service_id,client_name,client_phone,client_email,weekday,time_slot,duration_minutes,start_date,end_date,skipped_dates,complimentary,services(name,price),barbers(name)')
    .eq('shop_id',SHOP_UUID).eq('active',true);
  if(!admin&&staff)query=query.eq('barber_id',staff.sub);
  const {data,error}=await query;
@@ -58,6 +58,12 @@ export async function GET(request:Request){
     .eq('shop_id',SHOP_UUID).in('period_id',periodIds)
     :{data:[],error:null};
   if(usesResult.error)return NextResponse.json({error:'No se pudieron consultar los cortes abonados.'},{status:503,headers});
+  const courtesyResult=ids.length?await db.from('fixed_courtesy_uses')
+    .select('id,fixed_booking_id,occurrence_date')
+    .eq('shop_id',SHOP_UUID).in('fixed_booking_id',ids)
+    .gte('occurrence_date',start).lte('occurrence_date',end)
+    :{data:[],error:null};
+  if(courtesyResult.error)return NextResponse.json({error:'No se pudieron cargar las cortesías.'},{status:503,headers});
   const periods=(periodsResult.data||[]).map(p=>({
     fixedBookingId:p.fixed_booking_id,month:p.period_month,
     includedCuts:p.included_cuts,used:(usesResult.data||[]).filter(u=>u.period_id===p.id).length,
@@ -70,6 +76,7 @@ export async function GET(request:Request){
    clientName:r.client_name,clientPhone:r.client_phone,clientEmail:r.client_email,
    weekday:r.weekday,timeSlot:r.time_slot,durationMinutes:r.duration_minutes,
    startDate:r.start_date,endDate:r.end_date,skippedDates:r.skipped_dates||[],
+   complimentary:r.complimentary===true,
    serviceName:service?.name||'Servicio',servicePrice:Number(service?.price||0),
    barberName:barber?.name||'Barbero',
    monthlyPlan:(plansResult.data||[]).find(p=>p.fixed_booking_id===r.id)||null,
@@ -86,5 +93,9 @@ export async function GET(request:Request){
    .filter(u=>u.occurrence_date>=start&&u.occurrence_date<=end)
    .map(u=>({fixedBookingId:u.fixed_booking_id,occurrenceDate:u.occurrence_date,
      chargeId:u.id,amount:0,coveredBySubscription:true}));
- return NextResponse.json({items,completed:[...completed,...completedBySubscription],periods},{headers});
+ const completedByCourtesy=(courtesyResult.data||[]).map(u=>({
+   fixedBookingId:u.fixed_booking_id,occurrenceDate:u.occurrence_date,
+   chargeId:u.id,amount:0,coveredByCourtesy:true,
+ }));
+ return NextResponse.json({items,completed:[...completed,...completedBySubscription,...completedByCourtesy],periods},{headers});
 }
