@@ -4,6 +4,7 @@ import { getBarberSession, requireAdminSession, verifyCsrfOrigin } from '@/lib/s
 import { isValidUUID, sanitizeInput } from '@/lib/booking-store';
 import { requireOpenCash } from '@/lib/cash-guard';
 import {isOnSitePaymentMethod} from '@/lib/payment-method';
+import {resolveManualServiceAnnotations} from '@/lib/manual-service-annotations';
 
 type FinanceTable = 'tips' | 'manual_charges';
 function tableOf(value: unknown): FinanceTable | null {
@@ -37,7 +38,12 @@ export async function GET(request: Request) {
   if (session.barberId) query = query.eq('barber_id', session.barberId);
   const {data, error} = await query;
   if (error) return NextResponse.json({error: 'No se pudo consultar el registro'}, {status: 500});
-  return NextResponse.json({data: data || []});
+  try {
+    return NextResponse.json({data: table === 'manual_charges'
+      ? await resolveManualServiceAnnotations<any>(data || [], getSupabaseServer()) : data || []});
+  } catch {
+    return NextResponse.json({error:'No se pudo completar la clasificación de servicios manuales.'}, {status:503});
+  }
 }
 
 export async function POST(request: Request) {

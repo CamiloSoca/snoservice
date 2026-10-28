@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireAdminSession } from '@/lib/session';
 import { getSupabaseServer, SHOP_UUID } from '@/lib/supabase-server';
 import type { FixedMonthlyUseItem } from '@/lib/booking-store';
+import {resolveManualServiceAnnotations} from '@/lib/manual-service-annotations';
 
 // Cachea sólo la ausencia del RPC, nunca datos financieros. Un despliegue de
 // la función se detecta nuevamente a los 60 segundos sin reiniciar el servidor.
@@ -63,7 +64,11 @@ export async function GET() {
       const fixedMonthlyUses=((uses.data||[]) as Omit<FixedMonthlyUseItem,'barber_id'>[]).map((use)=>({
         ...use,barber_id:barberByFixed.get(use.fixed_booking_id)||null,
       }));
-      return NextResponse.json({...fastData,fixedMonthlyUses}, {
+      return NextResponse.json({
+        ...fastData,
+        manualCharges: await resolveManualServiceAnnotations(fastData.manualCharges, supabase),
+        fixedMonthlyUses,
+      }, {
         headers: {
           'Cache-Control': 'private, no-store',
           'Server-Timing': `database;dur=${(performance.now() - startedAt).toFixed(1)},rpc;dur=${rpcDuration.toFixed(1)}`,
@@ -163,7 +168,7 @@ export async function GET() {
         barbers: barbers.data || [],
         expenses: expenses.data || [],
         tips: tips.data || [],
-        manualCharges: manualCharges.data || [],
+        manualCharges: await resolveManualServiceAnnotations(manualCharges.data || [], supabase),
         fixedMonthlyUses: ((fixedMonthlyUses.data||[]) as Omit<FixedMonthlyUseItem,'barber_id'>[]).map((use)=>({
           ...use,barber_id:((fixedBookings.data||[]) as {id:string;barber_id:string}[])
             .find((fixed)=>fixed.id===use.fixed_booking_id)?.barber_id||null,

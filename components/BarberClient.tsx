@@ -448,6 +448,9 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
   const dailyCommission = dailyAppointments.reduce((sum, a) => sum + splitBusinessRevenue(Number(a.priceSnapshot ?? a.servicePrice), {commissionRate, isOwner}, a).barber, 0) +
     dailyCharges.reduce((sum, c) => sum + splitBusinessRevenue(Number(c.amount), {commissionRate, isOwner}, c).barber, 0);
   const dailyTipsTotal = dailyTips.reduce((sum, t) => sum + Number(t.amount), 0);
+  const dailyClassifiedCharges = dailyCharges.filter(c => Boolean(c.serviceNameSnapshot));
+  const dailyUnclassifiedChargesCount = dailyCharges.length - dailyClassifiedCharges.length;
+  const dailyWorkCount = dailyAppointments.length + dailyClassifiedCharges.length + dailyFixedUses.length;
   const dailyToBusiness = dailyAppointments.reduce((sum, a) =>
     sum + splitBusinessRevenue(Number(a.priceSnapshot ?? a.servicePrice), {commissionRate,isOwner}, a).business, 0)
     + dailyCharges.reduce((sum, c) =>
@@ -803,7 +806,7 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
                 <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 space-y-1">
                   <span className="text-xs text-zinc-400">{isOwner ? 'Aporte al negocio en esta fecha' : 'Comisión generada en esta fecha'}</span>
                   <p className="text-2xl font-extrabold text-emerald-400">${isOwner ? dailyToBusiness : dailyCommission}</p>
-                  <span className="text-[11px] text-zinc-500">{dailyAppointments.length + dailyFixedUses.length} cortes realizados + {dailyCharges.length} cobros (incluidos fijos y mensualidades)</span>
+                  <span className="text-[11px] text-zinc-500">{dailyWorkCount} trabajos realizados (agenda + manuales + abonos){dailyUnclassifiedChargesCount > 0 ? ' · ' + dailyUnclassifiedChargesCount + ' cobros sin clasificar' : ''}</span>
                 </div>
                 <div className="bg-zinc-950 border border-zinc-800 rounded-2xl p-4 space-y-1">
                   <span className="text-xs text-zinc-400">Propinas de la fecha</span>
