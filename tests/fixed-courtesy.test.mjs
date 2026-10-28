@@ -1,0 +1,48 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+const read=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
+const sql=read('supabase/migrations/20261027_fixed_courtesy_uses.sql');
+const route=read('app/api/agenda/fixed/complete/route.ts');
+const admin=read('app/api/admin/fixed-bookings/route.ts');
+const fixed=read('app/api/agenda/fixed/route.ts');
+const calendar=read('components/AgendaCalendar.tsx');
+const modal=read('components/AppointmentDetailModal.tsx');
+const manager=read('components/FixedAgendaManager.tsx');
+const barber=read('components/BarberClient.tsx');
+const adminPanel=read('app/admin/page.tsx');
+test('las cortesías usan un registro de trabajos sin escritura en caja',()=>{
+  assert.match(sql,/CREATE TABLE IF NOT EXISTS public\.fixed_courtesy_uses/);
+  assert.match(sql,/UNIQUE\(shop_id,fixed_booking_id,occurrence_date\)/);
+  assert.match(sql,/ENABLE ROW LEVEL SECURITY/);
+  assert.match(sql,/FROM PUBLIC,anon,authenticated/);
+  assert.match(sql,/TO service_role/);
+  assert.match(sql,/NOT v_fixed\.complimentary/);
+  assert.match(sql,/FOR UPDATE/);
+  assert.match(sql,/v_fixed\.time_slot::time>v_now::time/);
+  assert.match(sql,/CREATE TRIGGER trg_fixed_courtesy_guard_charge/);
+  assert.match(sql,/CREATE TRIGGER trg_fixed_courtesy_guard_subscription/);
+  assert.doesNotMatch(sql,/UPDATE public\.cash_registers|INSERT INTO public\.manual_charges|INSERT INTO public\.appointments/);
+});
+test('solo admin cambia cortesía; completar sin pago no requiere abrir caja',()=>{
+  assert.match(admin,/requireAdminSession\(\)/);
+  assert.match(admin,/complimentary:body\.complimentary===true/);
+  assert.match(manager,/Cortesía · sin cargo/);
+  assert.match(route,/mode!=='courtesy'/);
+  assert.match(route,/complete_fixed_courtesy_occurrence/);
+  assert.match(route,/verifyCsrfOrigin\(request\)/);
+  assert.match(fixed,/coveredByCourtesy:true/);
+  assert.match(calendar,/mode:appointment\.isCourtesy\?'courtesy'/);
+  assert.match(modal,/!paymentMethod&&!prepaid&&!courtesy/);
+  assert.match(modal,/Completar cortesía/);
+});
+test('contabiliza +1 servicio y $0 tanto en admin como barbero',()=>{
+  assert.match(barber,/const periodCourtesyUses=/);
+  assert.match(barber,/for \(const use of periodCourtesyUses\)/);
+  assert.match(barber,/dailyWorkCount = .*dailyCourtesyUses\.length/);
+  assert.match(adminPanel,/const filteredCourtesyUses =/);
+  assert.match(adminPanel,/auditedCourtesyUses/);
+  assert.match(adminPanel,/workCount = barberApts\.length .* courtesyUses\.length/);
+  assert.match(read('app/api/admin/bootstrap/route.ts'),/fixedCourtesyUses:/);
+  assert.match(read('app/api/barber/bootstrap/route.ts'),/fixedCourtesyUses:/);
+});
