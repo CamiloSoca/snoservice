@@ -26,7 +26,7 @@ test('las cortesías usan un registro de trabajos sin escritura en caja',()=>{
 });
 test('solo admin cambia cortesía; completar sin pago no requiere abrir caja',()=>{
   assert.match(admin,/requireAdminSession\(\)/);
-  assert.match(admin,/complimentary:body\.complimentary===true/);
+  assert.match(admin,/const complimentary=body\.complimentary===true/);
   assert.match(manager,/Cortesía · sin cargo/);
   assert.match(route,/mode!=='courtesy'/);
   assert.match(route,/complete_fixed_courtesy_occurrence/);
