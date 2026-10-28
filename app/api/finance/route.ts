@@ -40,7 +40,7 @@ export async function GET(request: Request) {
   if (error) return NextResponse.json({error: 'No se pudo consultar el registro'}, {status: 500});
   try {
     return NextResponse.json({data: table === 'manual_charges'
-      ? await resolveManualServiceAnnotations(data || [], getSupabaseServer()) : data || []});
+      ? await resolveManualServiceAnnotations<any>(data || [], getSupabaseServer()) : data || []});
   } catch {
     return NextResponse.json({error:'No se pudo completar la clasificación de servicios manuales.'}, {status:503});
   }
