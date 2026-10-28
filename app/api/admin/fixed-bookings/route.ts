@@ -15,7 +15,7 @@ const time=/^([01]\d|2[0-3]):[0-5]\d$/;
 export async function GET(){
   if(!await requireAdminSession())return NextResponse.json({error:'Sesión requerida.'},{status:401,headers});
   const {data,error}=await getSupabaseServer().from('fixed_bookings')
-    .select('id,barber_id,service_id,client_name,client_phone,client_email,weekday,time_slot,duration_minutes,start_date,end_date,active,skipped_dates')
+    .select('id,barber_id,service_id,client_name,client_phone,client_email,weekday,time_slot,duration_minutes,start_date,end_date,active,skipped_dates,complimentary')
     .eq('shop_id',SHOP_UUID).order('weekday',{ascending:true}).order('time_slot',{ascending:true});
   if(error)return NextResponse.json({error:'No se pudo cargar agenda fija.'},{status:503,headers});
   return NextResponse.json({items:data||[]},{headers});
@@ -76,6 +76,16 @@ export async function POST(request:Request){
     const timeSlot=String(body.timeSlot||'');
     const startDate=String(body.startDate||'');
     const endDate=body.endDate?String(body.endDate):null;
+    const complimentary=body.complimentary===true;
+    if(body.complimentary!==undefined&&typeof body.complimentary!=='boolean'){
+      return NextResponse.json({error:'Tipo de cortesía inválido.'},{status:400,headers});
+    }
+    if(complimentary&&id){
+      const plan=await db.from('fixed_monthly_plans').select('id')
+        .eq('shop_id',SHOP_UUID).eq('fixed_booking_id',id).eq('active',true).maybeSingle();
+      if(plan.error)return NextResponse.json({error:'No se pudo verificar el abono de este fijo.'},{status:503,headers});
+      if(plan.data)return NextResponse.json({error:'Desactivá el abono mensual antes de marcar este turno como cortesía.'},{status:409,headers});
+    }
     if((id&&!isValidUUID(id))||!isValidUUID(barberId)||!isValidUUID(serviceId)
       ||clientName.length<3||!days.has(weekday)||!time.test(timeSlot)
       ||!iso.test(startDate)||(endDate&&!iso.test(endDate))
@@ -117,7 +127,7 @@ export async function POST(request:Request){
     const payload={
       barber_id:barberId,service_id:serviceId,client_name:clientName,
       client_phone:clientPhone,client_email:clientEmail,weekday,time_slot:timeSlot,
-      start_date:startDate,end_date:endDate,
+      start_date:startDate,end_date:endDate,complimentary,
     };
     const result=id
       ? await db.from('fixed_bookings').update(payload).eq('id',id).eq('shop_id',SHOP_UUID).select('id').maybeSingle()
