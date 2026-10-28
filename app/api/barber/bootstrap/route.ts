@@ -181,7 +181,7 @@ export async function GET() {
       {
         appointments: appointmentsMapped,
         tips: (tips.data || []).map(mapEntry),
-        manualCharges: (await resolveManualServiceAnnotations(charges.data || [], db)).map(mapEntry),
+        manualCharges: (await resolveManualServiceAnnotations<any>(charges.data || [], db)).map(mapEntry),
         fixedMonthlyUses,
         cashOpen: cash.data?.length === 1,
         commissionRate: Number(activeBarber.commission_rate ?? 50),
