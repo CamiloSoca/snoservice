@@ -127,6 +127,11 @@ export async function GET() {
       }
     }
 
+    const courtesyResult=await db.from('fixed_courtesy_uses')
+      .select('fixed_booking_id,occurrence_date,completed_at,barber_id,service_name_snapshot')
+      .eq('shop_id',SHOP_UUID).eq('barber_id',session.sub);
+    if(courtesyResult.error)return NextResponse.json({error:'No se pudieron cargar los servicios de cortesía.'},{status:503,headers});
+
     const appointmentsMapped = (appointments.data || []).map((apt: any) => ({
       id: apt.id,
       code: apt.code || '',
@@ -183,6 +188,7 @@ export async function GET() {
         tips: (tips.data || []).map(mapEntry),
         manualCharges: (await resolveManualServiceAnnotations<any>(charges.data || [], db)).map(mapEntry),
         fixedMonthlyUses,
+        fixedCourtesyUses:courtesyResult.data||[],
         cashOpen: cash.data?.length === 1,
         commissionRate: Number(activeBarber.commission_rate ?? 50),
         isOwner: activeBarber.is_owner === true,
