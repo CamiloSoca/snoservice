@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getBarberSession } from '@/lib/session';
 import { getSupabaseServer, SHOP_UUID } from '@/lib/supabase-server';
 import type { FixedMonthlyUseItem } from '@/lib/booking-store';
+import {resolveManualServiceAnnotations} from '@/lib/manual-service-annotations';
 
 let rpcUnavailableUntil = 0;
 
@@ -180,7 +181,7 @@ export async function GET() {
       {
         appointments: appointmentsMapped,
         tips: (tips.data || []).map(mapEntry),
-        manualCharges: (charges.data || []).map(mapEntry),
+        manualCharges: (await resolveManualServiceAnnotations(charges.data || [], db)).map(mapEntry),
         fixedMonthlyUses,
         cashOpen: cash.data?.length === 1,
         commissionRate: Number(activeBarber.commission_rate ?? 50),

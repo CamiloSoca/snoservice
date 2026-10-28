@@ -966,6 +966,10 @@ const handleAddBarber = async () => {
       const brbApts = auditedAppointments.filter((a) => a.barberId === barber.id);
       const brbCharges = auditedManualCharges.filter((c) => c.barberId === barber.id);
       const brbTips = auditedTips.filter((t) => t.barberId === barber.id);
+      const brbClassifiedCharges = brbCharges.filter((c) => Boolean(c.serviceNameSnapshot));
+      const brbFixedCount = auditedMonthlyUses.filter((use) => use.barber_id === barber.id).length;
+      const workCount = brbApts.length + brbClassifiedCharges.length + brbFixedCount;
+      const unclassifiedChargeCount = brbCharges.length - brbClassifiedCharges.length;
 
       const cutsGen = brbApts.reduce((sum, a) => sum + Number(a.priceSnapshot ?? a.servicePrice), 0);
       const manualGen = brbCharges.reduce((sum, c) => sum + Number(c.amount), 0);
@@ -976,7 +980,8 @@ const handleAddBarber = async () => {
 
       return {
         barber,
-        cutsCount: brbApts.length + auditedMonthlyUses.filter((use) => use.barber_id === barber.id).length,
+        workCount,
+        unclassifiedChargeCount,
         totalGen,
         commissionEarned,
         tipsEarned,
@@ -1832,7 +1837,7 @@ const handleAddBarber = async () => {
                             <span>{item.barber.name}</span>
                             <span className="text-emerald-400">${item.totalGen}</span>
                           </div>
-                          <p className="text-zinc-400">{item.cutsCount} cortes • {item.barber.isOwner ? <>Al fondo común: <strong className="text-emerald-300">${item.totalGen - item.commissionEarned}</strong></> : <>Comisión generada: <strong className="text-zinc-200">${item.commissionEarned}</strong></>}</p>
+                          <p className="text-zinc-400">{item.workCount} trabajos realizados{item.unclassifiedChargeCount > 0 ? ' · ' + item.unclassifiedChargeCount + ' cobros sin clasificar' : ''} • {item.barber.isOwner ? <>Al fondo común: <strong className="text-emerald-300">${item.totalGen - item.commissionEarned}</strong></> : <>Comisión generada: <strong className="text-zinc-200">${item.commissionEarned}</strong></>}</p>
                           {item.tipsEarned > 0 && <p className="text-amber-400 font-medium">Propinas: +${item.tipsEarned}</p>}
                         </div>
                       ))}
