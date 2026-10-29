@@ -17,7 +17,7 @@ test('Color Global y Mechas nunca invaden un corte a las 09:30', () => {
 
 test('Ya no hay tolerancia hacia atrás para nuevas reservas', () => {
   assert.equal(bookingIntervalsConflict('09:30', 60, '09:00', 60), true);
-  assert.equal(bookingIntervalsConflict('09:00', 60, '09:30', 60), false);
+  assert.equal(bookingIntervalsConflict('09:00', 60, '09:30', 60), true);
 });
 
 test('120 minutos requieren tiempo exclusivo; horarios contiguos son válidos', () => {
