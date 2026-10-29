@@ -7,15 +7,15 @@ const read=p=>readFileSync(new URL('../'+p,import.meta.url),'utf8');
 const sql=read('security/production/17_fixed_bookings_one_way.sql');
 const rollback=read('security/production/17_fixed_bookings_one_way_rollback.sql');
 
-test('regla en los dos sentidos: nunca se superpone hacia adelante',()=>{
+test('la disponibilidad nueva es estricta, aunque el SQL antiguo permanece como historial',()=>{
   const cases=[
-    ['09:00',60,'09:30',60,false],
+    ['09:00',60,'09:30',60,true],
     ['09:30',60,'09:00',60,true],
     ['10:00',60,'09:30',60,true],
     ['10:30',60,'09:30',60,false],
     ['09:30',60,'09:30',60,true],
     ['09:00',60,'09:15',60,true],
-    ['09:00',45,'09:30',60,false],
+    ['09:00',45,'09:30',60,true],
     ['09:00',60,'09:30',90,true],
     ['09:00',90,'09:30',60,true],
     ['09:00',120,'09:30',60,true],
