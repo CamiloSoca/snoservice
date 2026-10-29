@@ -5,7 +5,7 @@ import {bookingIntervalsConflict, validateBookingTime, businessDayOptions} from 
 import {fixedBookingStartSlots} from '../lib/fixed-booking-time-slots.ts';
 
 const read = path => readFileSync(new URL('../' + path, import.meta.url), 'utf8');
-const migration = read('supabase/migrations/20261029_hourly_new_bookings_strict_overlap.sql');
+const migration = read('security/production/22_hourly_new_bookings_PENDING_DO_NOT_RUN.sql');
 
 test('all new bookings reject overlap with old 09:30 reservations, in both directions', () => {
   assert.equal(bookingIntervalsConflict('09:00', 60, '09:30', 60), true);
