@@ -170,8 +170,9 @@ BEGIN
 END;
 $function$;
 
-DROP TRIGGER IF EXISTS trg_aaa_hourly_new_fixed_booking ON public.fixed_bookings;
-CREATE TRIGGER trg_aaa_hourly_new_fixed_booking
+DROP TRIGGER IF EXISTS trg_zzzz_hourly_new_fixed_booking ON public.fixed_bookings;
+-- Runs after trg_validate_fixed_booking, which snapshots the real service duration.
+CREATE TRIGGER trg_zzzz_hourly_new_fixed_booking
 BEFORE INSERT OR UPDATE OF shop_id,barber_id,service_id,weekday,time_slot,duration_minutes,start_date,end_date,active
 ON public.fixed_bookings
 FOR EACH ROW EXECUTE FUNCTION public.guard_new_hourly_fixed_booking();
