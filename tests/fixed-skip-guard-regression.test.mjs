@@ -7,7 +7,7 @@ const sql=read('security/production/19_skip_date_validation_only_restored_week.s
 const rollback=read('security/production/19_skip_date_validation_only_restored_week_rollback.sql');
 
 test('el corte anterior al fijo sigue permitido y el posterior bloqueado',()=>{
- assert.equal(bookingIntervalsConflict('11:30',60,'12:00',60),false);
+ assert.equal(bookingIntervalsConflict('11:30',60,'12:00',60),true);
  assert.equal(bookingIntervalsConflict('12:30',60,'12:00',60),true);
  assert.equal(bookingIntervalsConflict('11:30',120,'12:00',60),true);
  assert.equal(bookingIntervalsConflict('12:00',60,'11:30',60),true);

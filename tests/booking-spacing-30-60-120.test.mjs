@@ -21,9 +21,9 @@ const isSlotAvailable = new Function('exports', 'bookingIntervalsConflict',
     bookingIntervalsConflict,
   );
 
-test('scenario A: two 60-minute cuts allow only a 30-minute backward overlap', () => {
+test('scenario A: two 60-minute cuts never overlap, even backwards', () => {
   const existing = ['12:30', 60];
-  assert.equal(bookingIntervalsConflict('12:00', 60, ...existing), false);
+  assert.equal(bookingIntervalsConflict('12:00', 60, ...existing), true);
   assert.equal(bookingIntervalsConflict('12:30', 60, ...existing), true);
   assert.equal(bookingIntervalsConflict('13:00', 60, ...existing), true);
   assert.equal(bookingIntervalsConflict('13:30', 60, ...existing), false);
@@ -57,7 +57,7 @@ test('90 minutes is the exclusive boundary: neither side may share time', () => 
   assert.equal(bookingIntervalsConflict('12:00', 90, '13:30', 60), false);
 });
 
-test('availability calculation applies the same direction and actual duration rules', () => {
+test('availability uses strict overlap and real service durations', () => {
   const available = (candidateTime, serviceDurationMinutes, bookedTime, bookedDuration) =>
     isSlotAvailable({
       candidateTime,
@@ -73,7 +73,7 @@ test('availability calculation applies the same direction and actual duration ru
       }],
     });
 
-  assert.equal(available('12:00', 60, '12:30', 60), true);
+  assert.equal(available('12:00', 60, '12:30', 60), false);
   assert.equal(available('12:30', 60, '12:30', 60), false);
   assert.equal(available('13:00', 60, '12:30', 60), false);
   assert.equal(available('13:30', 60, '12:30', 60), true);

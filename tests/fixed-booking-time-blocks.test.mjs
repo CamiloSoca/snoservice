@@ -12,9 +12,9 @@ const all=Object.fromEntries(
     .map(day=>[day,rule('09:00','19:00')]),
 );
 
-test('turno fijo de corte: los bloques comienzan cada 30 minutos',()=>{
+test('turno fijo de corte: nuevos bloques a las horas en punto',()=>{
   const slots=fixedBookingStartSlots(rule('09:00','11:00'),60);
-  assert.deepEqual(slots,['09:00','09:30','10:00','10:30']);
+  assert.deepEqual(slots,['09:00','10:00']);
   assert.equal(slots.includes('09:10'),false);
   assert.equal(slots.includes('09:45'),false);
   assert.equal(slots.includes('11:00'),false);
@@ -22,19 +22,19 @@ test('turno fijo de corte: los bloques comienzan cada 30 minutos',()=>{
 test('mechas/color global: no usar el margen de cierre de los cortes',()=>{
   assert.deepEqual(fixedBookingStartSlots(rule('09:00','11:00'),120),['09:00']);
   assert.deepEqual(fixedBookingStartSlots(rule('09:00','11:00'),90),
-    ['09:00','09:30']);
+    ['09:00']);
 });
 test('bloques consideran cierre, jornada del barbero y día cerrado',()=>{
   const barber={...all,sabado:rule('10:00','12:00'),martes:rule('09:00','19:00',false)};
   const hours=resolvedHours(all,barber);
   assert.deepEqual(fixedBookingStartSlots(hours.sabado,60),
-    ['10:00','10:30','11:00','11:30']);
+    ['10:00','11:00']);
   assert.deepEqual(fixedBookingStartSlots(hours.martes,60),[]);
   assert.deepEqual(fixedBookingStartSlots(rule('09:00','19:00',false),60),[]);
 });
-test('el intervalo es relativo a la apertura efectiva, igual que la reserva online',()=>{
+test('horas en punto independientemente de la apertura del barbero',()=>{
   assert.deepEqual(fixedBookingStartSlots(rule('09:15','10:45'),60),
-    ['09:15','09:45','10:15']);
+    []);
   assert.deepEqual(fixedBookingStartSlots(rule('23:00','23:59'),60),[]);
 });
 test('ante horarios o duraciones inválidas, ningún bloque se ofrece',()=>{
@@ -43,8 +43,8 @@ test('ante horarios o duraciones inválidas, ningún bloque se ofrece',()=>{
   assert.deepEqual(fixedBookingStartSlots(rule('09:00','19:00'),0),[]);
   assert.deepEqual(fixedBookingStartSlots(rule('09:00','19:00'),720),[]);
 });
-test('la excepción de los cortes hacia atrás y el bloqueo hacia adelante no cambia',()=>{
-  assert.equal(bookingIntervalsConflict('09:00',60,'09:30',60),false);
+test('ningún corte nuevo invade los intervalos que ya están guardados',()=>{
+  assert.equal(bookingIntervalsConflict('09:00',60,'09:30',60),true);
   assert.equal(bookingIntervalsConflict('10:00',60,'09:30',60),true);
   assert.equal(bookingIntervalsConflict('10:30',60,'09:30',60),false);
   assert.equal(bookingIntervalsConflict('09:00',120,'09:30',60),true);

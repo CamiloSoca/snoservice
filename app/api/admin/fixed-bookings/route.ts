@@ -93,8 +93,7 @@ export async function POST(request:Request){
       ||(clientEmail&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clientEmail))){
       return NextResponse.json({error:'Revisá cliente, barbero, servicio, día, hora y fechas.'},{status:400,headers});
     }
-    // Validar también del lado del servidor: no aceptar una hora enviada
-    // manualmente a la API fuera de los bloques de 30 min del barbero.
+    // Validar del lado del servidor horas en punto para nuevas agendas fijas.
     // Consultas SELECT únicamente; no se altera ninguna reserva existente.
     const [shopResult,barberResult,serviceResult]=await Promise.all([
       db.from('shops').select('schedule').eq('id',SHOP_UUID).maybeSingle(),
@@ -118,8 +117,22 @@ export async function POST(request:Request){
     const validSlots=fixedBookingStartSlots(
       schedule[dayKeys[weekday]],Number(serviceResult.data.duration_minutes),
     );
-    if(!validSlots.includes(timeSlot)){
-      return NextResponse.json({error:'Elegí un bloque horario válido cada 30 minutos para ese barbero y servicio.'},
+    // Excepción exclusivamente para editar datos de un fijo antiguo sin
+    // reprogramarlo. Nadie puede crear o mover una reserva nueva a las y media.
+    let legacyUnchanged=false;
+    if(id&&!validSlots.includes(timeSlot)){
+      const old=await db.from('fixed_bookings')
+        .select('barber_id,service_id,weekday,time_slot,start_date,end_date')
+        .eq('shop_id',SHOP_UUID).eq('id',id).maybeSingle();
+      if(old.error)return NextResponse.json({error:'No se pudo verificar el horario anterior.'},
+        {status:503,headers});
+      legacyUnchanged=Boolean(old.data&&old.data.barber_id===barberId&&
+        old.data.service_id===serviceId&&old.data.weekday===weekday&&
+        old.data.time_slot===timeSlot&&old.data.start_date===startDate&&
+        old.data.end_date===endDate);
+    }
+    if(!validSlots.includes(timeSlot)&&!legacyUnchanged){
+      return NextResponse.json({error:'Elegí una hora completa disponible para ese barbero y servicio.'},
         {status:400,headers});
     }
     // Los conflictos con reservas y turnos fijos se siguen validando

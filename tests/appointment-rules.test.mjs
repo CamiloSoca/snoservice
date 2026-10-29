@@ -16,10 +16,10 @@ test('a booking must be in the future, on an open day, and fit completely in bus
   const base = {dateString: 'Mié 21 Oct', timeSlot: '15:00', durationMinutes: 30, schedule, now};
   assert.equal(validateBookingTime(base), null);
   assert.match(validateBookingTime({...base, timeSlot: '14:00'}), /pasó/);
-  assert.equal(validateBookingTime({...base, timeSlot: '18:30', durationMinutes: 45}), null);
+  assert.match(validateBookingTime({...base, timeSlot: '18:30', durationMinutes: 45}), /horario/);
   assert.match(validateBookingTime({...base, timeSlot: '15:17'}), /horario/);
-  assert.equal(validateBookingTime({...base, timeSlot: '15:15',
-    schedule: {...schedule, miercoles: {...schedule.miercoles, openTime: '09:15'}}}), null);
+  assert.match(validateBookingTime({...base, timeSlot: '15:15',
+    schedule: {...schedule, miercoles: {...schedule.miercoles, openTime: '09:15'}}}), /horario/);
   assert.match(validateBookingTime({...base, dateString: 'Mar 20 Oct'}), /30 días/);
   assert.match(validateBookingTime({...base, schedule: {...schedule, miercoles: {...schedule.miercoles, isOpen: false}}}), /cerrado/);
 });
@@ -54,26 +54,26 @@ test('a short cut uses the free 09:00–09:30 gap before a 09:30–10:30 booking
   assert.equal(slotsOverlap('10:00', 30, '09:30', 60), true);
 });
 
-test('close 19:00: allow 18:30 short cut (ends 19:30), reject 120min service', () => {
+test('close 19:00: all services finish before closing and begin on whole hours', () => {
   const now = new Date('2026-10-21T17:01:00Z');
   const dateString = businessDayOptions(now, 2)[1].dateString;
   const check = (timeSlot, durationMinutes) => validateBookingTime({
     dateString, timeSlot, durationMinutes, schedule, now,
   });
-  assert.equal(check('18:30',60), null);
-  assert.equal(check('18:30',45), null);
+  assert.match(check('18:30',60), /horario/);
+  assert.match(check('18:30',45), /horario/);
   assert.match(check('18:30',90), /horario/);
   assert.match(check('18:30',120), /horario/);
   assert.match(check('19:00',60), /horario/);
   assert.equal(check('17:00',120), null);
 });
 
-test('ONE-WAY overlap: if 09:30-10:30 is booked, 09:00 is free but 10:00 is blocked', () => {
-  assert.equal(bookingIntervalsConflict('09:00',60,'09:30',60),false);
+test('strict overlap: a legacy 09:30-10:30 booking blocks both 09:00 and 10:00', () => {
+  assert.equal(bookingIntervalsConflict('09:00',60,'09:30',60),true);
   assert.equal(bookingIntervalsConflict('10:00',60,'09:30',60),true);
   assert.equal(bookingIntervalsConflict('10:30',60,'09:30',60),false);
   assert.equal(bookingIntervalsConflict('09:30',60,'09:30',60),true);
-  // Orden: quien reserva primero tiene prioridad; NO es simétrico.
+  // La regla ahora es simétrica: los horarios anteriores no se mueven.
   assert.equal(bookingIntervalsConflict('09:30',60,'09:00',60),true);
   assert.equal(bookingIntervalsConflict('09:00',60,'09:15',60),true);
   assert.equal(bookingIntervalsConflict('09:00',90,'09:30',60),true);
