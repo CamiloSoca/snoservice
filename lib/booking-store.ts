@@ -273,7 +273,7 @@ export function buildRealOpenDays(count = 30, scheduleRule?: ShopConfig['schedul
 
 export function getSlotsForDayOfWeek(
   dayOfWeek: number,
-  intervalMinutes = 30,
+  intervalMinutes = 60,
   schedule?: ShopConfig['schedule']
 ): { morning: string[]; afternoon: string[] } {
   const dayKeyMap = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
@@ -287,12 +287,12 @@ export function getSlotsForDayOfWeek(
 
   const openMins = timeToMinutes(rule.openTime || '09:00');
   const closeMins = timeToMinutes(rule.closeTime || '19:00');
-  const step = Math.max(15, Number(intervalMinutes) || 30);
+  const step = Math.max(60, Number(intervalMinutes) || 60);
 
   const morning: string[] = [];
   const afternoon: string[] = [];
 
-  for (let m = openMins; m < closeMins; m += step) {
+  for (let m = Math.ceil(openMins / 60) * 60; m < closeMins; m += step) {
     const formatted = minutesToTime(m);
     if (m < 13 * 60) {
       morning.push(formatted);
@@ -304,11 +304,8 @@ export function getSlotsForDayOfWeek(
   return { morning, afternoon };
 }
 
-// REGLA 13'CUT: la validación es UNIDIRECCIONAL, no simétrica.
-// Un corte (<90 min) puede arrancar antes de otro ya reservado y
-// compartir como máximo 30 minutos, NUNCA empezar dentro de uno existente.
-// Color Global/Mechas (>=90 min) jamás se solapan.
-// No reemplazar bookingIntervalsConflict por slotsOverlap.
+// Regla de nuevas reservas: comienzan en horas completas, sin solapamientos.
+// Los turnos ya confirmados a las y media se respetan como bloqueos existentes.
 export function isSlotAvailable(params: {
   candidateTime: string;
   serviceDurationMinutes: number;
