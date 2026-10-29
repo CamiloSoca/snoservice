@@ -225,7 +225,7 @@ function AgendarContent({initialShop}: {initialShop: PublicShopData}) {
 
   const { morning: morningSlots, afternoon: afternoonSlots } = getSlotsForDayOfWeek(
     activeDayObj?.dayOfWeek ?? 2,
-    30,
+    60,
     effectiveSchedule
   );
 
@@ -239,9 +239,8 @@ function AgendarContent({initialShop}: {initialShop: PublicShopData}) {
 
   const checkSlotBooked = (barberId: string, dateStr: string, timeSlot: string): boolean => {
     const duration = selectedService?.durationMinutes || 60;
-    // Política del local: hasta 30 min de tolerancia solo ANTES de una
-    // reserva posterior, nunca después; cortes 18:30 pueden acabar 19:30.
-    // El servidor y PostgreSQL vuelven a validar las mismas reglas.
+    // Solo comienzos en horas completas y sin solapamientos con reservas previas.
+    // El servidor y PostgreSQL vuelven a comprobarlo antes de insertar.
     if (validateBookingTime({
       dateString: dateStr,
       timeSlot,
