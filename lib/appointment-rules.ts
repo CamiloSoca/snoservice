@@ -43,27 +43,12 @@ export function slotsOverlap(firstTime: string, firstDuration: number,
   return first < second + secondDuration && second < first + firstDuration;
 }
 
-// Orden IMPORTA: el nuevo cliente puede ocupar los 30 minutos previos
-// al comienzo de un turno YA reservado (si ambos servicios duran <90 min).
-// Nunca se permite un nuevo inicio que invada un turno anterior, ni dos
-// reservas a la misma hora. Tratamientos largos requieren tiempo exclusivo.
-// first = candidato nuevo; second = turno previamente confirmado.
+// Para nuevas reservas, cualquier solapamiento se rechaza en ambos sentidos.
+// Las reservas anteriores conservan su horario: esta función solo consulta disponibilidad.
 export function bookingIntervalsConflict(
   firstTime: string, firstDuration: number, secondTime: string, secondDuration: number,
 ): boolean {
-  const candidate = minutes(firstTime);
-  const booked = minutes(secondTime);
-  if (candidate === null || booked === null ||
-      !Number.isInteger(firstDuration) || !Number.isInteger(secondDuration) ||
-      firstDuration <= 0 || secondDuration <= 0) return true;
-  if (candidate === booked) return true;
-  const overlap = Math.max(0, Math.min(candidate + firstDuration, booked + secondDuration)
-    - Math.max(candidate, booked));
-  if (overlap === 0) return false;
-  // Si el turno existente empezó ANTES, no ofrecer un turno posterior
-  // hasta que haya terminado: 09:30-10:30 bloquea las 10:00.
-  if (candidate > booked) return true;
-  return firstDuration >= 90 || secondDuration >= 90 || overlap > 30;
+  return slotsOverlap(firstTime, firstDuration, secondTime, secondDuration);
 }
 
 export function businessDayOptions(now = new Date(), count = 30) {
@@ -93,12 +78,11 @@ export function validateBookingTime(input: {
   const open = minutes(rule.openTime || '');
   const close = minutes(rule.closeTime || '');
   const duration = input.durationMinutes;
-  if (start === null || open === null || close === null || (start - open) % 30 !== 0 ||
+  if (start === null || open === null || close === null || start % 60 !== 0 ||
       !Number.isInteger(duration) || duration < 15 || duration > 720 ||
       start < open || start >= close ||
-      // Un corte corto puede empezar hasta 30 min antes del cierre y
-      // terminar 30 min después; mechas/color (>=90 min) terminan antes.
-      start + duration > close + (duration < 90 ? 30 : 0)) {
+      // Todos los servicios deben terminar dentro del horario del local/barbero.
+      start + duration > close) {
     return 'El horario no está disponible dentro del horario del local.';
   }
   const today = businessParts(now);
