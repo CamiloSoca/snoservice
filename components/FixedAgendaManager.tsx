@@ -204,7 +204,7 @@ export default function FixedAgendaManager({barbers,services,shopSchedule}:{
            {!selectedBarber||!selectedService?'Elegí un barbero y un servicio para ver los horarios.':'No hay bloques compatibles para este día y servicio.'}
          </p>}
          {draft.id&&draft.timeSlot&&!startSlots.includes(draft.timeSlot)&&
-           <p role="status" className="text-xs text-amber-300">Este fijo anterior sigue a las {draft.timeSlot}. Podés conservarlo o elegir una hora completa para reprogramarlo.</p>}
+           <p role="status" className="text-xs text-amber-300">Este turno existente a las {draft.timeSlot} se mantiene intacto. Podés conservarlo o elegir una hora completa para reprogramarlo.</p>}
          <p className="text-[11px] text-zinc-500">El bloqueo definitivo de reservas fijas y comunes se valida al guardar.</p>
        </div>
        <label className="flex items-start gap-3 rounded-xl border border-zinc-700 bg-zinc-950 p-3 text-sm text-zinc-200 sm:col-span-2">
