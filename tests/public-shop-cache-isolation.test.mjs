@@ -134,7 +134,7 @@ test('una respuesta pública de otra tienda no se publica ni se persiste', async
 test('la portada sin imágenes configuradas no carga recursos de otra barbería', () => {
   assert.doesNotMatch(home, /https?:\/\/[^'"\s]+\.supabase\.co/i);
   assert.doesNotMatch(home, /bookly\.uy/i);
-  assert.match(home, /const bgImage = shopConfig\.backgroundImageUrl \|\| ''/);
+  assert.doesNotMatch(home, /filter blur-md scale-105 grayscale/);
   assert.match(home, /const bannerUrl = shopConfig\.coverImageUrl \|\| shopConfig\.backgroundImageUrl \|\| ''/);
   assert.match(carousel, /fetch\('\/api\/public\/instagram'/);
   assert.match(carousel, /slides\.map/);
