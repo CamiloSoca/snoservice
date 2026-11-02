@@ -197,9 +197,9 @@ export default function InstagramCarousel({
           <div className="absolute inset-0 bg-gradient-to-b from-zinc-950/15 via-zinc-950/55 to-zinc-950/80" />
         </div>
         {/* El perfil se superpone a la misma imagen que continúa bajo las publicaciones. */}
-        <div className="relative z-10 h-44 bg-transparent text-white sm:h-48">
+        <div className="relative z-10 h-24 bg-transparent text-white sm:h-28">
           <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-gradient-to-t from-zinc-950/65 via-zinc-950/15 to-transparent" />
-          <div className="absolute inset-x-4 bottom-4 z-10 flex items-end justify-between gap-3 sm:inset-x-7">
+          <div className="absolute inset-x-4 top-4 z-10 flex items-center justify-between gap-3 sm:inset-x-7 sm:top-5">
             <div className="flex min-w-0 items-end gap-3">
               <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-white/50 bg-zinc-950 shadow-lg sm:h-16 sm:w-16">
                 {logoImage ? (
