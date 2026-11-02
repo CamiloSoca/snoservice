@@ -50,6 +50,11 @@ test('trabajos de la cuenta profesional antes del equipo y fotos de barberos opc
   assert.match(carousel, /snap-x snap-mandatory/);
   assert.match(carousel, /IntersectionObserver/);
   assert.match(carousel, /loading="lazy"/);
+  assert.match(carousel, /resolveLoopIndex/);
+  assert.match(carousel, /shopName/);
+  assert.match(carousel, /src=\{bannerUrl\}/);
+  assert.match(carousel, /src=\{logoImage\}/);
+  assert.doesNotMatch(carousel, /Últimos trabajos|Cortes reales, estilo propio|padStart\(2, '0'\)/);
   const instagramSection = home.split('{/* INSTAGRAM')[1]?.split('{/* HORARIOS Y UBICACIÓN')[0] || '';
   assert.doesNotMatch(instagramSection, /src=\{bannerUrl\}|src=\{logoImage\}/);
   assert.match(home, /id="equipo"/);
