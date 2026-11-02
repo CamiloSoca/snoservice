@@ -41,7 +41,7 @@ export function monthlyExtraPaymentDue(input:{
   monthlyActive?:boolean;periodPaid?:boolean;used?:number;included?:number;
 }):boolean{
   return input.isFixed===true&&input.isCourtesy!==true&&input.completed!==true&&
-    input.monthlyActive===true&&input.periodPaid===true&&
+    input.periodPaid===true&&
     Number.isFinite(input.used)&&Number.isFinite(input.included)&&
     (input.used??0)>=(input.included??4);
 }
