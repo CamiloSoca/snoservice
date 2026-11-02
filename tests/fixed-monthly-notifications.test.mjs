@@ -134,10 +134,18 @@ test('solo la fila de pago individual se destaca en rojo suave; reservas normale
 
 test('el aviso personalizado escapa nombres con HTML y no inserta scripts',async()=>{
   const {buildFixedMonthlyExhaustionEmail}=await import('../lib/booking-email.ts');
-  const email=buildFixedMonthlyExhaustionEmail({
-    clientName:'<script>alert(1)</script>',shopName:'13 CUT',
-    nextDate:'2026-10-31',nextTime:'12:00',
-  });
-  assert.doesNotMatch(email.html,/<script>/);
-  assert.match(email.html,/&lt;script&gt;/);
+  for(const maliciousName of [
+    '<script>alert(1)</script>',
+    '<SCRIPT>alert(1)</SCRIPT>',
+    '<ScRiPt>alert(1)</ScRiPt>',
+  ]){
+    const email=buildFixedMonthlyExhaustionEmail({
+      clientName:maliciousName,shopName:'13 CUT',
+      nextDate:'2026-10-31',nextTime:'12:00',
+    });
+    // Verificar el escape real, sin pretender sanitizar HTML con un regexp.
+    assert.equal(email.html.includes(maliciousName),false);
+    assert.ok(email.html.includes('&lt;'));
+    assert.ok(email.html.includes('&gt;'));
+  }
 });
