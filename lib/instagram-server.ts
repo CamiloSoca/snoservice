@@ -17,6 +17,7 @@ type InstagramConnection = {
   instagram_user_id: string;
   access_token_encrypted: string;
   token_expires_at: string;
+  updated_at: string;
 };
 
 type InstagramMedia = {
@@ -77,19 +78,46 @@ function decryptInstagramToken(value: string): string {
 async function getConnection(): Promise<InstagramConnection | null> {
   if (!SHOP_UUID) return null;
   const { data, error } = await getSupabaseServer().from('instagram_connections')
-    .select('shop_id,username,instagram_user_id,access_token_encrypted,token_expires_at')
+    .select('shop_id,username,instagram_user_id,access_token_encrypted,token_expires_at,updated_at')
     .eq('shop_id', SHOP_UUID).maybeSingle();
   if (error) throw new Error('No se pudo consultar la conexión de Instagram.');
   return data as InstagramConnection | null;
 }
 
+// Se usa solo en el panel ADMIN. «Guardada» no implica autorización válida.
+// Las respuestas contienen estados técnicos, jamás credenciales ni datos de publicaciones.
 export async function getInstagramConnectionStatus() {
   const connection = await getConnection();
+  let feedStatus: 'ok' | 'empty' | 'error' | 'not_connected' =
+    connection ? 'error' : 'not_connected';
+  let failureCode: string | null = null;
+  if (connection) {
+    try {
+      const posts = await fetchInstagramFeed();
+      feedStatus = posts.length ? 'ok' : 'empty';
+    } catch (error) {
+      failureCode = safeInstagramErrorCode(error);
+      console.warn('INSTAGRAM_ADMIN_FEED_ERROR', failureCode);
+    }
+  }
   return {
     configured: Boolean(instagramOAuthConfig()),
     connected: Boolean(connection),
     username: connection?.username || null,
+    savedAt: connection?.updated_at || null,
+    feedStatus, failureCode,
   };
+}
+
+function safeInstagramErrorCode(error: unknown): string {
+  if (!(error instanceof Error)) return 'IG_UNKNOWN';
+  if (/^IG_META_HTTP_[1-5][0-9]{2}(?:_CODE_[0-9]+)?(?:_SUB_[0-9]+)?$/.test(error.message))
+    return error.message;
+  if (error.message === 'IG_TOKEN_DECRYPT_FAILED') return 'IG_TOKEN_DECRYPT_FAILED';
+  if (error.message.includes('venció')) return 'IG_TOKEN_EXPIRED';
+  if (error.message.includes('No se pudo consultar la conexión')) return 'IG_CONNECTION_DB_ERROR';
+  if (error.name === 'TimeoutError' || error.name === 'AbortError') return 'IG_META_TIMEOUT';
+  return 'IG_UNKNOWN';
 }
 
 export async function saveInstagramConnection(input: {
@@ -116,7 +144,19 @@ async function metaGet(path: string, token: string, params: Record<string, strin
     cache: 'no-store',
     signal: AbortSignal.timeout(8000),
   });
-  if (!response.ok) throw new Error('Instagram respondió con estado ' + response.status);
+
+  if (!response.ok) {
+    // Nunca registrar el body completo ni el access_token.
+    // Solo HTTP y códigos numéricos aprobados por Meta, seguros para logs.
+    const result = await response.json().catch(() => null) as {
+      error?: { code?: unknown; error_subcode?: unknown }
+    } | null;
+    const code = result?.error?.code;
+    const subcode = result?.error?.error_subcode;
+    const suffix = (typeof code === 'number' && Number.isInteger(code) ? '_CODE_' + code : '') +
+      (typeof subcode === 'number' && Number.isInteger(subcode) ? '_SUB_' + subcode : '');
+    throw new Error('IG_META_HTTP_' + response.status + suffix);
+  }
   return response.json() as Promise<unknown>;
 }
 
@@ -162,7 +202,12 @@ export async function exchangeInstagramAuthorizationCode(code: string): Promise<
 }
 
 async function tokenForConnection(connection: InstagramConnection): Promise<string> {
-  const token = decryptInstagramToken(connection.access_token_encrypted);
+  let token: string;
+  try {
+    token = decryptInstagramToken(connection.access_token_encrypted);
+  } catch {
+    throw new Error('IG_TOKEN_DECRYPT_FAILED');
+  }
   const expiry = Date.parse(connection.token_expires_at);
   if (!Number.isFinite(expiry) || expiry <= Date.now()) {
     throw new Error('El acceso a Instagram venció; volvé a conectarlo.');
@@ -206,7 +251,7 @@ async function fetchInstagramFeed(): Promise<InstagramPost[]> {
     }) as { data?: InstagramMedia[] };
   }
   if (!Array.isArray(response.data)) throw new Error('Formato de publicaciones inválido.');
-  return response.data
+  const posts = response.data
     .filter(media => media && typeof media.id === 'string')
     .sort((a, b) => Date.parse(b.timestamp || '') - Date.parse(a.timestamp || ''))
     .flatMap((media): InstagramPost[] => {
@@ -223,6 +268,10 @@ async function fetchInstagramFeed(): Promise<InstagramPost[]> {
       }];
     })
     .slice(0, 4);
+  if (!posts.length) {
+    console.warn('INSTAGRAM_MEDIA_EMPTY', {received: response.data.length, usable: posts.length});
+  }
+  return posts;
 }
 
 export async function getPublicInstagramFeed(): Promise<InstagramPost[]> {
@@ -238,7 +287,8 @@ export async function getPublicInstagramFeed(): Promise<InstagramPost[]> {
         expires: Date.now() + (posts.length ? CACHE_MS : EMPTY_CACHE_MS),
       };
       return posts;
-    } catch {
+    } catch (error) {
+      console.warn('INSTAGRAM_PUBLIC_FEED_ERROR', safeInstagramErrorCode(error));
       // Nunca cortar la página pública si Meta o su autorización fallan.
       const posts = feedCache?.shop === SHOP_UUID ? feedCache.posts : [];
       feedCache = { shop: SHOP_UUID, posts, expires: Date.now() + EMPTY_CACHE_MS };
