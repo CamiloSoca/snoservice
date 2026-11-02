@@ -56,6 +56,8 @@ function formatMoney(value: number): string {
 interface EmailLine {
   label: string;
   value: string;
+  // Resaltar exclusivamente el importe pendiente, sin modificar confirmaciones.
+  tone?: 'payment_due';
 }
 
 interface EmailFrame {
@@ -85,11 +87,19 @@ function renderEmailFrame(data: EmailFrame): string {
   const panelBorder = confirmed ? '#b9e1c9' : '#f0d4cd';
   const statusInk = confirmed ? '#075f3a' : '#8b3129';
   const shop = escapeHtml(data.shopName);
-  const rows = data.lines.map(({label, value}) => [
-    '<tr><td style="padding:12px 16px;border-bottom:1px solid #ecf0ed;">',
-    '<span style="display:block;font-size:11px;font-weight:700;letter-spacing:1.1px;color:#68746c;">',
+  const rows = data.lines.map(({label, value, tone}) => [
+    '<tr><td style="padding:12px 16px;border-bottom:1px solid #ecf0ed;',
+    tone === 'payment_due' ? 'background-color:#fff1f0;' : '',
+    '">',
+    '<span style="display:block;font-size:11px;font-weight:700;letter-spacing:1.1px;color:',
+    tone === 'payment_due' ? '#a43b32' : '#68746c',
+    ';">',
     escapeHtml(label), '</span>',
-    '<span style="display:block;padding-top:4px;font-size:15px;font-weight:700;line-height:21px;color:#18251e;word-break:break-word;">',
+    '<span style="display:block;padding-top:4px;font-size:15px;font-weight:',
+    tone === 'payment_due' ? '800' : '700',
+    ';line-height:21px;color:',
+    tone === 'payment_due' ? '#9f2929' : '#18251e',
+    ';word-break:break-word;">',
     escapeHtml(value), '</span>',
     '</td></tr>',
   ].join('')).join('');
@@ -313,7 +323,7 @@ export function buildFixedMonthlyExhaustionEmail(input:FixedMonthlyExhaustionEma
     lines:[
       {label:'ESTADO DEL ABONO',value:'4 de 4 cortes utilizados'},
       {label:'PRÓXIMA VISITA',value:'Turno fijo reservado'},
-      {label:'FORMA DE PAGO',value:'Este corte se abona individualmente en la barbería'},
+      {label:'FORMA DE PAGO',value:'Este corte se abona individualmente en la barbería',tone:'payment_due'},
     ],
     headerCaption:'BARBERÍA · AVISO DE MENSUALIDAD',
     detailsHeading:'PRÓXIMO TURNO FIJO',
