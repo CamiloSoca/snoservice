@@ -20,23 +20,24 @@ test('inicio tiene cuatro bloques y las reservas continúan en el flujo original
   assert.match(home, /href="\/agendar"/);
   assert.doesNotMatch(home, /<details/);
 });
-test('horarios y ubicación visibles lado a lado en móvil, con horarios del local', () => {
+test('horarios y ubicación son tarjetas de ancho completo en móvil con mapa real', () => {
   const info = home.split('{/* HORARIOS Y UBICACIÓN')[1]?.split('</section>')[0] || '';
-  assert.match(info, /grid grid-cols-2 items-stretch gap-3/);
-  assert.match(info, /flex flex-1 flex-col items-center justify-center/);
-  assert.match(info, /rounded-xl border px-2 py-1.5/);
-  assert.match(info, /border-emerald-600\/25 bg-emerald-950\/40/);
-  assert.match(info, /border-rose-600\/25 bg-rose-950\/35/);
-  assert.match(info, /whitespace-nowrap text-right font-medium">Cerrado/);
-  assert.match(info, /activeSchedule\[dayKey\]/);
-  for (const name of ['lunes','martes','miercoles','jueves','viernes','sabado','domingo']) {
-    assert.ok(info.includes(name), name);
-  }
-  assert.match(info, /day\.openTime\.replace/);
-  assert.match(info, /day\.closeTime\.replace/);
-  assert.match(info, /shopAddress/);
-  assert.match(info, /shopCity/);
-  assert.match(info, /google\.com\/maps\/search\/\?api=1/);
+  const cards = read('components/ShopInfoCards.tsx');
+  const display = read('lib/home-hours-display.ts');
+  assert.match(info, /<ShopInfoCards/);
+  assert.match(info, /schedule=\{activeSchedule\}/);
+  assert.match(info, /address=\{shopAddress\}/);
+  assert.match(info, /city=\{shopCity\}/);
+  assert.match(info, /isDark=\{isDark\}/);
+  assert.match(cards, /grid-cols-1 items-stretch gap-4 lg:grid-cols-2/);
+  assert.match(cards, /groupOpeningHours\(schedule\)/);
+  assert.match(cards, /Horario de hoy/);
+  assert.match(cards, /<iframe/);
+  assert.match(cards, /loading="lazy"/);
+  assert.match(cards, /output=embed/);
+  assert.match(cards, /google\.com\/maps\/search\/\?api=1/);
+  assert.match(cards, /Cómo llegar/);
+  assert.match(display, /America\/Montevideo/);
 });
 test('trabajos de la cuenta profesional antes del equipo y fotos de barberos opcionales', () => {
   assert.ok(home.indexOf('{/* EQUIPO:') < home.indexOf('{/* INSTAGRAM'));
