@@ -62,7 +62,7 @@ BEGIN
  WHERE EXTRACT(dow from dates.day)::int=v_fixed.weekday
    AND dates.day::date>=v_fixed.start_date
    AND (v_fixed.end_date IS NULL OR dates.day::date<=v_fixed.end_date)
-   AND dates.day::date<>(ALL(v_fixed.skipped_dates))
+   AND dates.day::date <> ALL(v_fixed.skipped_dates)
    AND dates.day::date>=(clock_timestamp() AT TIME ZONE 'America/Montevideo')::date
  ORDER BY dates.day LIMIT 1;
  IF v_next IS NULL THEN RETURN NEW; END IF;
@@ -74,7 +74,82 @@ BEGIN
  VALUES
  (NEW.shop_id,NEW.fixed_booking_id,NEW.period_id,NEW.occurrence_date,v_next,
   v_fixed.time_slot,v_recipient,v_fixed.client_name,coalesce(v_name,'13 CUT'),
-  CASE WHEN v_recipient~'^[^[:space:]@]+@[^[:space:]@]+\\.[^[:space:]@]+$'
+  CASE WHEN v_recipient~'^[^[:space:]@]+@[^[:space:]@]+[.][^[:space:]@]+
+       THEN 'pending' ELSE 'missing_email' END)
+ ON CONFLICT (period_id) DO NOTHING;
+ RETURN NEW;
+END;
+$fn$;
+
+DROP TRIGGER IF EXISTS trg_fixed_monthly_exhaustion_notice ON public.fixed_monthly_uses;
+CREATE TRIGGER trg_fixed_monthly_exhaustion_notice
+AFTER INSERT ON public.fixed_monthly_uses
+FOR EACH ROW EXECUTE FUNCTION public.enqueue_fixed_monthly_exhaustion_notice();
+
+-- Claim atomico: no dos procesos SMTP concurrentes para el mismo periodo.
+-- Un intento cuya instancia murio puede recuperarse pasado 20 minutos.
+CREATE OR REPLACE FUNCTION public.claim_fixed_monthly_notice(
+ p_shop_id uuid, p_period_id uuid DEFAULT NULL
+) RETURNS TABLE (
+ notice_id uuid, period_id uuid, recipient_email text,
+ client_name text, shop_name text, next_occurrence_date date, next_time_slot text
+)
+LANGUAGE plpgsql SECURITY INVOKER
+SET search_path TO 'pg_catalog','public'
+AS $fn$
+BEGIN
+ RETURN QUERY
+ WITH picked AS (
+   SELECT n.id FROM public.fixed_monthly_notices n
+   WHERE n.shop_id=p_shop_id
+     AND (p_period_id IS NULL OR n.period_id=p_period_id)
+     AND n.attempts<3
+     AND (
+       n.status IN ('pending','failed')
+       OR (n.status='sending' AND n.reserved_at<clock_timestamp()-interval '20 minutes')
+     )
+     AND n.next_occurrence_date>=(clock_timestamp() AT TIME ZONE 'America/Montevideo')::date
+   ORDER BY n.created_at
+   LIMIT 1 FOR UPDATE SKIP LOCKED
+ )
+ UPDATE public.fixed_monthly_notices n
+ SET status='sending',reserved_at=clock_timestamp(),attempts=n.attempts+1,last_failure=NULL
+ FROM picked WHERE n.id=picked.id
+ RETURNING n.id,n.period_id,n.recipient_email,n.client_name,n.shop_name,
+           n.next_occurrence_date,n.next_time_slot;
+END;
+$fn$;
+
+-- Guardar resultado: el correo aceptado por SMTP no garantiza bandeja de entrada.
+CREATE OR REPLACE FUNCTION public.finish_fixed_monthly_notice(
+ p_shop_id uuid,p_notice_id uuid,p_status text,p_message_id text DEFAULT NULL,
+ p_failure text DEFAULT NULL
+) RETURNS boolean
+LANGUAGE plpgsql SECURITY INVOKER
+SET search_path TO 'pg_catalog','public'
+AS $fn$
+BEGIN
+ IF p_status NOT IN ('accepted','failed') THEN RAISE EXCEPTION 'Estado inválido'; END IF;
+ UPDATE public.fixed_monthly_notices
+ SET status=p_status,
+     accepted_at=CASE WHEN p_status='accepted' THEN clock_timestamp() ELSE NULL END,
+     provider_message_id=left(coalesce(p_message_id,''),200),
+     last_failure=CASE WHEN p_status='failed' THEN left(coalesce(p_failure,'SMTP rejected'),100) ELSE NULL END
+ WHERE id=p_notice_id AND shop_id=p_shop_id AND status='sending';
+ RETURN FOUND;
+END;
+$fn$;
+
+REVOKE ALL ON FUNCTION public.enqueue_fixed_monthly_exhaustion_notice(),
+ public.claim_fixed_monthly_notice(uuid,uuid),
+ public.finish_fixed_monthly_notice(uuid,uuid,text,text,text)
+ FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.enqueue_fixed_monthly_exhaustion_notice(),
+ public.claim_fixed_monthly_notice(uuid,uuid),
+ public.finish_fixed_monthly_notice(uuid,uuid,text,text,text)
+ TO service_role;
+COMMIT;
+
        THEN 'pending' ELSE 'missing_email' END)
  ON CONFLICT (period_id) DO NOTHING;
  RETURN NEW;
