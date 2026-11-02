@@ -43,3 +43,12 @@ test('reserva y demás datos de 13 CUT no se ven afectados',()=>{
   assert.doesNotMatch(integration,/from\('appointments'\)|from\('cash_registers'\)|from\('fixed_monthly/);
   assert.doesNotMatch(adminCard,/updateAppointment|saveCashRegister|cancelBooking/);
 });
+
+test('si Instagram rechaza campos opcionales el feed prueba solo campos mínimos',()=>{
+  assert.match(integration,/INSTAGRAM_MINIMAL_FIELDS_RETRY/);
+  assert.match(integration,/safeInstagramErrorCode\(error\)/);
+  assert.match(integration,/IG_META_HTTP_400_CODE_\(100\|200\)/);
+  assert.match(integration,/fields: 'id,media_type,media_url,thumbnail_url,permalink,timestamp'/);
+  assert.match(adminCard,/Meta rechazó el acceso a publicaciones por permisos/);
+  assert.match(adminCard,/instagram_business_basic/);
+});
