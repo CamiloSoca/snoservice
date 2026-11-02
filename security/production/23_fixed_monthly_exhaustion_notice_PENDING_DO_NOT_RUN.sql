@@ -64,6 +64,16 @@ BEGIN
    AND (v_fixed.end_date IS NULL OR dates.day::date<=v_fixed.end_date)
    AND dates.day::date <> ALL(v_fixed.skipped_dates)
    AND dates.day::date>=(clock_timestamp() AT TIME ZONE 'America/Montevideo')::date
+   AND NOT EXISTS (
+     SELECT 1 FROM public.manual_charges paid
+     WHERE paid.shop_id=NEW.shop_id AND paid.fixed_booking_id=NEW.fixed_booking_id
+       AND paid.fixed_occurrence_date=dates.day::date
+   )
+   AND NOT EXISTS (
+     SELECT 1 FROM public.fixed_courtesy_uses gifted
+     WHERE gifted.shop_id=NEW.shop_id AND gifted.fixed_booking_id=NEW.fixed_booking_id
+       AND gifted.occurrence_date=dates.day::date
+   )
  ORDER BY dates.day LIMIT 1;
  IF v_next IS NULL THEN RETURN NEW; END IF;
  SELECT name INTO v_name FROM public.shops WHERE id=NEW.shop_id;
