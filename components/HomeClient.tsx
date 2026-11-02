@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import BarberDetailPanel from '@/components/BarberDetailPanel';
+import InstagramCarousel from '@/components/InstagramCarousel';
 import ShopInfoCards from '@/components/ShopInfoCards';
 import {
   MapPin,
@@ -12,36 +13,18 @@ import {
   Sun,
   Moon,
   Phone,
-  ExternalLink,
   Calendar,
   ArrowRight,
-  Heart,
 } from 'lucide-react';
 import {
   DEFAULT_SHOP_CONFIG,
 } from '@/lib/booking-store';
 import type { PublicShopData } from '@/lib/public-shop-data';
 
-type InstagramPost = { id: string; imageUrl: string; permalink: string; caption: string; likeCount: number | null };
-
 export default function HomeClient({initialShop}: {initialShop: PublicShopData}) {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
-  const [instagramPosts, setInstagramPosts] = useState<InstagramPost[]>([]);
-  const [instagramLoaded, setInstagramLoaded] = useState(false);
   const [selectedBarber, setSelectedBarber] = useState<PublicShopData['barbers'][number] | null>(null);
 
-  useEffect(() => {
-    const abort = new AbortController();
-    fetch('/api/public/instagram', { signal: abort.signal })
-      .then(response => response.ok ? response.json() : { posts: [] })
-      .then(data => {
-        if (abort.signal.aborted) return;
-        setInstagramPosts(Array.isArray(data.posts) ? data.posts.slice(0, 4) : []);
-      })
-      .catch(() => {})
-      .finally(() => { if (!abort.signal.aborted) setInstagramLoaded(true); });
-    return () => abort.abort();
-  }, []);
   // Usar siempre la version mas reciente del cache compartido.
   const shopConfig = initialShop.shopConfig;
   const barbers = initialShop.barbers.filter(b => b.active !== false);
@@ -254,128 +237,12 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
           ) : <p className="text-sm text-zinc-400">No hay barberos disponibles por el momento.</p>}
         </section>
 
-        {/* INSTAGRAM — reutiliza logo, portada y publicaciones reales de cada barbería */}
-        <section className="max-w-5xl mx-auto px-4 py-3">
-          <div
-            className={['overflow-hidden rounded-3xl border backdrop-blur-sm',
-              isDark ? 'border-zinc-800/90 bg-zinc-900/75' : 'border-zinc-200 bg-white/90 shadow-sm'
-            ].join(' ')}
-          >
-            {/* Portada y marca que el administrador ya configuró para este local. */}
-            <div className="relative h-40 overflow-hidden bg-zinc-900 text-white sm:h-48">
-              {bannerUrl ? (
-                <Image
-                  src={bannerUrl}
-                  alt={'Portada de ' + shopConfig.name}
-                  fill
-                  sizes="(max-width: 640px) 100vw, 1024px"
-                  quality={70}
-                  loading="lazy"
-                  className="object-cover object-center"
-                />
-              ) : (
-                <div className="absolute inset-0 bg-gradient-to-br from-zinc-800 to-zinc-950" />
-              )}
-              <div className="absolute inset-0 bg-gradient-to-t from-zinc-950/90 via-zinc-950/20 to-transparent" />
-              <div className="absolute inset-x-4 bottom-4 z-10 flex min-w-0 items-end gap-3 sm:inset-x-7">
-                <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/25 bg-zinc-950 shadow-lg">
-                  {logoImage ? (
-                    <Image
-                      src={logoImage}
-                      alt={'Logo de ' + shopConfig.name}
-                      fill
-                      sizes="56px"
-                      quality={75}
-                      className="object-cover"
-                    />
-                  ) : (
-                    <Scissors className="h-6 w-6 text-white" />
-                  )}
-                </div>
-                <div className="min-w-0 pb-0.5">
-                  <p className="truncate text-lg font-extrabold tracking-tight text-white sm:text-xl">
-                    {shopConfig.name}
-                  </p>
-                  <p className="mt-0.5 truncate text-xs text-zinc-200">
-                    {shopConfig.instagramHandle || '@13.cut'}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-5 sm:p-7">
-              <div className="mb-4 flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <h2 className="text-base font-extrabold tracking-tight sm:text-lg">
-                    Últimos trabajos
-                  </h2>
-                  <p className={['mt-1 text-xs', isDark ? 'text-zinc-400' : 'text-zinc-500'].join(' ')}>
-                    Lo último de nuestro Instagram
-                  </p>
-                </div>
-                <a
-                  href={shopConfig.instagramUrl || 'https://www.instagram.com/13.cut/'}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={['inline-flex shrink-0 items-center gap-1.5 rounded-xl border px-3.5 py-2.5 text-xs font-semibold transition-colors active:scale-95 touch-manipulation',
-                    isDark
-                      ? 'border-zinc-700 bg-zinc-950 text-zinc-200 hover:bg-zinc-800'
-                      : 'border-zinc-200 bg-zinc-50 text-zinc-800 hover:bg-zinc-100'
-                  ].join(' ')}
-                >
-                  <span>Ver perfil</span>
-                  <ExternalLink className="h-3.5 w-3.5 opacity-60" />
-                </a>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-                {instagramPosts.map((post) => (
-                  <a
-                    key={post.id}
-                    href={post.permalink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label={'Ver publicación de Instagram: ' + post.caption}
-                    className={'group relative block aspect-square overflow-hidden rounded-2xl border transition-colors hover:border-emerald-400 ' +
-                      (isDark ? 'border-zinc-800 bg-zinc-950' : 'border-zinc-200 bg-zinc-100')}
-                  >
-                    {/* Miniaturas de la API oficial: sin embebidos ni widgets externos. */}
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={post.imageUrl}
-                      alt={post.caption}
-                      loading="lazy"
-                      referrerPolicy="no-referrer"
-                      className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.03]"
-                    />
-                    {typeof post.likeCount === 'number' && Number.isFinite(post.likeCount) && (
-                      <span
-                        className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-lg bg-zinc-950/75 px-2 py-1.5 text-[11px] font-semibold text-white"
-                        aria-label={post.likeCount.toLocaleString('es-UY') + ' me gusta'}
-                      >
-                        <Heart className="h-3.5 w-3.5" aria-hidden="true" />
-                        {post.likeCount.toLocaleString('es-UY')}
-                      </span>
-                    )}
-                    <span className="absolute bottom-2 right-2 rounded-lg bg-zinc-950/75 p-1.5 text-white">
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </span>
-                  </a>
-                ))}
-                {instagramLoaded && !instagramPosts.length && (
-                  <p className="col-span-full py-6 text-center text-sm text-zinc-400">
-                    Mirá nuestros trabajos en Instagram.
-                  </p>
-                )}
-                {!instagramLoaded && (
-                  <p className="col-span-full py-6 text-center text-sm text-zinc-400">
-                    Cargando publicaciones...
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-        </section>
+        {/* INSTAGRAM — carrusel liviano de publicaciones oficiales */}
+        <InstagramCarousel
+          isDark={isDark}
+          instagramHandle={shopConfig.instagramHandle || '@13.cut'}
+          instagramUrl={shopConfig.instagramUrl || 'https://www.instagram.com/13.cut/'}
+        />
 
         {/* HORARIOS Y UBICACIÓN: solo visual, siempre datos vigentes del local */}
         <section id="info" className="mx-auto max-w-5xl scroll-mt-24 px-4 pb-8 pt-5" aria-label="Horarios y ubicación">
