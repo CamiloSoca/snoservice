@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, ArrowRight, Calendar, Check, MapPin, Scissors, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Calendar, Check, MapPin, X } from 'lucide-react';
 import type { PublicShopData } from '@/lib/public-shop-data';
 
 export default function BarberDetailPanel({shop, barber, onClose}: {
@@ -129,7 +129,7 @@ export default function BarberDetailPanel({shop, barber, onClose}: {
           <MapPin className="h-4 w-4" aria-hidden="true" /> Horarios y ubicación del local
         </Link>
         <Link href="/agendar" className="inline-flex items-center gap-1.5 underline underline-offset-4">
-          <Scissors className="h-4 w-4" aria-hidden="true" /> Reservar con otro barbero
+          <ArrowRight className="h-4 w-4" aria-hidden="true" /> Reservar con otro barbero
         </Link>
       </div>
       </main>
