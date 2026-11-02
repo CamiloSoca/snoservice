@@ -6,6 +6,7 @@ import ts from 'typescript';
 
 const source = readFileSync(new URL('../lib/public-shop-data.ts', import.meta.url), 'utf8');
 const home = readFileSync(new URL('../components/HomeClient.tsx', import.meta.url), 'utf8');
+const carousel = readFileSync(new URL('../components/InstagramCarousel.tsx', import.meta.url), 'utf8');
 const cacheSource = readFileSync(new URL('../lib/public-shop-cache.ts', import.meta.url), 'utf8');
 const serverSource = readFileSync(new URL('../lib/server-public-shop.ts', import.meta.url), 'utf8');
 const cacheModule = {exports: {}};
@@ -135,17 +136,19 @@ test('la portada sin imágenes configuradas no carga recursos de otra barbería'
   assert.doesNotMatch(home, /bookly\.uy/i);
   assert.match(home, /const bgImage = shopConfig\.backgroundImageUrl \|\| ''/);
   assert.match(home, /const bannerUrl = shopConfig\.coverImageUrl \|\| shopConfig\.backgroundImageUrl \|\| ''/);
-  assert.match(home, /fetch\('\/api\/public\/instagram'/);
-  assert.match(home, /instagramPosts\.map/);
+  assert.match(carousel, /fetch\('\/api\/public\/instagram'/);
+  assert.match(carousel, /posts\.map/);
   assert.match(home, /shopConfig\.instagramUrl/);
   // La portada usa una sola marca real y la galería continúa siendo de la API.
   const hero = home.split('{/* HERO BANNER */}')[1]?.split('</section>')[0] || '';
   assert.match(hero, /src=\{bannerUrl\}/);
   assert.match(hero, /src=\{logoImage\}/);
-  const instagramSection = home.split('{/* INSTAGRAM')[1]?.split('</section>')[0] || '';
-  assert.match(instagramSection, /instagramPosts\.map/);
-  assert.match(instagramSection, /post\.permalink/);
-  assert.match(instagramSection, /Últimos trabajos/);
+  const instagramSection = home.split('{/* INSTAGRAM')[1]?.split('{/* HORARIOS Y UBICACIÓN')[0] || '';
+  assert.match(instagramSection, /<InstagramCarousel/);
+  assert.match(instagramSection, /instagramUrl=\{shopConfig\.instagramUrl/);
+  assert.match(carousel, /post\.permalink/);
+  assert.match(carousel, /Últimos trabajos/);
+  assert.match(carousel, /referrerPolicy="no-referrer"/);
 });
 
 test('la caché de servidor y sus invalidaciones incluyen proyecto y Shop ID', () => {
