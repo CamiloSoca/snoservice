@@ -5,5 +5,11 @@
   ],
   "git": {
     "deploymentEnabled": false
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/internal/monthly-notices",
+      "schedule": "0 13 * * *"
+    }
+  ]
 }
