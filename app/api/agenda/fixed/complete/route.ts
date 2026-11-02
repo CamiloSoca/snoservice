@@ -1,4 +1,5 @@
-import {NextResponse} from 'next/server';
+import {NextResponse,after} from 'next/server';
+import {dispatchFixedMonthlyNotice} from '@/lib/fixed-monthly-notice-mail';
 import {getSupabaseServer,SHOP_UUID} from '@/lib/supabase-server';
 import {getBarberSession,requireAdminSession,verifyCsrfOrigin} from '@/lib/session';
 import {isValidUUID} from '@/lib/booking-store';
@@ -63,6 +64,19 @@ export async function POST(request:Request){
       {status:503,headers});
   }
   if(!isValidUUID(String(data||'')))return NextResponse.json({error:'No se confirmó el servicio.'},{status:503,headers});
+  if(mode==='subscription'){
+    // Fuera de la respuesta al barbero: el corte queda confirmado aunque SMTP falle.
+    // Solo el cuarto uso crea un aviso en PostgreSQL. Reintentos vía cron.
+    after(async()=>{
+      try{
+        const {data:usage,error:usageError}=await getSupabaseServer()
+          .from('fixed_monthly_uses').select('period_id')
+          .eq('shop_id',SHOP_UUID).eq('id',String(data)).maybeSingle();
+        if(usageError||!usage?.period_id)return;
+        await dispatchFixedMonthlyNotice(usage.period_id);
+      }catch{console.warn('No se pudo procesar el aviso de abono.');}
+    });
+  }
   return NextResponse.json({ok:true,coveredBySubscription:mode==='subscription',
     coveredByCourtesy:mode==='courtesy',
     ...(mode==='charge'?{chargeId:data}:{usageId:data})},{headers});
