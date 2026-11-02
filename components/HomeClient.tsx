@@ -241,6 +241,9 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
         <InstagramCarousel
           isDark={isDark}
           instagramHandle={shopConfig.instagramHandle || '@13.cut'}
+          shopName={shopConfig.name}
+          bannerUrl={bannerUrl}
+          logoImage={logoImage}
           instagramUrl={shopConfig.instagramUrl || 'https://www.instagram.com/13.cut/'}
         />
 
