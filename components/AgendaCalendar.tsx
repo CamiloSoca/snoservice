@@ -5,6 +5,7 @@ import {CalendarDays, ChevronLeft, ChevronRight, RefreshCw, WifiOff} from 'lucid
 import type {AppointmentItem, BarberItem} from '@/lib/booking-store';
 import AppointmentDetailModal, {type AppointmentActionResult} from '@/components/AppointmentDetailModal';
 import type {OnSitePaymentMethod} from '@/lib/payment-method';
+import {monthlyExtraPaymentDue} from '@/lib/fixed-monthly-notice';
 import {
   agendaDayAppointments, appointmentStartMinute, calendarWeekDays,
   moveCalendarDay, readableDay, readableWeek, todayInMontevideo, bookingDateLabel,
@@ -19,7 +20,7 @@ interface FixedRule {
  monthlyPlan?:{fixed_booking_id:string;monthly_price:number;included_cuts:number;active:boolean}|null;
 }
 type FixedCompleted={fixedBookingId:string;occurrenceDate:string;chargeId:string;amount:number;coveredBySubscription?:boolean;coveredByCourtesy?:boolean};
-type FixedPeriod={fixedBookingId:string;month:string;includedCuts:number;used:number};
+type FixedPeriod={fixedBookingId:string;month:string;includedCuts:number;used:number;noticeStatus?:string|null};
 type BarberRef = Pick<BarberItem, 'id' | 'name'>;
 
 interface AgendaCalendarProps {
@@ -161,10 +162,15 @@ export default function AgendaCalendar({
           const remaining=Math.max(0,(period?.includedCuts||4)-(period?.used||0));
           const prepaid=Boolean(period&&remaining>0);
           const price=f.complimentary?0:paid&&!paid.coveredBySubscription?paid.amount:f.servicePrice;
+          const paymentDue=monthlyExtraPaymentDue({
+            isFixed:true,isCourtesy:f.complimentary===true,completed:Boolean(paid),
+            monthlyActive:Boolean(f.monthlyPlan?.active),periodPaid:Boolean(period),
+            used:period?.used,included:period?.includedCuts,
+          });
           return {
             id:'fixed-'+f.id+'-'+date,code:'FIJO',isFixed:true,isCourtesy:f.complimentary===true,
             fixedBookingId:f.id,fixedDate:date,
-            fixedSubscription:{active:Boolean(f.monthlyPlan?.active),paid:Boolean(period),used:period?.used||0,remaining,eligible:!paid&&prepaid&&!f.complimentary,covered:paid?.coveredBySubscription===true},
+            fixedSubscription:{active:Boolean(f.monthlyPlan?.active),paid:Boolean(period),used:period?.used||0,remaining,eligible:!paid&&prepaid&&!f.complimentary,covered:paid?.coveredBySubscription===true,paymentDue,noticeStatus:period?.noticeStatus||null},
             serviceId:f.serviceId,serviceName:f.serviceName,servicePrice:price,priceSnapshot:price,
             durationMinutes:f.durationMinutes,barberId:f.barberId,barberName:f.barberName,
             dateString:bookingDateLabel(date),timeSlot:f.timeSlot,
@@ -247,6 +253,10 @@ export default function AgendaCalendar({
           </span>}
         </div>
         <p className="truncate text-xs font-bold text-zinc-100">{appointment.clientName}</p>
+        {appointment.fixedSubscription?.paymentDue&&
+          <p className="mt-1 rounded-md bg-amber-500/15 px-1.5 py-1 text-[10px] font-bold text-amber-200">
+            ⚠ Abono agotado · cobrar corte
+          </p>}
         <p className="truncate text-[11px] text-zinc-400">
           {appointment.serviceName}{mode === 'admin' && compact ? ' · ' + appointment.barberName : ''}
         </p>
@@ -371,6 +381,10 @@ export default function AgendaCalendar({
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-bold text-zinc-100">{appointment.clientName}</p>
                     <p className="mt-0.5 truncate text-xs text-zinc-400">{appointment.serviceName}</p>
+                    {appointment.fixedSubscription?.paymentDue&&
+                      <p className="mt-1 text-[11px] font-bold text-amber-300">
+                        ⚠ Abono agotado · cobrar corte individual
+                      </p>}
                     {mode === 'admin' && <p className="mt-1 truncate text-[11px] font-semibold text-emerald-400">
                       {appointment.barberName}
                     </p>}
@@ -442,6 +456,8 @@ export default function AgendaCalendar({
                                 {event.appointment.timeSlot} {event.appointment.clientName}{event.appointment.isFixed ? event.appointment.status==='completado'?' · Fijo hecho':' · Fijo' : ''}
                               </span>
                               <span className="block truncate text-[10px] text-zinc-400">{event.appointment.serviceName}</span>
+                              {event.appointment.fixedSubscription?.paymentDue&&
+                                <span className="block truncate text-[10px] font-bold text-amber-300">⚠ Cobrar aparte</span>}
                             </button>
                           </div>
                         );

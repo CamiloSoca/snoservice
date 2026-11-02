@@ -77,7 +77,7 @@ export interface AppointmentItem {
   isCourtesy?: boolean;
   fixedBookingId?: string;
   fixedDate?: string;
-  fixedSubscription?: {active:boolean;paid:boolean;used:number;remaining:number;eligible:boolean;covered?:boolean};
+  fixedSubscription?: {active:boolean;paid:boolean;used:number;remaining:number;eligible:boolean;covered?:boolean;paymentDue?:boolean;noticeStatus?:string|null};
   paymentMethod?: 'cash' | 'transfer' | null;
   id: string;
   code: string;

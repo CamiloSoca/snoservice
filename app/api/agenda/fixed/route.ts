@@ -64,9 +64,15 @@ export async function GET(request:Request){
     .gte('occurrence_date',start).lte('occurrence_date',end)
     :{data:[],error:null};
   if(courtesyResult.error)return NextResponse.json({error:'No se pudieron cargar las cortesías.'},{status:503,headers});
+  // El correo no puede impedir ver ni completar la agenda.
+  const noticesResult=periodIds.length?await db.from('fixed_monthly_notices')
+    .select('period_id,status').eq('shop_id',SHOP_UUID).in('period_id',periodIds)
+    :{data:[],error:null};
+  if(noticesResult.error)console.warn('Estado SMTP del abono no disponible:',noticesResult.error.code);
   const periods=(periodsResult.data||[]).map(p=>({
     fixedBookingId:p.fixed_booking_id,month:p.period_month,
     includedCuts:p.included_cuts,used:(usesResult.data||[]).filter(u=>u.period_id===p.id).length,
+    noticeStatus:(noticesResult.data||[]).find(n=>n.period_id===p.id)?.status||null,
   }));
   const items=rows.map(r=>{
    const service=Array.isArray(r.services)?r.services[0]:r.services;

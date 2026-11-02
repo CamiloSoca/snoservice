@@ -68,6 +68,7 @@ export default function AppointmentDetailModal({
   const completeAllowed = appointment.status === 'confirmado' && (canComplete||courtesy) && timeState === 'started';
   const cancelAllowed = !appointment.isFixed && appointment.status === 'confirmado' && timeState === 'future';
   const prepaid=appointment.isFixed===true&&appointment.fixedSubscription?.eligible===true;
+  const monthlyPaymentDue=appointment.fixedSubscription?.paymentDue===true;
   const whatsappLink = getWhatsAppLink?.(appointment)
     || customerWhatsAppLink(appointment.clientPhone, appointment.clientName, "13'Cut");
   const formattedPrice = new Intl.NumberFormat('es-UY', {
@@ -199,6 +200,12 @@ export default function AppointmentDetailModal({
               </p>
             </div>
           )}
+          {monthlyPaymentDue&&appointment.status==='confirmado'&&
+            <div role="alert" className="rounded-xl border border-amber-500/60 bg-amber-500/15 p-3 text-sm text-amber-100">
+              <strong>Mensualidad agotada · cobrar corte individual</strong>
+              <p className="mt-1 text-xs">Este turno sigue reservado, pero los 4 cortes incluidos ya se utilizaron. Elegí efectivo o transferencia al completarlo.</p>
+              <p className="mt-1 text-xs">Correo al cliente: {appointment.fixedSubscription?.noticeStatus==='accepted'?'aceptado por el servidor de correo':appointment.fixedSubscription?.noticeStatus==='failed'?'falló el envío; requiere revisión':appointment.fixedSubscription?.noticeStatus==='sending'?'procesándose':appointment.fixedSubscription?.noticeStatus==='missing_email'?'sin correo válido; avisar al cliente':'sin confirmación de envío'}.</p>
+            </div>}
           {appointment.isFixed && appointment.status === 'confirmado' && (courtesy
              ? <p className="rounded-lg border border-sky-500/30 bg-sky-500/10 p-3 text-xs text-sky-200">Cortesía · este servicio cuenta como realizado, pero no requiere cobrar ni genera ingresos o comisión.</p>
              : prepaid
