@@ -55,7 +55,9 @@ export default function InstagramConnection() {
           <p className="mt-1">
             {status.feedStatus === 'empty'
               ? 'Instagram respondió, pero no hay fotos utilizables para mostrar.'
-              : 'El servidor no pudo obtener publicaciones. Una credencial guardada no garantiza acceso válido.'}
+              : status.failureCode?.includes('_CODE_200')
+                ? 'Meta rechazó el acceso a publicaciones por permisos. Revisá instagram_business_basic y los roles o la revisión de la app en Meta antes de volver a conectar.'
+                : 'El servidor no pudo obtener publicaciones. Una credencial guardada no garantiza acceso válido.'}
           </p>
           {status.failureCode && <p className="mt-1 font-mono text-[10px]">Diagnóstico: {status.failureCode}</p>}
           {status.savedAt && <p className="mt-1 text-amber-100/80">
