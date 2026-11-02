@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Image from 'next/image';
-import { ArrowLeft, ArrowRight, ExternalLink, Heart, Play } from 'lucide-react';
+import { ExternalLink, Heart, Play } from 'lucide-react';
 import { resolveLoopIndex } from '@/lib/instagram-carousel-loop';
 
 type InstagramPost = {
@@ -176,28 +176,28 @@ export default function InstagramCarousel({
     };
   }, [posts.length, settleLoop]);
 
-  const move = (direction: -1 | 1) => {
-    const track = trackRef.current;
-    if (!track || posts.length <= 1) return;
-    const next = Math.max(0, Math.min(slides.length - 1, indexRef.current + direction));
-    track.scrollTo({
-      left: slideOffset(track, next),
-      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
-    });
-    // scrollend vuelve desde la copia extrema a su equivalente real.
-  };
-
-  const muted = isDark ? 'text-zinc-400' : 'text-zinc-500';
-  const buttonStyle = isDark
-    ? 'border-zinc-700 bg-zinc-900 text-zinc-100 hover:bg-zinc-800'
-    : 'border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-100';
+  const muted = 'text-zinc-300';
 
   return (
     <section ref={sectionRef} className="mx-auto max-w-5xl px-4 py-5 sm:py-7" aria-label="Instagram de la barbería">
-      <div className={'overflow-hidden rounded-3xl border ' +
-        (isDark ? 'border-white/[0.075] bg-[#151917]/90 shadow-[0_16px_40px_rgba(0,0,0,0.14)]' : 'border-zinc-200/80 bg-white/95 shadow-sm')}>
-        {/* La portada y el logo ya están en el catálogo público de la barbería. */}
-        <div className="relative h-44 overflow-hidden bg-zinc-900 text-white sm:h-48">
+      <div className="relative isolate overflow-hidden rounded-3xl border border-white/[0.10] bg-[#121615] text-white shadow-[0_16px_40px_rgba(0,0,0,0.14)]">
+        {/* La misma portada continúa detrás de todo el carrusel, sin tapar las fotos. */}
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
+          {bannerUrl ? (
+            <Image
+              src={bannerUrl}
+              alt=""
+              fill
+              sizes="(max-width: 640px) 100vw, 1024px"
+              quality={65}
+              loading="lazy"
+              className="object-cover object-center opacity-65"
+            />
+          ) : <div className="absolute inset-0 bg-gradient-to-br from-zinc-800 via-zinc-900 to-zinc-950" />}
+          <div className="absolute inset-0 bg-gradient-to-b from-zinc-950/30 via-zinc-950/60 to-zinc-950/75" />
+        </div>
+        {/* La portada superior conserva su encuadre, con el carrusel sobre el mismo fondo. */}
+        <div className="relative z-10 h-44 overflow-hidden bg-transparent text-white sm:h-48">
           {bannerUrl ? (
             <Image
               src={bannerUrl}
@@ -238,7 +238,7 @@ export default function InstagramCarousel({
             <div
               ref={trackRef}
               onScroll={onScroll}
-              className="ig-carousel-track flex snap-x snap-mandatory gap-3 overflow-x-auto overscroll-x-contain scroll-pl-5 px-5 pb-3 pt-5 sm:gap-4 sm:scroll-pl-7 sm:px-7 sm:pt-6"
+              className="ig-carousel-track relative z-10 flex snap-x snap-mandatory gap-3 overflow-x-auto overscroll-x-contain scroll-pl-5 px-5 pb-7 pt-5 sm:gap-4 sm:scroll-pl-7 sm:px-7 sm:pb-8 sm:pt-6"
               aria-label="Publicaciones de Instagram: carrusel continuo"
               role="region"
               tabIndex={0}
@@ -288,36 +288,16 @@ export default function InstagramCarousel({
                 );
               })}
             </div>
-            <div className="flex items-center justify-end gap-2 px-5 pb-5 pt-2 sm:px-7 sm:pb-7">
-              <button
-                type="button"
-                onClick={() => move(-1)}
-                disabled={posts.length <= 1}
-                aria-label="Publicación anterior"
-                className={'flex h-10 w-10 items-center justify-center rounded-xl border transition-colors disabled:cursor-not-allowed disabled:opacity-35 ' + buttonStyle}
-              >
-                <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-              </button>
-              <button
-                type="button"
-                onClick={() => move(1)}
-                disabled={posts.length <= 1}
-                aria-label="Siguiente publicación"
-                className={'flex h-10 w-10 items-center justify-center rounded-xl border transition-colors disabled:cursor-not-allowed disabled:opacity-35 ' + buttonStyle}
-              >
-                <ArrowRight className="h-4 w-4" aria-hidden="true" />
-              </button>
-            </div>
           </>
         ) : status === 'ready' ? (
-          <div className={'px-5 py-7 text-sm ' + muted}>
+          <div className={'relative z-10 px-5 py-7 text-sm ' + muted}>
             Mirá nuestras publicaciones en <a href={instagramUrl} target="_blank" rel="noopener noreferrer" className="font-semibold underline underline-offset-4">{instagramHandle}</a>.
           </div>
         ) : (
-          <div className="flex gap-3 overflow-hidden px-5 py-6 sm:gap-4 sm:px-7" aria-busy="true" aria-label="Cargando publicaciones de Instagram">
+          <div className="relative z-10 flex gap-3 overflow-hidden px-5 py-6 sm:gap-4 sm:px-7" aria-busy="true" aria-label="Cargando publicaciones de Instagram">
             {[0, 1, 2].map((index) => (
               <div key={index} className={'aspect-[4/5] w-[76%] shrink-0 rounded-2xl sm:w-[44%] lg:w-[30%] ' +
-                (isDark ? 'bg-zinc-800' : 'bg-zinc-100')} />
+                'bg-white/10'} />
             ))}
           </div>
         )}
