@@ -6,7 +6,7 @@ type PendingNotice={
   notice_id:string;period_id:string;recipient_email:string;client_name:string;
   shop_name:string;next_occurrence_date:string;next_time_slot:string;
 };
-const validEmail=(value:string)=>/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(value);
+const validEmail=(value:string)=>/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
 // Usar la misma plantilla de confirmación de reservas, no otra paleta.
 export const monthlyExhaustedEmail=buildFixedMonthlyExhaustionEmail;
