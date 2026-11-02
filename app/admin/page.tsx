@@ -14,7 +14,6 @@ import {
   CheckCircle2,
   XCircle,
   MessageSquare,
-  ArrowLeft,
   Clock,
   LogOut,
   Settings,
@@ -1159,12 +1158,13 @@ const handleAddBarber = async () => {
               </Link>
 
               <Link
-                href="/"
-                prefetch={true}
-                className="px-3 py-2 rounded-xl bg-zinc-100 hover:bg-white active:scale-95 transition-transform text-zinc-950 text-xs font-bold flex items-center space-x-1 touch-manipulation"
+                href="/admin"
+                prefetch={false}
+                aria-current="page"
+                className="px-3 py-2 rounded-xl bg-zinc-100 hover:bg-white active:scale-95 transition-transform text-zinc-950 text-xs font-bold flex items-center gap-1 touch-manipulation"
               >
-                <ArrowLeft className="w-3.5 h-3.5" />
-                <span>Inicio</span>
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>Administración</span>
               </Link>
 
               <button

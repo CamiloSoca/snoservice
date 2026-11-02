@@ -11,9 +11,7 @@ import {
   Sun,
   Moon,
   Phone,
-  Lock,
   ExternalLink,
-  UserCheck,
   Calendar,
   Clock,
   ArrowRight,
@@ -141,19 +139,6 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
               >
                 <Scissors className="w-3.5 h-3.5" />
                 <span>Agendar Turno</span>
-              </Link>
-
-              <Link
-                href="/barbero"
-                prefetch={true}
-                className={`hidden sm:inline-flex px-3 py-2 rounded-xl text-xs font-semibold border items-center gap-1.5 transition-colors active:scale-95 ${
-                  isDark
-                    ? 'bg-zinc-900 border-zinc-800 text-zinc-200 hover:bg-zinc-800'
-                    : 'bg-zinc-100 border-zinc-200 text-zinc-800 hover:bg-zinc-200'
-                }`}
-              >
-                <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Barberos</span>
               </Link>
 
               <button
@@ -498,14 +483,11 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
             <span className="font-semibold">{shopConfig.name}</span> - {shopAddress}
           </div>
           <div className="flex items-center space-x-4">
+            <Link href="/" aria-current="page" className="hover:underline">
+              Inicio
+            </Link>
             <Link href="/agendar" className="hover:underline">
-              Agendar
-            </Link>
-            <Link href="/barbero" className="hover:underline">
-              Barberos
-            </Link>
-            <Link href="/admin" className="inline-flex items-center gap-1 hover:underline">
-              <Lock className="w-3 h-3" /> Admin
+              Reservar
             </Link>
           </div>
         </div>

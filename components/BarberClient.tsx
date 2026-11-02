@@ -3,14 +3,12 @@
 
 import { useState, useEffect, useMemo, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import Link from 'next/link';
 import {
   Scissors,
   Calendar as CalendarIcon,
   CheckCircle2,
   XCircle,
   LogOut,
-  ArrowLeft,
   KeyRound,
   AlertCircle,
   Coins,
@@ -488,14 +486,6 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
             </div>
           </div>
 
-          <Link
-            href="/"
-            prefetch={true}
-            className="px-3 py-2 rounded-xl bg-zinc-100 hover:bg-white active:scale-95 transition-transform text-zinc-950 text-xs font-bold flex items-center space-x-1 touch-manipulation"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Inicio</span>
-          </Link>
         </div>
       </header>
 
