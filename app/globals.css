@@ -57,3 +57,11 @@
     transform: none;
   }
 }
+
+/* Scroll táctil nativo: sin librerías de carruseles ni listeners de arrastre. */
+.ig-carousel-track {
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x pan-y;
+}
+.ig-carousel-track::-webkit-scrollbar { display: none; }
