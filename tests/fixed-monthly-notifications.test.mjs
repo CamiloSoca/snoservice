@@ -37,7 +37,8 @@ test('solo pendiente de pago después de agotar cuatro usos, nunca cortesía ni 
   assert.equal(monthlyExtraPaymentDue({...input,completed:true}),false);
   assert.equal(monthlyExtraPaymentDue({...input,isCourtesy:true}),false);
   assert.equal(monthlyExtraPaymentDue({...input,periodPaid:false}),false);
-  assert.equal(monthlyExtraPaymentDue({...input,monthlyActive:false}),false);
+  // El pago histórico del mes sigue cubriendo 4 usos aunque se pause el plan.
+  assert.equal(monthlyExtraPaymentDue({...input,monthlyActive:false}),true);
   assert.equal(monthlyExtraPaymentDue({...input,isFixed:false}),false);
 });
 test('la base crea aviso único tras el cuarto uso sin mover reservas, caja ni cobros',()=>{
