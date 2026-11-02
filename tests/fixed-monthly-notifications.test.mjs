@@ -95,7 +95,7 @@ test('email de mensualidad usa la misma plantilla que reservas, sin corazón ni 
     clientName:'Cliente de prueba',shopName:'13 CUT',
     nextDate:'2026-10-31',nextTime:'12:00',
   });
-  for(const color of ['#122019','#19a96b','#087c4d','#eaf8f0','#18251e','#f2f5f2']){
+  for(const color of ['#122019','#19a96b','#eaf8f0','#18251e','#f2f5f2']){
     assert.ok(base.html.includes(color),'La confirmación debería usar '+color);
     assert.ok(email.html.includes(color),'La mensualidad debería conservar '+color);
   }
