@@ -181,23 +181,8 @@ export default function InstagramCarousel({
   return (
     <section ref={sectionRef} className="mx-auto max-w-5xl px-4 py-5 sm:py-7" aria-label="Instagram de la barbería">
       <div className="relative isolate overflow-hidden rounded-3xl border border-white/[0.10] bg-[#121615] text-white shadow-[0_16px_40px_rgba(0,0,0,0.14)]">
-        {/* La misma portada continúa detrás de todo el carrusel, sin tapar las fotos. */}
+        {/* Una sola imagen de portada ocupa el box completo: no hay otra copia en el encabezado. */}
         <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
-          {bannerUrl ? (
-            <Image
-              src={bannerUrl}
-              alt=""
-              fill
-              sizes="(max-width: 640px) 100vw, 1024px"
-              quality={65}
-              loading="lazy"
-              className="object-cover object-center opacity-65"
-            />
-          ) : <div className="absolute inset-0 bg-gradient-to-br from-zinc-800 via-zinc-900 to-zinc-950" />}
-          <div className="absolute inset-0 bg-gradient-to-b from-zinc-950/30 via-zinc-950/60 to-zinc-950/75" />
-        </div>
-        {/* La portada superior conserva su encuadre, con el carrusel sobre el mismo fondo. */}
-        <div className="relative z-10 h-44 overflow-hidden bg-transparent text-white sm:h-48">
           {bannerUrl ? (
             <Image
               src={bannerUrl}
@@ -206,10 +191,14 @@ export default function InstagramCarousel({
               sizes="(max-width: 640px) 100vw, 1024px"
               quality={72}
               loading="lazy"
-              className="object-cover object-center"
+              className="object-cover object-top opacity-80"
             />
           ) : <div className="absolute inset-0 bg-gradient-to-br from-zinc-800 via-zinc-900 to-zinc-950" />}
-          <div className="absolute inset-0 bg-gradient-to-t from-zinc-950/95 via-zinc-950/35 to-zinc-950/10" />
+          <div className="absolute inset-0 bg-gradient-to-b from-zinc-950/15 via-zinc-950/55 to-zinc-950/80" />
+        </div>
+        {/* El perfil se superpone a la misma imagen que continúa bajo las publicaciones. */}
+        <div className="relative z-10 h-44 bg-transparent text-white sm:h-48">
+          <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-gradient-to-t from-zinc-950/65 via-zinc-950/15 to-transparent" />
           <div className="absolute inset-x-4 bottom-4 z-10 flex items-end justify-between gap-3 sm:inset-x-7">
             <div className="flex min-w-0 items-end gap-3">
               <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-white/50 bg-zinc-950 shadow-lg sm:h-16 sm:w-16">
