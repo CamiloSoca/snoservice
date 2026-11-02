@@ -25,7 +25,7 @@ export default function ShopInfoCards({schedule,address,city,isDark}:Props){
     : 'border-zinc-200 bg-white shadow-[0_12px_32px_rgba(0,0,0,0.05)]';
   const muted=isDark?'text-zinc-400':'text-zinc-500';
   const secondary=isDark?'text-zinc-300':'text-zinc-700';
-  const todayLabel=todayRule?.isOpen
+  const todayLabel=todayRule?.isOpen&&todayRule.openTime&&todayRule.closeTime
     ? todayRule.openTime.replace(/:00$/,'')+' – '+todayRule.closeTime.replace(/:00$/,'')
     : 'Cerrado';
 
