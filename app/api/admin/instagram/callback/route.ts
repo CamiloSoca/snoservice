@@ -30,7 +30,12 @@ export async function GET(request: NextRequest) {
     const token = await exchangeInstagramAuthorizationCode(code);
     await saveInstagramConnection(token);
     return redirect('connected');
-  } catch {
+  } catch (error) {
+    // Solo un código técnico: jamás registrar tokens ni el código de OAuth.
+    const reason = error instanceof Error &&
+      /^IG_META_HTTP_[1-5][0-9]{2}(?:_CODE_[0-9]+)?(?:_SUB_[0-9]+)?$/.test(error.message)
+      ? error.message : 'IG_OAUTH_FAILURE';
+    console.warn('INSTAGRAM_OAUTH_CALLBACK_FAILED', reason);
     return redirect('error');
   }
 }
