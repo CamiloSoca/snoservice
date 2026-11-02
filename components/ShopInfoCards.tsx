@@ -91,7 +91,7 @@ export default function ShopInfoCards({schedule,address,city,isDark}:Props){
           </span>
         </div>
 
-        <div className={`relative h-44 w-full overflow-hidden rounded-2xl border sm:h-52 lg:h-56 ${
+        <div className={`relative h-52 w-full overflow-hidden rounded-2xl border sm:h-56 lg:h-60 ${
           isDark?'border-zinc-700 bg-zinc-800':'border-zinc-200 bg-zinc-100'
         }`}>
           <iframe
