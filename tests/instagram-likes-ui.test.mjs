@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const home = readFileSync(new URL('../components/HomeClient.tsx', import.meta.url), 'utf8');
 const instagram = readFileSync(new URL('../lib/instagram-server.ts', import.meta.url), 'utf8');
+const carousel = readFileSync(new URL('../components/InstagramCarousel.tsx', import.meta.url), 'utf8');
 
 test('el avatar de la barbería usa la portada existente y una máscara redonda', () => {
   assert.match(home, /<Image\s+src=\{bannerUrl\}/);
@@ -15,13 +16,14 @@ test('los me gusta de Instagram solo aparecen cuando Meta devuelve el contador',
   assert.match(instagram, /baseFields \+ ',like_count'/);
   assert.match(instagram, /likeCount: typeof media\.like_count === 'number'/);
   assert.match(instagram, /likeCount: typeof media\.like_count === 'number'[\s\S]*?: null/);
-  assert.match(home, /typeof post\.likeCount === 'number' && Number\.isFinite\(post\.likeCount\)/);
-  assert.match(home, /post\.likeCount\.toLocaleString\('es-UY'\)/);
+  assert.match(carousel, /typeof post\.likeCount === 'number'/);
+  assert.match(carousel, /post\.likeCount\.toLocaleString\('es-UY'\)/);
 });
 
-test('si la API no entrega likes, sigue mostrando las cuatro publicaciones con sus enlaces', () => {
+test('si la API no entrega likes, siguen mostrándose hasta doce publicaciones enlazadas', () => {
   assert.match(instagram, /catch \{[\s\S]*?response = await metaGet\('\/me\/media', accessToken, \{/);
-  assert.match(instagram, /\.slice\(0, 4\)/);
-  assert.match(home, /href=\{post\.permalink\}/);
-  assert.match(home, /href=\{shopConfig\.instagramUrl \|\| 'https:\/\/www\.instagram\.com\/13\.cut\/'\}/);
+  assert.match(instagram, /\.slice\(0, 12\)/);
+  assert.match(carousel, /href=\{post\.permalink\}/);
+  assert.match(carousel, /posts\.map/);
+  assert.match(home, /instagramUrl=\{shopConfig\.instagramUrl \|\| 'https:\/\/www\.instagram\.com\/13\.cut\/'\}/);
 });

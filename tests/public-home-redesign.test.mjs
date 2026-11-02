@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 
 const read = path => readFileSync(new URL('../' + path, import.meta.url), 'utf8');
 const home = read('components/HomeClient.tsx');
+const carousel = read('components/InstagramCarousel.tsx');
+const instagram = read('lib/instagram-server.ts');
 const nav = read('components/BottomNav.tsx');
 const profile = read('components/BarberDetailPanel.tsx');
 const booking = read('components/BookingClient.tsx');
@@ -41,12 +43,15 @@ test('horarios y ubicación son tarjetas de ancho completo en móvil con mapa re
 });
 test('trabajos de la cuenta profesional antes del equipo y fotos de barberos opcionales', () => {
   assert.ok(home.indexOf('{/* EQUIPO:') < home.indexOf('{/* INSTAGRAM'));
-  assert.match(home, /instagramPosts\.map/);
-  assert.match(home, /post\.likeCount\.toLocaleString\('es-UY'\)/);
-  const instagramSection = home.split('{/* INSTAGRAM')[1]?.split('</section>')[0] || '';
-  assert.match(instagramSection, /src=\{bannerUrl\}/);
-  assert.match(instagramSection, /src=\{logoImage\}/);
-  assert.match(instagramSection, /className="grid grid-cols-2 gap-3 lg:grid-cols-4"/);
+  assert.match(home, /<InstagramCarousel/);
+  assert.match(instagram, /\.slice\(0, 12\)/);
+  assert.match(carousel, /posts\.map/);
+  assert.match(carousel, /post\.likeCount\.toLocaleString\('es-UY'\)/);
+  assert.match(carousel, /snap-x snap-mandatory/);
+  assert.match(carousel, /IntersectionObserver/);
+  assert.match(carousel, /loading="lazy"/);
+  const instagramSection = home.split('{/* INSTAGRAM')[1]?.split('{/* HORARIOS Y UBICACIÓN')[0] || '';
+  assert.doesNotMatch(instagramSection, /src=\{bannerUrl\}|src=\{logoImage\}/);
   assert.match(home, /id="equipo"/);
   assert.match(home, /b\.imageUrl/);
   assert.match(home, /onClick=\{\(\) => setSelectedBarber\(b\)\}/);
