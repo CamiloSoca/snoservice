@@ -10,6 +10,7 @@ const agendaApi=read('app/api/agenda/fixed/route.ts');
 const agenda=read('components/AgendaCalendar.tsx');
 const modal=read('components/AppointmentDetailModal.tsx');
 const sender=read('lib/fixed-monthly-notice-mail.ts');
+const bookingTemplate=read('lib/booking-email.ts');
 const cron=read('app/api/internal/monthly-notices/route.ts');
 const vercel=JSON.parse(read('vercel.json'));
 
@@ -63,8 +64,8 @@ test('completar un corte es independiente del SMTP; mensaje no sale antes del é
   assert.match(sender,/result\.accepted/);
   assert.match(sender,/finish_fixed_monthly_notice/);
   assert.match(sender,/connectionTimeout:10000/);
-  assert.match(sender,/escapeHtml/);
-  assert.match(sender,/No se realiza ningún cobro automático/);
+  assert.match(sender,/buildFixedMonthlyExhaustionEmail/);
+  assert.match(bookingTemplate,/No realizaremos ningún cobro automático/);
 });
 test('barbero ve advertencia en la agenda y al abrir el turno sin tocar el cobro',()=>{
   assert.match(agendaApi,/noticeStatus/);
@@ -80,4 +81,42 @@ test('retry solo via cron protegido y nunca expone datos privados',()=>{
   assert.match(cron,/request\.headers\.get\('authorization'\)/);
   assert.match(vercel.crons[0].schedule,/^0 13 \* \* \*$/);
   assert.equal(vercel.crons[0].path,'/api/internal/monthly-notices');
+});
+
+test('email de mensualidad usa la misma plantilla que reservas, sin corazón ni enlaces falsos', async()=>{
+  const {buildBookingConfirmationEmail,buildFixedMonthlyExhaustionEmail}=
+    await import('../lib/booking-email.ts');
+  const base=buildBookingConfirmationEmail({
+    clientName:'Cliente',barberName:'Barbero',serviceName:'Corte',
+    dateString:'Sáb 31 Oct',timeSlot:'12:00',durationMinutes:60,
+    price:400,code:'PRUEBA-123',shopName:'13 CUT',
+  });
+  const email=buildFixedMonthlyExhaustionEmail({
+    clientName:'Cliente de prueba',shopName:'13 CUT',
+    nextDate:'2026-10-31',nextTime:'12:00',
+  });
+  for(const color of ['#122019','#19a96b','#087c4d','#eaf8f0','#18251e','#f2f5f2']){
+    assert.ok(base.html.includes(color),'La confirmación debería usar '+color);
+    assert.ok(email.html.includes(color),'La mensualidad debería conservar '+color);
+  }
+  assert.match(email.subject,/4 de 4 cortes/);
+  assert.match(email.html,/BARBERÍA · AVISO DE MENSUALIDAD/);
+  assert.match(email.html,/4 DE 4 CORTES UTILIZADOS/);
+  assert.match(email.html,/PRÓXIMO TURNO FIJO/);
+  assert.match(email.html,/31 de octubre de 2026/);
+  assert.match(email.text,/No realizaremos ningún cobro automático/);
+  assert.doesNotMatch(email.html,/💚|CÓDIGO DE RESERVA|Gestionar mi turno/);
+  assert.doesNotMatch(email.text,/💚/);
+  // La plantilla original sigue mostrando su enlace y código en las reservas.
+  assert.match(base.html,/CÓDIGO DE RESERVA/);
+  assert.match(base.html,/Gestionar mi turno/);
+});
+test('el aviso personalizado escapa nombres con HTML y no inserta scripts',async()=>{
+  const {buildFixedMonthlyExhaustionEmail}=await import('../lib/booking-email.ts');
+  const email=buildFixedMonthlyExhaustionEmail({
+    clientName:'<script>alert(1)</script>',shopName:'13 CUT',
+    nextDate:'2026-10-31',nextTime:'12:00',
+  });
+  assert.doesNotMatch(email.html,/<script>/);
+  assert.match(email.html,/&lt;script&gt;/);
 });
