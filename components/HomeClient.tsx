@@ -9,11 +9,9 @@ import InstagramCarousel from '@/components/InstagramCarousel';
 import ShopInfoCards from '@/components/ShopInfoCards';
 import {
   MapPin,
-  Scissors,
   Sun,
   Moon,
   Phone,
-  Calendar,
   ArrowRight,
 } from 'lucide-react';
 import {
@@ -47,7 +45,6 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
     ? 'bg-zinc-100 hover:bg-white text-zinc-950 font-bold'
     : 'bg-zinc-950 hover:bg-zinc-800 text-white font-bold';
 
-  const bgImage = shopConfig.backgroundImageUrl || '';
   const bannerUrl = shopConfig.coverImageUrl || shopConfig.backgroundImageUrl || '';
   const logoImage = shopConfig.logoUrl?.trim() || '';
 
@@ -60,29 +57,18 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
   return (
     <div
       className={`min-h-screen w-full flex flex-col justify-between relative transition-colors duration-200 ${
-        isDark ? 'bg-zinc-950 text-zinc-100' : 'bg-zinc-50 text-zinc-900'
+        isDark ? 'bg-[#090b0a] text-zinc-100' : 'bg-[#f7f8f6] text-zinc-900'
       }`}
     >
-      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
-        {bgImage ? (
-          <Image
-            src={bgImage}
-            alt="Fondo"
-            fill
-            sizes="100vw"
-            quality={45}
-            loading="lazy"
-            className={`object-cover object-center filter blur-md scale-105 grayscale transition-opacity duration-700 ${
-              isDark ? 'opacity-20 contrast-125' : 'opacity-10 contrast-100'
-            }`}
-          />
-        ) : null}
-        <div
-          className={`absolute inset-0 bg-gradient-to-b transition-colors duration-500 ${
-            isDark
-              ? 'from-zinc-950/90 via-zinc-950/80 to-zinc-950/95 backdrop-blur-sm'
-              : 'from-zinc-50/90 via-zinc-50/80 to-zinc-50/95 backdrop-blur-sm'
-          }`}
+      {/* Iluminación ambiental por Tailwind: sin fotos desenfocadas ni filtros costosos. */}
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
+        <div className={isDark
+          ? 'absolute inset-x-0 top-0 h-[950px] bg-[radial-gradient(ellipse_at_50%_0%,rgba(16,185,129,0.12),transparent_58%)]'
+          : 'absolute inset-x-0 top-0 h-[950px] bg-[radial-gradient(ellipse_at_50%_0%,rgba(16,185,129,0.065),transparent_60%)]'}
+        />
+        <div className={isDark
+          ? 'absolute inset-x-0 top-[900px] h-[1100px] bg-[radial-gradient(ellipse_at_88%_45%,rgba(16,185,129,0.055),transparent_58%)]'
+          : 'absolute inset-x-0 top-[900px] h-[1100px] bg-[radial-gradient(ellipse_at_88%_45%,rgba(16,185,129,0.035),transparent_58%)]'}
         />
       </div>
 
@@ -90,7 +76,7 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
         {/* HEADER */}
         <header
           className={`sticky top-0 z-30 w-full backdrop-blur-md border-b transition-colors px-4 pt-[max(0.75rem,calc(env(safe-area-inset-top)+0.5rem))] pb-3 ${
-            isDark ? 'bg-zinc-950/90 border-zinc-800/80' : 'bg-white/90 border-zinc-200'
+            isDark ? 'bg-[#0b0e0c]/90 border-white/[0.06]' : 'bg-white/90 border-zinc-200/75'
           }`}
         >
           <div className="max-w-5xl mx-auto flex items-center justify-between gap-2">
@@ -100,8 +86,8 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
                   <Image src={logoImage} alt={shopConfig.name} fill sizes="36px" quality={75} className="object-cover" />
                 </div>
               ) : (
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-zinc-800 text-zinc-100">
-                  <Scissors className="w-4 h-4" />
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-sm font-black tracking-tight text-emerald-300">
+                  {shopConfig.name.slice(0, 2).toUpperCase()}
                 </div>
               )}
               <div className="truncate">
@@ -118,10 +104,10 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
               <Link
                 href="/agendar"
                 prefetch={true}
-                className={`hidden sm:inline-flex px-3.5 py-2 rounded-xl text-xs items-center gap-1.5 transition-all active:scale-95 ${primaryBtn}`}
+                className={`hidden sm:inline-flex px-4 py-2.5 rounded-xl text-xs items-center gap-2 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400 ${primaryBtn}`}
               >
-                <Scissors className="w-3.5 h-3.5" />
-                <span>Agendar Turno</span>
+                <span>Agendar turno</span>
+                <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
               </Link>
 
               <button
@@ -142,7 +128,7 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
 
         {/* HERO BANNER */}
         <section className="max-w-5xl mx-auto px-4 pt-4 sm:pt-5">
-          <div className="relative rounded-3xl overflow-hidden border border-zinc-800 text-white shadow-2xl">
+          <div className="relative overflow-hidden rounded-[28px] border border-white/10 bg-[#111613] text-white shadow-[0_24px_65px_rgba(0,0,0,0.20)]">
             <div className="absolute inset-0">
               {bannerUrl ? (
                 <Image
@@ -157,7 +143,7 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
               ) : (
                 <div className="absolute inset-0 bg-gradient-to-br from-zinc-800 via-zinc-900 to-zinc-950" />
               )}
-              <div className="absolute inset-0 bg-gradient-to-r from-zinc-950/95 via-zinc-950/80 to-zinc-950/40" />
+              <div className="absolute inset-0 bg-gradient-to-r from-zinc-950/95 via-zinc-950/75 to-zinc-950/35" />
             </div>
 
             <div className="relative min-h-[240px] p-5 sm:p-9 flex flex-col sm:flex-row sm:items-center justify-between gap-5">
@@ -188,9 +174,8 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
               <Link
                 href="/agendar"
                 prefetch={true}
-                className="w-full sm:w-auto px-6 py-4 rounded-2xl bg-zinc-100 hover:bg-white text-zinc-950 font-extrabold text-sm flex items-center justify-center gap-2 shadow-xl transition-transform active:scale-[0.98] touch-manipulation shrink-0"
+                className="flex w-full shrink-0 touch-manipulation items-center justify-center gap-3 rounded-2xl bg-white px-6 py-4 text-sm font-extrabold text-zinc-950 shadow-[0_12px_28px_rgba(0,0,0,0.2)] transition-[transform,background-color] hover:bg-emerald-50 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400 sm:w-auto"
               >
-                <Calendar className="w-4 h-4" />
                 <span>Reservar turno</span>
                 <ArrowRight className="w-4 h-4" />
               </Link>
@@ -200,17 +185,18 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
 
         {/* EQUIPO: tarjetas breves, foto real o inicial */}
         <section id="equipo" className="mx-auto max-w-5xl scroll-mt-24 px-4 pt-6" aria-labelledby="equipo-title">
-          <div className="mb-3">
-            <h2 id="equipo-title" className="text-lg font-extrabold tracking-tight">Nuestro equipo</h2>
-            <p className={['mt-1 text-xs', isDark ? 'text-zinc-400' : 'text-zinc-500'].join(' ')}>Conocé a tu barbero y reservá</p>
+          <div className="mb-4">
+            <span className={['mb-1.5 block text-[10px] font-bold uppercase tracking-[0.18em]', isDark ? 'text-emerald-400/90' : 'text-emerald-700'].join(' ')}>Elegí tu barbero</span>
+            <h2 id="equipo-title" className="text-xl font-extrabold tracking-tight sm:text-2xl">Nuestro equipo</h2>
+            <p className={['mt-1 text-xs sm:text-sm', isDark ? 'text-zinc-400' : 'text-zinc-500'].join(' ')}>Conocé a tu barbero y reservá</p>
           </div>
           {activeBarbers.length ? (
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               {activeBarbers.map(b => {
                 const slug = b.slug || b.name.toLowerCase();
                 return (
-                  <div key={b.id} className={['min-w-0 overflow-hidden rounded-2xl border',
-                    isDark ? 'border-zinc-800 bg-zinc-900/75' : 'border-zinc-200 bg-white'
+                  <div key={b.id} className={['min-w-0 overflow-hidden rounded-[24px] border transition-[border-color,transform] duration-200 hover:-translate-y-0.5',
+                    isDark ? 'border-white/[0.075] bg-[#151917]/90 shadow-[0_12px_34px_rgba(0,0,0,0.16)]' : 'border-zinc-200/80 bg-white shadow-sm'
                   ].join(' ')}>
                     <button type="button" onClick={() => setSelectedBarber(b)} className="block w-full text-left">
                       <div className="relative flex aspect-[5/4] items-center justify-center overflow-hidden bg-zinc-800">
@@ -221,13 +207,13 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
                           <span className="text-4xl font-extrabold text-zinc-400">{b.name.charAt(0)}</span>
                         )}
                       </div>
-                      <div className="px-3 pt-3">
+                      <div className="px-3.5 pt-3">
                         <h3 className="truncate text-sm font-bold" title={b.name}>{b.name}</h3>
-                        <p className="mt-1 text-xs text-zinc-400">Ver perfil</p>
+                        <p className={['mt-1 text-xs', isDark ? 'text-zinc-400' : 'text-zinc-500'].join(' ')}>Ver perfil <ArrowRight className="ml-1 inline h-3 w-3" aria-hidden="true" /></p>
                       </div>
                     </button>
                     <Link href={'/agendar?barbero=' + encodeURIComponent(slug)} prefetch={true}
-                      className={['mx-3 mb-3 mt-3 flex min-h-10 items-center justify-center gap-1 rounded-xl px-2 text-xs font-bold',primaryBtn].join(' ')}>
+                      className={['mx-3 mb-3 mt-3 flex min-h-11 items-center justify-center gap-1.5 rounded-xl px-2 text-xs font-bold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400',primaryBtn].join(' ')}>
                       Reservar <ArrowRight className="h-3.5 w-3.5" />
                     </Link>
                   </div>
@@ -248,7 +234,7 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
         />
 
         {/* HORARIOS Y UBICACIÓN: solo visual, siempre datos vigentes del local */}
-        <section id="info" className="mx-auto max-w-5xl scroll-mt-24 px-4 pb-8 pt-5" aria-label="Horarios y ubicación">
+        <section id="info" className="mx-auto max-w-5xl scroll-mt-24 px-4 pb-10 pt-5" aria-label="Horarios y ubicación">
           <ShopInfoCards
             schedule={activeSchedule}
             address={shopAddress}

@@ -49,7 +49,7 @@ test('ambas tarjetas preservan vista clara y oscura y nunca modifican las reserv
   assert.match(home,/schedule=\{activeSchedule\}/);
   assert.match(home,/address=\{shopAddress\}/);
   assert.match(home,/city=\{shopCity\}/);
-  assert.match(view,/border-zinc-800\/90 bg-\[#171719\]/);
+  assert.match(view,/border-white\/\[0\.07\] bg-\[#151917\]/);
   assert.match(view,/bg-white shadow-/);
   assert.match(view,/aria-label="Horarios semanales"/);
   assert.match(view,/referrerPolicy="no-referrer-when-downgrade"/);
