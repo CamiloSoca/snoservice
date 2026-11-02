@@ -1,7 +1,5 @@
 import {NextResponse} from 'next/server';
 import {dispatchFixedMonthlyNotice} from '@/lib/fixed-monthly-notice-mail';
-export const runtime='nodejs';
-export const dynamic='force-dynamic';
 
 // Reintento programado de correos pendientes, sin tocar abonos ni caja.
 // Vercel invoca el cron con Authorization: Bearer CRON_SECRET.
