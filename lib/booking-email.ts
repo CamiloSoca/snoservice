@@ -69,10 +69,13 @@ interface EmailFrame {
   timeSlot: string;
   timeNote?: string;
   lines: EmailLine[];
-  code: string;
+  code?: string;
   message: string;
-  action: string;
+  action?: string;
   address?: string;
+  headerCaption?: string;
+  detailsHeading?: string;
+  footerNote?: string;
 }
 
 function renderEmailFrame(data: EmailFrame): string {
@@ -113,7 +116,7 @@ function renderEmailFrame(data: EmailFrame): string {
     '<p style="margin:0;font-size:21px;line-height:25px;font-weight:800;letter-spacing:1px;color:#ffffff;">',
     shop, '</p>',
     '<p style="margin:5px 0 0;font-size:10px;letter-spacing:2px;font-weight:700;color:#b5ddc4;">',
-    'BARBERÍA · RESERVAS ONLINE</p></td></tr>',
+    escapeHtml(data.headerCaption || 'BARBERÍA · RESERVAS ONLINE'), '</p></td></tr>',
 
     '<tr><td style="padding:24px 23px 0;">',
     '<span style="display:inline-block;padding:8px 12px;border-radius:18px;background-color:',
@@ -148,14 +151,17 @@ function renderEmailFrame(data: EmailFrame): string {
     '</table></td></tr>',
 
     '<tr><td style="padding:24px 23px 0;">',
-    '<p style="margin:0 0 10px;font-size:11px;letter-spacing:1.6px;font-weight:800;color:#526358;">DETALLES DE LA RESERVA</p>',
+    '<p style="margin:0 0 10px;font-size:11px;letter-spacing:1.6px;font-weight:800;color:#526358;">',
+    escapeHtml(data.detailsHeading || 'DETALLES DE LA RESERVA'), '</p>',
     '<table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%"',
     ' style="width:100%;border-collapse:separate;border-spacing:0;border:1px solid #e6ede8;border-radius:12px;overflow:hidden;">',
     rows,
-    '<tr><td style="padding:12px 16px;background-color:#f8faf8;">',
-    '<span style="display:block;font-size:11px;font-weight:700;letter-spacing:1px;color:#68746c;">CÓDIGO DE RESERVA</span>',
-    '<span style="display:block;margin-top:4px;font-family:Consolas,Monaco,monospace;font-size:12px;line-height:18px;font-weight:700;color:#26382c;word-break:break-all;overflow-wrap:anywhere;">',
-    escapeHtml(data.code), '</span></td></tr>',
+    data.code ? [
+      '<tr><td style="padding:12px 16px;background-color:#f8faf8;">',
+      '<span style="display:block;font-size:11px;font-weight:700;letter-spacing:1px;color:#68746c;">CÓDIGO DE RESERVA</span>',
+      '<span style="display:block;margin-top:4px;font-family:Consolas,Monaco,monospace;font-size:12px;line-height:18px;font-weight:700;color:#26382c;word-break:break-all;overflow-wrap:anywhere;">',
+      escapeHtml(data.code), '</span></td></tr>',
+    ].join('') : '',
     '</table>',
     '</td></tr>',
 
@@ -163,15 +169,17 @@ function renderEmailFrame(data: EmailFrame): string {
     '<p style="margin:0;font-size:13px;line-height:21px;color:#4e5c53;">',
     escapeHtml(data.message), '</p>',
     '</td></tr>',
-    '<tr><td align="center" style="padding:19px 23px 0;">',
-    '<table role="presentation" align="center" border="0" cellpadding="0" cellspacing="0">',
-    '<tr><td align="center" bgcolor="#087c4d" style="background-color:#087c4d;border-radius:11px;">',
-    '<a href="',BOOKING_URL,'" target="_blank" style="display:inline-block;padding:13px 22px;font-size:14px;line-height:20px;font-weight:800;color:#ffffff;text-decoration:none;">',
-    escapeHtml(data.action), '</a>',
-    '</td></tr></table></td></tr>',
-    '<tr><td align="center" style="padding:12px 16px 0;">',
-    '<a href="',BOOKING_URL,'" style="font-size:11px;line-height:17px;color:#557a65;text-decoration:underline;word-break:break-word;">',
-    BOOKING_URL, '</a></td></tr>',
+    data.action ? [
+      '<tr><td align="center" style="padding:19px 23px 0;">',
+      '<table role="presentation" align="center" border="0" cellpadding="0" cellspacing="0">',
+      '<tr><td align="center" bgcolor="#087c4d" style="background-color:#087c4d;border-radius:11px;">',
+      '<a href="',BOOKING_URL,'" target="_blank" style="display:inline-block;padding:13px 22px;font-size:14px;line-height:20px;font-weight:800;color:#ffffff;text-decoration:none;">',
+      escapeHtml(data.action), '</a>',
+      '</td></tr></table></td></tr>',
+      '<tr><td align="center" style="padding:12px 16px 0;">',
+      '<a href="',BOOKING_URL,'" style="font-size:11px;line-height:17px;color:#557a65;text-decoration:underline;word-break:break-word;">',
+      BOOKING_URL, '</a></td></tr>',
+    ].join('') : '',
 
     '<tr><td style="padding:22px 23px 23px;">',
     data.address ? [
@@ -180,7 +188,7 @@ function renderEmailFrame(data: EmailFrame): string {
     ].join('') : '',
     '<p style="margin:0;padding-top:14px;border-top:1px solid #e6ede8;font-size:11px;line-height:18px;color:#7a867d;">',
     'Este mensaje fue enviado automáticamente por ',shop,'. ',
-    'Si no reconocés esta reserva, comunicate con la barbería.',
+    escapeHtml(data.footerNote || 'Si no reconocés esta reserva, comunicate con la barbería.'),
     '</p></td></tr>',
     '</table>',
     '<p style="margin:15px 0 0;font-size:11px;color:#718078;">',
@@ -273,4 +281,57 @@ export function buildBookingCancellationEmail(input: BookingCancellationEmail) {
     shop,
   ].join('\n');
   return {subject, html, text};
+}
+
+
+export interface FixedMonthlyExhaustionEmail {
+  clientName:string;
+  shopName:string;
+  nextDate:string; // ISO YYYY-MM-DD
+  nextTime:string; // HH:MM
+}
+
+// Reutiliza EXACTAMENTE la plantilla visual de reservas (paleta, cabecera,
+// tarjeta día/hora y tipografía) sin código de reserva ni enlace de gestión.
+// El correo es informativo: NO se modifica la reserva ni se cobra nada.
+export function buildFixedMonthlyExhaustionEmail(input:FixedMonthlyExhaustionEmail) {
+  const date=new Date(input.nextDate+'T12:00:00Z');
+  const nextDate=new Intl.DateTimeFormat('es-UY',{
+    timeZone:'UTC',day:'numeric',month:'long',year:'numeric',
+  }).format(date);
+  const shop=input.shopName||"13'Cut";
+  const subject=safeSubject('Tu mensualidad llegó a 4 de 4 cortes | '+shop);
+  const html=renderEmailFrame({
+    shopName:shop,
+    subjectStatus:'confirmation',
+    preheader:'Ya utilizaste tus 4 cortes. Tu próximo turno fijo '+nextDate+' sigue reservado y se abona por separado.',
+    status:'4 DE 4 CORTES UTILIZADOS',
+    title:'¡Hola, '+input.clientName+'!',
+    subtitle:'Ya utilizaste los cuatro cortes incluidos en tu mensualidad.',
+    dateString:nextDate,
+    timeSlot:input.nextTime,
+    lines:[
+      {label:'ESTADO DEL ABONO',value:'4 de 4 cortes utilizados'},
+      {label:'PRÓXIMA VISITA',value:'Turno fijo reservado'},
+      {label:'FORMA DE PAGO',value:'Este corte se abona individualmente en la barbería'},
+    ],
+    headerCaption:'BARBERÍA · AVISO DE MENSUALIDAD',
+    detailsHeading:'PRÓXIMO TURNO FIJO',
+    message:'No hace falta reservar de nuevo: tu próximo turno sigue confirmado. Ese corte no está incluido en el abono de este mes y se paga por separado en la barbería. No realizaremos ningún cobro automático.',
+    footerNote:'Si tenés alguna duda sobre tu mensualidad, comunicate con la barbería.',
+  });
+  const text=[
+    shop+' · Aviso de mensualidad',
+    '¡Hola, '+input.clientName+'!',
+    'Ya utilizaste los cuatro cortes incluidos en tu mensualidad.',
+    '',
+    'Tu próximo turno fijo sigue reservado:',
+    'Fecha: '+nextDate,
+    'Hora: '+input.nextTime+' hs',
+    '',
+    'Ese corte no está incluido en el abono de este mes y se abona individualmente en la barbería.',
+    'No realizaremos ningún cobro automático.',
+    'Si tenés dudas, comunicate con la barbería.',
+  ].join('\n');
+  return {subject,html,text};
 }
