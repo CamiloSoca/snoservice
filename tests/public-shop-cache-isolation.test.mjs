@@ -137,7 +137,7 @@ test('la portada sin imágenes configuradas no carga recursos de otra barbería'
   assert.match(home, /const bgImage = shopConfig\.backgroundImageUrl \|\| ''/);
   assert.match(home, /const bannerUrl = shopConfig\.coverImageUrl \|\| shopConfig\.backgroundImageUrl \|\| ''/);
   assert.match(carousel, /fetch\('\/api\/public\/instagram'/);
-  assert.match(carousel, /posts\.map/);
+  assert.match(carousel, /slides\.map/);
   assert.match(home, /shopConfig\.instagramUrl/);
   // La portada usa una sola marca real y la galería continúa siendo de la API.
   const hero = home.split('{/* HERO BANNER */}')[1]?.split('</section>')[0] || '';
