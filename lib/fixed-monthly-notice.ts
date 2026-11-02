@@ -8,8 +8,11 @@ export interface MonthlyFixedSchedule {
   active?:boolean;
 }
 const ISO=/^\d{4}-\d{2}-\d{2}$/;
-const dayNumber=(value:string)=>ISO.test(value)&&new Date(value+'T00:00:00Z').toISOString().slice(0,10)===value
-  ?Date.parse(value+'T00:00:00Z'):NaN;
+const dayNumber=(value:string)=>{
+  if(!ISO.test(value))return NaN;
+  const n=Date.parse(value+'T00:00:00Z');
+  return Number.isFinite(n)&&new Date(n).toISOString().slice(0,10)===value?n:NaN;
+};
 
 export function nextExtraMonthlyVisit(
   rule:MonthlyFixedSchedule,
