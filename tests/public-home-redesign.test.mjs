@@ -51,13 +51,14 @@ test('trabajos de la cuenta profesional antes del equipo y fotos de barberos opc
   assert.match(home, /onClick=\{\(\) => setSelectedBarber\(b\)\}/);
   assert.match(home, /'\/agendar\?barbero=' \+ encodeURIComponent\(slug\)/);
 });
-test('barra inferior tiene acceso directo a Admin, sin menú Más', () => {
-  assert.match(nav, /href="\/barbero"/);
-  assert.match(nav, /href="\/admin"/);
-  assert.match(nav, /prefetch=\{false\}/);
-  assert.match(nav, /<span className="text-\[10px\] tracking-tight">Admin<\/span>/);
+test('barra inferior del cliente ya no muestra accesos internos', async () => {
+  const { bottomNavigationItems } = await import('../lib/site-navigation.ts');
+  assert.deepEqual(bottomNavigationItems('/').map(item => item.href), ['/', '/agendar']);
+  assert.deepEqual(bottomNavigationItems('/admin').map(item => item.href), ['/admin', '/barbero']);
+  assert.deepEqual(bottomNavigationItems('/barbero'), []);
+  assert.match(nav, /bottomNavigationItems\(pathname\)/);
   assert.doesNotMatch(nav, /moreOpen|>Más<|aria-expanded/);
-  assert.match(nav, /pathname\.startsWith\('\/agendar'\)/);
+  assert.doesNotMatch(home, /href="\/admin"|href="\/barbero"/);
 });
 test('ficha del barbero usa catálogo público y enlaza al flujo de reserva existente', () => {
   assert.match(profile, /role="dialog"[\s\S]*?aria-modal="true"/);
