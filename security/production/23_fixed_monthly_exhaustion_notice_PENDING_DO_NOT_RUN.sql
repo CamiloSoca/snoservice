@@ -88,6 +88,10 @@ BEGIN
        THEN 'pending' ELSE 'missing_email' END)
  ON CONFLICT (period_id) DO NOTHING;
  RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+ -- El correo es auxiliar: jamás abortar el cuarto corte por un error del aviso.
+ RAISE WARNING 'No se pudo encolar aviso de mensualidad (SQLSTATE %)',SQLSTATE;
+ RETURN NEW;
 END;
 $fn$;
 
@@ -115,7 +119,8 @@ BEGIN
      AND (p_period_id IS NULL OR n.period_id=p_period_id)
      AND n.attempts<3
      AND (
-       n.status IN ('pending','failed')
+       n.status='pending'
+       OR (n.status='failed' AND n.reserved_at<clock_timestamp()-interval '1 hour')
        OR (n.status='sending' AND n.reserved_at<clock_timestamp()-interval '20 minutes')
      )
      AND n.next_occurrence_date>=(clock_timestamp() AT TIME ZONE 'America/Montevideo')::date
