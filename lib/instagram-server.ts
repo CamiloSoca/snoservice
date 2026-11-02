@@ -9,6 +9,7 @@ export type InstagramPost = {
   permalink: string;
   caption: string;
   likeCount: number | null;
+  isVideo: boolean;
 };
 
 type InstagramConnection = {
@@ -273,13 +274,14 @@ async function fetchInstagramFeed(): Promise<InstagramPost[]> {
         new URL(media.permalink).hostname !== 'instagram.com') return [];
       return [{
         id: media.id!, imageUrl, permalink: media.permalink,
+        isVideo: media.media_type === 'VIDEO',
         caption: (media.caption || 'Publicación de 13 Cut').slice(0, 180),
         likeCount: typeof media.like_count === 'number' &&
           Number.isFinite(media.like_count) && media.like_count >= 0
           ? Math.trunc(media.like_count) : null,
       }];
     })
-    .slice(0, 4);
+    .slice(0, 12);
   if (!posts.length) {
     console.warn('INSTAGRAM_MEDIA_EMPTY', {received: response.data.length, usable: posts.length});
   }
