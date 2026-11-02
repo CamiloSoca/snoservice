@@ -45,7 +45,7 @@ test('trabajos de la cuenta profesional antes del equipo y fotos de barberos opc
   assert.ok(home.indexOf('{/* EQUIPO:') < home.indexOf('{/* INSTAGRAM'));
   assert.match(home, /<InstagramCarousel/);
   assert.match(instagram, /\.slice\(0, 12\)/);
-  assert.match(carousel, /posts\.map/);
+  assert.match(carousel, /slides\.map/);
   assert.match(carousel, /post\.likeCount\.toLocaleString\('es-UY'\)/);
   assert.match(carousel, /snap-x snap-mandatory/);
   assert.match(carousel, /IntersectionObserver/);
