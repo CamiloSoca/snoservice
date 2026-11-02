@@ -147,7 +147,9 @@ test('la portada sin imágenes configuradas no carga recursos de otra barbería'
   assert.match(instagramSection, /<InstagramCarousel/);
   assert.match(instagramSection, /instagramUrl=\{shopConfig\.instagramUrl/);
   assert.match(carousel, /post\.permalink/);
-  assert.match(carousel, /Últimos trabajos/);
+  assert.match(carousel, /shopName/);
+  assert.match(carousel, /src=\{bannerUrl\}/);
+  assert.match(carousel, /src=\{logoImage\}/);
   assert.match(carousel, /referrerPolicy="no-referrer"/);
 });
 
