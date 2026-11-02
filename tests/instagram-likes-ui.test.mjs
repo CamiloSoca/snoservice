@@ -24,6 +24,6 @@ test('si la API no entrega likes, siguen mostrándose hasta doce publicaciones e
   assert.match(instagram, /catch \{[\s\S]*?response = await metaGet\('\/me\/media', accessToken, \{/);
   assert.match(instagram, /\.slice\(0, 12\)/);
   assert.match(carousel, /href=\{post\.permalink\}/);
-  assert.match(carousel, /posts\.map/);
+  assert.match(carousel, /slides\.map/);
   assert.match(home, /instagramUrl=\{shopConfig\.instagramUrl \|\| 'https:\/\/www\.instagram\.com\/13\.cut\/'\}/);
 });
