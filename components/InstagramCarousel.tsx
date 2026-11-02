@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Image from 'next/image';
-import { ArrowLeft, ArrowRight, ExternalLink, Heart, Play, Scissors } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ExternalLink, Heart, Play } from 'lucide-react';
 import { resolveLoopIndex } from '@/lib/instagram-carousel-loop';
 
 type InstagramPost = {
@@ -195,7 +195,7 @@ export default function InstagramCarousel({
   return (
     <section ref={sectionRef} className="mx-auto max-w-5xl px-4 py-5 sm:py-7" aria-label="Instagram de la barbería">
       <div className={'overflow-hidden rounded-3xl border ' +
-        (isDark ? 'border-zinc-800/90 bg-zinc-900/70' : 'border-zinc-200 bg-white/95 shadow-sm')}>
+        (isDark ? 'border-white/[0.075] bg-[#151917]/90 shadow-[0_16px_40px_rgba(0,0,0,0.14)]' : 'border-zinc-200/80 bg-white/95 shadow-sm')}>
         {/* La portada y el logo ya están en el catálogo público de la barbería. */}
         <div className="relative h-44 overflow-hidden bg-zinc-900 text-white sm:h-48">
           {bannerUrl ? (
@@ -215,7 +215,7 @@ export default function InstagramCarousel({
               <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-white/50 bg-zinc-950 shadow-lg sm:h-16 sm:w-16">
                 {logoImage ? (
                   <Image src={logoImage} alt="" fill sizes="64px" quality={75} loading="lazy" className="object-cover" />
-                ) : <Scissors className="h-6 w-6 text-white" aria-hidden="true" />}
+                ) : <span className="text-lg font-black tracking-tight text-white">{shopName.slice(0, 2).toUpperCase()}</span>}
               </div>
               <div className="min-w-0 pb-1">
                 <h2 className="truncate text-lg font-extrabold tracking-tight text-white sm:text-xl">{shopName}</h2>
