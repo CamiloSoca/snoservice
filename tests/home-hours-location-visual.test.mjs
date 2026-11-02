@@ -25,7 +25,7 @@ test('agrupa solo días consecutivos con idéntico horario sin alterar datos',()
     ['Mar – Mié','10 – 20'],
     ['Jue','10 – 19'],
     ['Vie','10 – 20'],
-    ['Sáb','9 – 18'],
+    ['Sáb','09 – 18'],
     ['Dom','Cerrado'],
   ]);
   assert.equal(JSON.stringify(hours),before);
