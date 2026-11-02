@@ -111,6 +111,27 @@ test('email de mensualidad usa la misma plantilla que reservas, sin corazón ni 
   assert.match(base.html,/CÓDIGO DE RESERVA/);
   assert.match(base.html,/Gestionar mi turno/);
 });
+test('solo la fila de pago individual se destaca en rojo suave; reservas normales se conservan',async()=>{
+  const {buildBookingConfirmationEmail,buildFixedMonthlyExhaustionEmail}=
+    await import('../lib/booking-email.ts');
+  const subscription=buildFixedMonthlyExhaustionEmail({
+    clientName:'Cliente de prueba',shopName:'13 CUT',
+    nextDate:'2026-11-29',nextTime:'12:00',
+  });
+  const booking=buildBookingConfirmationEmail({
+    clientName:'Cliente de prueba',shopName:'13 CUT',
+    barberName:'Nahuel',serviceName:'Corte',dateString:'Dom 29 Nov',
+    timeSlot:'12:00',durationMinutes:60,price:400,code:'13C-TEST',
+  });
+  assert.match(subscription.html,/background-color:#fff1f0;/);
+  assert.match(subscription.html,/color:#9f2929;/);
+  assert.match(subscription.html,/FORMA DE PAGO/);
+  assert.match(subscription.html,/Este corte se abona individualmente en la barbería/);
+  assert.doesNotMatch(booking.html,/#fff1f0|#9f2929/);
+  assert.match(booking.html,/Gestionar mi turno/);
+  assert.match(booking.html,/CÓDIGO DE RESERVA/);
+});
+
 test('el aviso personalizado escapa nombres con HTML y no inserta scripts',async()=>{
   const {buildFixedMonthlyExhaustionEmail}=await import('../lib/booking-email.ts');
   const email=buildFixedMonthlyExhaustionEmail({
