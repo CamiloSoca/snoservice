@@ -245,10 +245,22 @@ async function fetchInstagramFeed(): Promise<InstagramPost[]> {
       limit: '12',
     }) as { data?: InstagramMedia[] };
   } catch {
-    response = await metaGet('/me/media', accessToken, {
-      fields: baseFields,
-      limit: '12',
-    }) as { data?: InstagramMedia[] };
+    try {
+      response = await metaGet('/me/media', accessToken, {
+        fields: baseFields,
+        limit: '12',
+      }) as { data?: InstagramMedia[] };
+    } catch (error) {
+      // Instagram Login puede rechazar campos opcionales. Un último intento
+      // con solo los campos mínimos distingue eso de la falta de permisos.
+      const code = safeInstagramErrorCode(error);
+      if (!/^IG_META_HTTP_400_CODE_(100|200)(?:_SUB_[0-9]+)?$/.test(code)) throw error;
+      console.warn('INSTAGRAM_MINIMAL_FIELDS_RETRY', code);
+      response = await metaGet('/me/media', accessToken, {
+        fields: 'id,media_type,media_url,thumbnail_url,permalink,timestamp',
+        limit: '12',
+      }) as { data?: InstagramMedia[] };
+    }
   }
   if (!Array.isArray(response.data)) throw new Error('Formato de publicaciones inválido.');
   const posts = response.data
