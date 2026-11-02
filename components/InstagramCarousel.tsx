@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, ExternalLink, Heart, Instagram, Play } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ExternalLink, Heart, Camera, Play } from 'lucide-react';
 
 type InstagramPost = {
   id: string;
@@ -129,7 +129,7 @@ export default function InstagramCarousel({ isDark, instagramUrl, instagramHandl
         <div className="flex flex-wrap items-center justify-between gap-3 px-5 pb-4 pt-6 sm:px-7 sm:pt-7">
           <div className="min-w-0">
             <div className="mb-1.5 flex items-center gap-2">
-              <Instagram className="h-3.5 w-3.5 text-emerald-400" aria-hidden="true" />
+              <Camera className="h-3.5 w-3.5 text-emerald-400" aria-hidden="true" />
               <span className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-emerald-400">
                 {instagramHandle} · Instagram
               </span>
