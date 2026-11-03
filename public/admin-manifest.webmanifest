@@ -1,0 +1,19 @@
+{
+  "name": "13 CUT Administración",
+  "short_name": "13 CUT Admin",
+  "description": "Acceso directo al panel de administración de 13 CUT",
+  "id": "/admin",
+  "start_url": "/admin",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#09090b",
+  "theme_color": "#09090b",
+  "icons": [
+    {
+      "src": "/icon",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
