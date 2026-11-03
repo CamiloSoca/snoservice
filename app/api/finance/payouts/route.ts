@@ -16,9 +16,9 @@ export async function GET(request:Request) {
     const ownId=barberView?barber!.sub:(admin?null:barber!.sub);
     const [balances,history,cash]=await Promise.all([
       db.rpc('finance_barber_balances',{p_shop_id:SHOP_UUID,p_barber_id:ownId}),
-      (ownId ? db.from('barber_payouts').select('id,barber_id,amount,method,note,created_at')
+      (ownId ? db.from('barber_payouts').select('id,barber_id,amount,method,note,created_at,source,paid_on,week_from,week_to')
         .eq('shop_id',SHOP_UUID).eq('barber_id',ownId).order('created_at',{ascending:false}).limit(30)
-        : db.from('barber_payouts').select('id,barber_id,amount,method,note,created_at')
+        : db.from('barber_payouts').select('id,barber_id,amount,method,note,created_at,source,paid_on,week_from,week_to')
           .eq('shop_id',SHOP_UUID).order('created_at',{ascending:false}).limit(50)),
       db.from('cash_registers').select('id').eq('shop_id',SHOP_UUID).eq('status','abierta').limit(1),
     ]);

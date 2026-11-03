@@ -12,7 +12,9 @@ interface Balance {
   outstanding:number|string;
 }
 interface Payout {
-  id:string;barber_id:string;amount:number|string;method:OnSitePaymentMethod;
+  id:string;barber_id:string;amount:number|string;method:OnSitePaymentMethod|'unknown';
+  source?:'live_drawer'|'historical_off_drawer';paid_on?:string|null;
+  week_from?:string|null;week_to?:string|null;
   note:string;created_at:string;
 }
 interface Payload {
@@ -200,8 +202,11 @@ export default function FinanceLedgerCard({mode,display='summary'}:{mode:'admin'
           ? <p className="text-xs text-zinc-500">Todavía no se registraron retiros.</p>
           : data.payouts.map(p=><div key={p.id} className="flex justify-between gap-2 border-b border-zinc-800 py-2 text-xs">
             <div>
-              <p className="font-semibold text-zinc-100">{money(p.amount)} · {p.method==='cash'?'Efectivo':'Transferencia'}</p>
-              <p className="text-zinc-500">{new Date(p.created_at).toLocaleString('es-UY',{timeZone:'America/Montevideo'})} {p.note?'· '+p.note:''}</p>
+              <p className="font-semibold text-zinc-100">{money(p.amount)} · {p.method==='cash'?'Efectivo':p.method==='transfer'?'Transferencia':'Medio sin informar'}</p>
+              <p className="text-zinc-500">{p.source==='historical_off_drawer'&&p.paid_on
+                ? 'Entregado el '+p.paid_on.slice(8,10)+'/'+p.paid_on.slice(5,7)+'/'+p.paid_on.slice(0,4)
+                  +' · Registrado '+new Date(p.created_at).toLocaleDateString('es-UY',{timeZone:'America/Montevideo'})
+                : new Date(p.created_at).toLocaleString('es-UY',{timeZone:'America/Montevideo'})} {p.note?'· '+p.note:''}</p>
             </div>
             <span className="text-emerald-400">Registrado</span>
           </div>)}
