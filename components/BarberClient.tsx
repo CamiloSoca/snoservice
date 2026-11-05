@@ -22,6 +22,8 @@ import {
   TipItem,
   ManualChargeItem,
   FixedMonthlyUseItem,
+  MonthlyCommissionItem,
+  ExternalMonthlyReceiptItem,
   FixedCourtesyUseItem,
   unlockBarberPanelWithPin,
   getBarberDashboardSnapshot,
@@ -98,6 +100,8 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
   const [barberTips, setBarberTips] = useState<TipItem[]>([]);
   const [barberCharges, setBarberCharges] = useState<ManualChargeItem[]>([]);
   const [fixedMonthlyUses, setFixedMonthlyUses] = useState<FixedMonthlyUseItem[]>([]);
+  const [monthlyCommissions,setMonthlyCommissions]=useState<MonthlyCommissionItem[]>([]);
+  const [externalMonthlyReceipts,setExternalMonthlyReceipts]=useState<ExternalMonthlyReceiptItem[]>([]);
   const [fixedCourtesyUses,setFixedCourtesyUses]=useState<FixedCourtesyUseItem[]>([]);
   const [commissionRate, setCommissionRate] = useState<number>(50);
   const [isOwner, setIsOwner] = useState<boolean>(false);
@@ -158,6 +162,8 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
       setBarberTips(snapshot.tips);
       setBarberCharges(snapshot.manualCharges);
       setFixedMonthlyUses(snapshot.fixedMonthlyUses);
+        setMonthlyCommissions(snapshot.monthlyCommissions);
+        setExternalMonthlyReceipts(snapshot.externalMonthlyReceipts);
       setFixedCourtesyUses(snapshot.fixedCourtesyUses);
     } catch (err: any) {
       // Ante una lectura incompleta no mostrar cifras vacías como reales.
@@ -199,6 +205,8 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
         setBarberTips(financial.tips);
         setBarberCharges(financial.manualCharges);
         setFixedMonthlyUses(financial.fixedMonthlyUses);
+        setMonthlyCommissions(financial.monthlyCommissions);
+        setExternalMonthlyReceipts(financial.externalMonthlyReceipts);
         setFixedCourtesyUses(financial.fixedCourtesyUses);
         setCashOpen(financial.cashOpen);
         setCommissionRate(financial.commissionRate);
@@ -230,6 +238,8 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
         setBarberTips(fresh.tips);
         setBarberCharges(fresh.manualCharges);
         setFixedMonthlyUses(fresh.fixedMonthlyUses);
+        setMonthlyCommissions(fresh.monthlyCommissions);
+        setExternalMonthlyReceipts(fresh.externalMonthlyReceipts);
         setFixedCourtesyUses(fresh.fixedCourtesyUses);
         setCashOpen(fresh.cashOpen);
       } catch {
@@ -355,11 +365,11 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
     const parts = auditDate.split('-').map(Number);
     const reference = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
     const dow = reference.getUTCDay();
-    reference.setUTCDate(reference.getUTCDate() - ((dow + 6) % 7));
-    const monday = reference.toISOString().slice(0, 10);
-    reference.setUTCDate(reference.getUTCDate() + 6);
+    reference.setUTCDate(reference.getUTCDate() - dow);
     const sunday = reference.toISOString().slice(0, 10);
-    return key >= monday && key <= sunday;
+    reference.setUTCDate(reference.getUTCDate() + 6);
+    const saturday = reference.toISOString().slice(0, 10);
+    return key >= sunday && key <= saturday;
   };
 
   const periodAppointments = barberAppointments.filter(a =>
@@ -367,16 +377,20 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
   const periodCharges = barberCharges.filter(c => periodIncludes(c.createdAt));
   const periodTips = barberTips.filter(t => periodIncludes(t.createdAt));
   const periodCourtesyUses=fixedCourtesyUses.filter(u=>periodIncludes(u.occurrence_date+'T12:00:00-03:00'));
-  const periodSubscriptionCommission=fixedMonthlyUses
-    .filter(use=>periodIncludes(use.occurrence_date+'T12:00:00-03:00'))
-    .reduce((sum,use)=>sum+Number(use.barber_earnings_snapshot||0),0);
+  const periodSubscriptionCommission=monthlyCommissions
+    .filter(item=>periodIncludes(item.earned_at))
+    .reduce((sum,item)=>sum+Number(item.amount||0),0);
+  const periodExternalReceipts=externalMonthlyReceipts
+    .filter(item=>periodIncludes(item.paid_at))
+    .reduce((sum,item)=>sum+Number(item.price_snapshot||0),0);
   const periodCommission = periodAppointments.reduce((sum, a) =>
     sum + splitBusinessRevenue(Number(a.priceSnapshot ?? a.servicePrice), {commissionRate,isOwner}, a).barber, 0)
     + periodCharges.reduce((sum, c) =>
       sum + splitBusinessRevenue(Number(c.amount), {commissionRate,isOwner}, c).barber, 0)
     + periodSubscriptionCommission;
   const periodGross = periodAppointments.reduce((sum, a) => sum + Number(a.priceSnapshot ?? a.servicePrice), 0)
-    + periodCharges.reduce((sum, c) => sum + Number(c.amount), 0);
+    + periodCharges.reduce((sum, c) => sum + Number(c.amount), 0)
+    + periodExternalReceipts;
   const periodTipsAmount = periodTips.reduce((sum, t) => sum + Number(t.amount), 0);
   const periodEarnings = (isOwner ? periodGross : periodCommission) + periodTipsAmount;
   const serviceCounts = new Map<string, number>();
@@ -421,11 +435,14 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
   );
 
   const grossFromCharges = monthlyCharges.reduce((sum, c) => sum + Number(c.amount), 0);
-  const totalGrossMonthly = grossFromAppointments + grossFromCharges;
+  const totalGrossMonthly = grossFromAppointments + grossFromCharges
+    + externalMonthlyReceipts.filter(item=>isWithinSelectedMonth(item.paid_at,selectedMonth))
+      .reduce((sum,item)=>sum+Number(item.price_snapshot||0),0);
 
   const totalEarned = completedAppointments.reduce((sum, a) => sum + splitBusinessRevenue(Number(a.priceSnapshot ?? a.servicePrice), {commissionRate, isOwner}, a).barber, 0) +
     monthlyCharges.reduce((sum, c) => sum + splitBusinessRevenue(Number(c.amount), {commissionRate, isOwner}, c).barber, 0)
-    + monthlyFixedUses.reduce((sum,use)=>sum+Number(use.barber_earnings_snapshot||0),0);
+    + monthlyCommissions.filter(item=>isWithinSelectedMonth(item.earned_at,selectedMonth))
+      .reduce((sum,item)=>sum+Number(item.amount||0),0);
   const totalToBusiness = totalGrossMonthly - totalEarned;
   const totalTipsAmount = monthlyTips.reduce((sum, t) => sum + Number(t.amount), 0);
 
@@ -456,11 +473,14 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
 
   const dailyGross = 
     dailyAppointments.reduce((sum, a) => sum + Number(a.priceSnapshot ?? a.servicePrice), 0) +
-    dailyCharges.reduce((sum, c) => sum + Number(c.amount), 0);
+    dailyCharges.reduce((sum, c) => sum + Number(c.amount), 0)
+    + externalMonthlyReceipts.filter(item=>getMontevideoDateKey(item.paid_at)===auditDate)
+      .reduce((sum,item)=>sum+Number(item.price_snapshot||0),0);
 
   const dailyCommission = dailyAppointments.reduce((sum, a) => sum + splitBusinessRevenue(Number(a.priceSnapshot ?? a.servicePrice), {commissionRate, isOwner}, a).barber, 0) +
     dailyCharges.reduce((sum, c) => sum + splitBusinessRevenue(Number(c.amount), {commissionRate, isOwner}, c).barber, 0)
-    + dailyFixedUses.reduce((sum,use)=>sum+Number(use.barber_earnings_snapshot||0),0);
+    + monthlyCommissions.filter(item=>getMontevideoDateKey(item.earned_at)===auditDate)
+      .reduce((sum,item)=>sum+Number(item.amount||0),0);
   const dailyTipsTotal = dailyTips.reduce((sum, t) => sum + Number(t.amount), 0);
   const dailyClassifiedCharges = dailyCharges.filter(c => Boolean(c.serviceNameSnapshot));
   const dailyUnclassifiedChargesCount = dailyCharges.length - dailyClassifiedCharges.length;
@@ -470,7 +490,10 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
     sum + splitBusinessRevenue(Number(a.priceSnapshot ?? a.servicePrice), {commissionRate,isOwner}, a).business, 0)
     + dailyCharges.reduce((sum, c) =>
       sum + splitBusinessRevenue(Number(c.amount), {commissionRate,isOwner}, c).business, 0)
-    - dailyFixedUses.reduce((sum,use)=>sum+Number(use.barber_earnings_snapshot||0),0);
+    + externalMonthlyReceipts.filter(item=>getMontevideoDateKey(item.paid_at)===auditDate)
+      .reduce((sum,item)=>sum+Number(item.price_snapshot||0),0)
+    - monthlyCommissions.filter(item=>getMontevideoDateKey(item.earned_at)===auditDate)
+      .reduce((sum,item)=>sum+Number(item.amount||0),0);
   const historicEstimateCount = [...completedAppointments,...monthlyCharges].filter(
     item => item.barberEarningsSnapshot == null || item.businessEarningsSnapshot == null
   ).length;
