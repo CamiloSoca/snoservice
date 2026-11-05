@@ -81,6 +81,7 @@ import {normalizeHours, type WeeklyHours} from '@/lib/weekly-hours';
 import CashDrawerCard from '@/components/CashDrawerCard';
 import CashCloseDialog from '@/components/CashCloseDialog';
 import FinanceLedgerCard from '@/components/FinanceLedgerCard';
+import {getSaturdaySettlementWeek, isWithinSaturdaySettlementWeek} from '@/lib/saturday-settlement-week';
 import InstagramConnection from '@/components/admin/InstagramConnection';
 import type {OnSitePaymentMethod} from '@/lib/payment-method';
 
@@ -131,8 +132,9 @@ function isWithinPeriod(
   const todayKey = getMontevideoDateKey();
   if (period === 'hoy') return dateKey === todayKey;
   if (period === 'semana') {
-    const delta = (Date.parse(todayKey + 'T00:00:00Z') - Date.parse(dateKey + 'T00:00:00Z')) / 86400000;
-    return delta >= 0 && delta < 7;
+    // Semana de liquidación de 13Cut: domingo a sábado.
+    // El domingo comienza una semana nueva; nunca incluir pagos del sábado anterior.
+    return isWithinSaturdaySettlementWeek(dateKey, todayKey);
   }
   return dateKey.slice(0, 7) === selectedMonthYear;
 }
@@ -1084,6 +1086,9 @@ const handleAddBarber = async () => {
   const bgImage = shopConfig.backgroundImageUrl || DEFAULT_SHOP_CONFIG.backgroundImageUrl;
   const logoImage = shopConfig.logoUrl || DEFAULT_SHOP_CONFIG.logoUrl;
 
+  const currentSettlementWeek=getSaturdaySettlementWeek(getMontevideoDateKey());
+  const settlementRangeLabel=currentSettlementWeek.start.slice(8,10)+'/'+currentSettlementWeek.start.slice(5,7)
+    +' al '+currentSettlementWeek.end.slice(8,10)+'/'+currentSettlementWeek.end.slice(5,7);
   const todayStr = getMontevideoDateKey();
   const isTodayClosed = cashStatus === 'cerrada' && lastClosedDate === todayStr;
   // El modo de pruebas se habilita únicamente cuando esta web usa la base staging.
@@ -1868,7 +1873,7 @@ const handleAddBarber = async () => {
               <div className="bg-zinc-900/90 border border-zinc-800 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="space-y-1">
                   <h3 className="text-sm font-extrabold">Elegí el período</h3>
-                  <p className="text-xs text-zinc-400">Todos los importes y las liquidaciones usan el mismo período. Semana = últimos 7 días.</p>
+                  <p className="text-xs text-zinc-400">Los importes muestran trabajos generados, no deuda. Semana = domingo a sábado, con pago cada sábado. {period==='semana'?'Período: '+settlementRangeLabel+'.':''}</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="flex items-center space-x-1.5 bg-zinc-950 p-1 rounded-xl border border-zinc-800">
@@ -1971,7 +1976,7 @@ const handleAddBarber = async () => {
                   <div className="min-w-0 flex-1">
                     <span className="block">Liquidación por barbero</span>
                     <span className="mt-0.5 block text-xs font-normal text-zinc-400">
-                      Todos los trabajos juntos, con propinas por separado.
+                      Trabajos y comisiones generadas en el período. No son pagos pendientes; para pagar mirá Caja → Pagar barbero → Pendiente.
                     </span>
                   </div>
                   <ChevronDown className="h-4 w-4 shrink-0 text-zinc-400 transition-transform group-open/settlement:rotate-180" aria-hidden="true" />

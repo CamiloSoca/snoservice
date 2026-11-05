@@ -43,5 +43,9 @@ test('filtro de fecha está antes del reporte y aplica a todas las liquidaciones
   assert.ok(report.indexOf('Elegí el período') < report.indexOf('Facturación Total'));
   assert.ok(report.indexOf('Facturación Total') < report.indexOf('Liquidación por barbero'));
   assert.match(admin,/isWithinPeriod\(c\.createdAt, period, selectedMonth\)/);
-  assert.match(report,/Semana = últimos 7 días/);
+  assert.match(report,/Semana = domingo a sábado/);
+  assert.match(report,/no deuda/);
+  assert.match(report,/Período:/);
+  assert.match(report,/No son pagos pendientes/);
+  assert.match(admin,/isWithinSaturdaySettlementWeek\(dateKey, todayKey\)/);
 });
