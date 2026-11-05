@@ -21,7 +21,7 @@ test('cobros sin clasificación conservan facturación sin inventar trabajos',()
   assert.match(admin,/Incluidos en facturación, no en el contador de trabajos/);
 });
 test('abonos cubiertos cuentan como trabajo, no ingreso adicional',()=>{
-  assert.match(admin,/const monthlyUsesCount = filteredMonthlyUses\.filter/);
+  assert.match(admin,/const barberMonthlyUses=filteredMonthlyUses\.filter/);
   assert.match(admin,/Abonos realizados/);
   assert.match(admin,/trabajos incluidos, sin cobro adicional/);
   assert.match(admin,/const grossGenerated = grossFromAppointments \+ barberManualChargesTotal/);
