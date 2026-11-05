@@ -109,7 +109,7 @@ export async function GET() {
     // Los consumos cuentan como servicios realizados, no como ingresos: la
     // mensualidad ya se contabiliza una sola vez en manual_charges.
     let fixedMonthlyUses: FixedMonthlyUseItem[] = [];
-    if (true) {
+    {
       const fixedIds = await db.from('fixed_bookings').select('id')
         .eq('shop_id',SHOP_UUID).eq('barber_id',session.sub);
       if (fixedIds.error) {
