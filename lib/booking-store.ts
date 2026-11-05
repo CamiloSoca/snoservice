@@ -533,6 +533,7 @@ export interface AdminDashboardSnapshot {
   tips: TipItem[];
   manualCharges: ManualChargeItem[];
   fixedMonthlyUses: FixedMonthlyUseItem[];
+  externalMonthlyReceipts: ExternalMonthlyReceiptItem[];
   fixedCourtesyUses: FixedCourtesyUseItem[];
   config: ShopConfig;
   cashStatus: 'abierta' | 'cerrada';
@@ -547,11 +548,20 @@ export interface FixedCourtesyUseItem {
   service_name_snapshot: string;
 }
 
+export interface ExternalMonthlyReceiptItem {
+  fixed_booking_id: string;
+  barber_id: string | null;
+  period_month: string;
+  paid_at: string;
+  price_snapshot: number | string;
+}
 export interface FixedMonthlyUseItem {
   fixed_booking_id: string;
   period_id: string;
   occurrence_date: string;
   completed_at: string;
+  barber_earnings_snapshot?: number | string;
+  commission_rate_snapshot?: number | string;
   barber_id?: string | null;
 }
 
@@ -643,6 +653,7 @@ export async function getAdminDashboardSnapshot(): Promise<AdminDashboardSnapsho
   const tips = (payload.tips || []).map(mapFinancialEntry);
   const manualCharges = (payload.manualCharges || []).map(mapFinancialEntry);
   const fixedMonthlyUses = (payload.fixedMonthlyUses || []) as FixedMonthlyUseItem[];
+  const externalMonthlyReceipts = (payload.externalMonthlyReceipts || []) as ExternalMonthlyReceiptItem[];
   const fixedCourtesyUses = (payload.fixedCourtesyUses || []) as FixedCourtesyUseItem[];
 
   const shop = payload.shop;
@@ -671,6 +682,7 @@ export async function getAdminDashboardSnapshot(): Promise<AdminDashboardSnapsho
     tips,
     manualCharges,
     fixedMonthlyUses,
+    externalMonthlyReceipts,
     fixedCourtesyUses,
     config,
     cashStatus: cash?.status === 'abierta' ? 'abierta' : 'cerrada',

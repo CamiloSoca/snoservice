@@ -367,10 +367,14 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
   const periodCharges = barberCharges.filter(c => periodIncludes(c.createdAt));
   const periodTips = barberTips.filter(t => periodIncludes(t.createdAt));
   const periodCourtesyUses=fixedCourtesyUses.filter(u=>periodIncludes(u.occurrence_date+'T12:00:00-03:00'));
+  const periodSubscriptionCommission=fixedMonthlyUses
+    .filter(use=>periodIncludes(use.occurrence_date+'T12:00:00-03:00'))
+    .reduce((sum,use)=>sum+Number(use.barber_earnings_snapshot||0),0);
   const periodCommission = periodAppointments.reduce((sum, a) =>
     sum + splitBusinessRevenue(Number(a.priceSnapshot ?? a.servicePrice), {commissionRate,isOwner}, a).barber, 0)
     + periodCharges.reduce((sum, c) =>
-      sum + splitBusinessRevenue(Number(c.amount), {commissionRate,isOwner}, c).barber, 0);
+      sum + splitBusinessRevenue(Number(c.amount), {commissionRate,isOwner}, c).barber, 0)
+    + periodSubscriptionCommission;
   const periodGross = periodAppointments.reduce((sum, a) => sum + Number(a.priceSnapshot ?? a.servicePrice), 0)
     + periodCharges.reduce((sum, c) => sum + Number(c.amount), 0);
   const periodTipsAmount = periodTips.reduce((sum, t) => sum + Number(t.amount), 0);
@@ -420,7 +424,8 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
   const totalGrossMonthly = grossFromAppointments + grossFromCharges;
 
   const totalEarned = completedAppointments.reduce((sum, a) => sum + splitBusinessRevenue(Number(a.priceSnapshot ?? a.servicePrice), {commissionRate, isOwner}, a).barber, 0) +
-    monthlyCharges.reduce((sum, c) => sum + splitBusinessRevenue(Number(c.amount), {commissionRate, isOwner}, c).barber, 0);
+    monthlyCharges.reduce((sum, c) => sum + splitBusinessRevenue(Number(c.amount), {commissionRate, isOwner}, c).barber, 0)
+    + monthlyFixedUses.reduce((sum,use)=>sum+Number(use.barber_earnings_snapshot||0),0);
   const totalToBusiness = totalGrossMonthly - totalEarned;
   const totalTipsAmount = monthlyTips.reduce((sum, t) => sum + Number(t.amount), 0);
 
@@ -454,7 +459,8 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
     dailyCharges.reduce((sum, c) => sum + Number(c.amount), 0);
 
   const dailyCommission = dailyAppointments.reduce((sum, a) => sum + splitBusinessRevenue(Number(a.priceSnapshot ?? a.servicePrice), {commissionRate, isOwner}, a).barber, 0) +
-    dailyCharges.reduce((sum, c) => sum + splitBusinessRevenue(Number(c.amount), {commissionRate, isOwner}, c).barber, 0);
+    dailyCharges.reduce((sum, c) => sum + splitBusinessRevenue(Number(c.amount), {commissionRate, isOwner}, c).barber, 0)
+    + dailyFixedUses.reduce((sum,use)=>sum+Number(use.barber_earnings_snapshot||0),0);
   const dailyTipsTotal = dailyTips.reduce((sum, t) => sum + Number(t.amount), 0);
   const dailyClassifiedCharges = dailyCharges.filter(c => Boolean(c.serviceNameSnapshot));
   const dailyUnclassifiedChargesCount = dailyCharges.length - dailyClassifiedCharges.length;
@@ -463,7 +469,8 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
   const dailyToBusiness = dailyAppointments.reduce((sum, a) =>
     sum + splitBusinessRevenue(Number(a.priceSnapshot ?? a.servicePrice), {commissionRate,isOwner}, a).business, 0)
     + dailyCharges.reduce((sum, c) =>
-      sum + splitBusinessRevenue(Number(c.amount), {commissionRate,isOwner}, c).business, 0);
+      sum + splitBusinessRevenue(Number(c.amount), {commissionRate,isOwner}, c).business, 0)
+    - dailyFixedUses.reduce((sum,use)=>sum+Number(use.barber_earnings_snapshot||0),0);
   const historicEstimateCount = [...completedAppointments,...monthlyCharges].filter(
     item => item.barberEarningsSnapshot == null || item.businessEarningsSnapshot == null
   ).length;

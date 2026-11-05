@@ -277,7 +277,7 @@ export default function FixedAgendaManager({barbers,services,shopSchedule}:{
              <p className="mt-1 text-xs text-zinc-300">Desde {shortDate(item.start_date)}{item.end_date?' · hasta '+shortDate(item.end_date):' · sin fecha de finalización'}</p>
            </div>
          </div>
-      {barbers.some(barber=>barber.id===item.barber_id&&barber.isOwner===true)&&monthlyMonth&&
+      {!item.complimentary&&monthlyMonth&&
         <FixedMonthlyPanel fixedBookingId={item.id} key={item.id}
           plan={monthlyPlans.find(plan=>plan.fixed_booking_id===item.id)}
           month={monthlyMonth} onUpdated={refreshMonthly}/>}

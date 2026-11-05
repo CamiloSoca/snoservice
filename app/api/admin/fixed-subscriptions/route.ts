@@ -34,7 +34,7 @@ export async function GET(request:Request){
 
   // La lista sólo necesita el estado del mes actual. Un detalle solicita su historial.
   let periodQuery=db.from('fixed_monthly_periods')
-    .select('id,fixed_booking_id,period_month,price_snapshot,included_cuts,paid_at,payment_method')
+    .select('id,fixed_booking_id,period_month,price_snapshot,included_cuts,paid_at,payment_method,payment_source')
     .eq('shop_id',SHOP_UUID).in('fixed_booking_id',ids)
     .order('period_month',{ascending:false});
   if(!fixedId)periodQuery=periodQuery.eq('period_month',month);
@@ -75,17 +75,38 @@ export async function POST(request:Request){
     if(fixedError)return errorReply('No se pudo comprobar el cliente fijo.',503);
     if(!fixed)return errorReply('No se encontró este cliente fijo.',404);
     const {data:barber,error:barberError}=await db.from('barbers')
-      .select('is_owner').eq('shop_id',SHOP_UUID)
+      .select('active').eq('shop_id',SHOP_UUID)
       .eq('id',fixed.barber_id).maybeSingle();
     if(barberError)return errorReply('No se pudo comprobar al barbero.',503);
-    if(barber?.is_owner!==true){
-      return errorReply('Esta función solamente aplica a clientes fijos del dueño.',403);
+    if(barber?.active!==true){
+      return errorReply('El abono requiere un barbero activo.',409);
     }
     const {error}=await db.from('fixed_monthly_plans').upsert({
       fixed_booking_id:fixedId,shop_id:SHOP_UUID,monthly_price:price,active:body.active,
     },{onConflict:'fixed_booking_id'});
     if(error)return errorReply('No se pudo guardar el abono. Revisá su configuración.',409);
     return NextResponse.json({ok:true},{headers});
+  }
+  if(body?.action==='record_paid'){
+    // Declaración administrativa de una mensualidad cobrada ANTES de usar
+    // SNOSERVICE: no simular entrada de efectivo en una caja abierta.
+    const month=String(body?.month||'');
+    const amount=Number(body?.amount);
+    if(!monthPattern.test(month)||month!==thisMonth()||
+       body?.acknowledge!==true||typeof body?.amount!=='number'||
+       !Number.isFinite(amount)||amount<=0||amount>100000000){
+      return errorReply('Confirmá el mes, el importe y que ya se cobró fuera de la caja actual.',400);
+    }
+    const {data,error}=await db.rpc('record_fixed_monthly_paid_off_drawer',{
+      p_shop_id:SHOP_UUID,p_fixed_id:fixedId,p_month:month,p_amount:amount,
+    });
+    if(error){
+      if(error.code==='23505')return errorReply('Este mes ya está registrado como pagado.',409);
+      if(error.code==='23514')return errorReply(
+        'No se confirmó la mensualidad. Revisá que el importe coincida, el fijo esté activo y no se hayan cobrado cortes sueltos.',409);
+      return errorReply('No se confirmó el pago previo. Revisá el historial antes de repetir.',503);
+    }
+    return NextResponse.json({ok:true,periodId:data,offDrawer:true},{headers});
   }
   if(body?.action==='pay'){
     const method=body?.paymentMethod;

@@ -44,6 +44,7 @@ import {
   TipItem,
   ManualChargeItem,
   FixedMonthlyUseItem,
+  ExternalMonthlyReceiptItem,
   FixedCourtesyUseItem,
   ShopConfig,
   DEFAULT_SHOP_CONFIG,
@@ -152,6 +153,7 @@ export default function AdminDashboard() {
   const [tips, setTips] = useState<TipItem[]>([]);
   const [manualCharges, setManualCharges] = useState<ManualChargeItem[]>([]);
   const [fixedMonthlyUses, setFixedMonthlyUses] = useState<FixedMonthlyUseItem[]>([]);
+  const [externalMonthlyReceipts,setExternalMonthlyReceipts]=useState<ExternalMonthlyReceiptItem[]>([]);
   const [fixedCourtesyUses,setFixedCourtesyUses]=useState<FixedCourtesyUseItem[]>([]);
   const [shopConfig, setShopConfig] = useState<ShopConfig>(DEFAULT_SHOP_CONFIG);
   const [savedBanner, setSavedBanner] = useState(false);
@@ -253,6 +255,7 @@ export default function AdminDashboard() {
         setTips(snapshot.tips);
         setManualCharges(snapshot.manualCharges);
         setFixedMonthlyUses(snapshot.fixedMonthlyUses);
+        setExternalMonthlyReceipts(snapshot.externalMonthlyReceipts);
         setFixedCourtesyUses(snapshot.fixedCourtesyUses);
         setShopConfig(freshConfig);
 
@@ -295,6 +298,7 @@ export default function AdminDashboard() {
         setTips(financial.tips);
         setManualCharges(financial.manualCharges);
         setFixedMonthlyUses(financial.fixedMonthlyUses);
+        setExternalMonthlyReceipts(financial.externalMonthlyReceipts);
         setFixedCourtesyUses(financial.fixedCourtesyUses);
         setCashStatus(financial.cashStatus);
         setLastClosedDate(financial.lastClosedDate);
@@ -351,6 +355,7 @@ export default function AdminDashboard() {
         setTips(fresh.tips);
         setManualCharges(fresh.manualCharges);
         setFixedMonthlyUses(fresh.fixedMonthlyUses);
+        setExternalMonthlyReceipts(fresh.externalMonthlyReceipts);
         setFixedCourtesyUses(fresh.fixedCourtesyUses);
         setCashStatus(fresh.cashStatus);
       } catch {
@@ -916,6 +921,8 @@ const handleAddBarber = async () => {
   });
   const filteredMonthlyUses = fixedMonthlyUses.filter((use) =>
     isWithinPeriod(`${use.occurrence_date}T12:00:00-03:00`,period,selectedMonth));
+  const filteredExternalMonthlyReceipts=externalMonthlyReceipts.filter(receipt=>
+    isWithinPeriod(receipt.paid_at,period,selectedMonth));
   const filteredCourtesyUses = fixedCourtesyUses.filter((use) =>
     isWithinPeriod(`${use.occurrence_date}T12:00:00-03:00`,period,selectedMonth));
 
@@ -1006,7 +1013,13 @@ const handleAddBarber = async () => {
     // Los cobros no clasificados suman dinero, pero no representan
     // necesariamente un servicio realizado.
     const categorizedCharges = barberCharges.filter(c => Boolean(c.serviceNameSnapshot));
-    const monthlyUsesCount = filteredMonthlyUses.filter(use => use.barber_id === barber.id).length;
+    const barberMonthlyUses=filteredMonthlyUses.filter(use=>use.barber_id===barber.id);
+    const monthlyUsesCount = barberMonthlyUses.length;
+    const monthlyCommission=barberMonthlyUses.reduce((sum,use)=>
+      sum+Number(use.barber_earnings_snapshot||0),0);
+    const externalMonthlyTotal=filteredExternalMonthlyReceipts
+      .filter(receipt=>receipt.barber_id===barber.id)
+      .reduce((sum,receipt)=>sum+Number(receipt.price_snapshot||0),0);
     const courtesyUses=filteredCourtesyUses.filter(use=>use.barber_id===barber.id);
     const serviceCounts = new Map<string, number>();
     for (const appointment of barberApts) {
@@ -1035,14 +1048,14 @@ const handleAddBarber = async () => {
 
     const barberManualChargesTotal = barberCharges.reduce((sum, c) => sum + Number(c.amount), 0);
 
-    const grossGenerated = grossFromAppointments + barberManualChargesTotal;
+    const grossGenerated = grossFromAppointments + barberManualChargesTotal + externalMonthlyTotal;
 
     const allocated = [
       ...barberApts.map(a => splitBusinessRevenue(Number(a.priceSnapshot ?? a.servicePrice), barber, a)),
       ...barberCharges.map(c => splitBusinessRevenue(Number(c.amount), barber, c)),
     ];
-    const barberTakeHome = allocated.reduce((sum, row) => sum + row.barber, 0);
-    const leftForOwner = allocated.reduce((sum, row) => sum + row.business, 0);
+    const barberTakeHome = allocated.reduce((sum, row) => sum + row.barber, 0) + monthlyCommission;
+    const leftForOwner = allocated.reduce((sum, row) => sum + row.business, 0) + externalMonthlyTotal - monthlyCommission;
 
     const barberTipsTotal = filteredTips
       .filter((t) => t.barberId === barber.id)
@@ -1062,14 +1075,18 @@ const handleAddBarber = async () => {
       leftForOwner,
       barberTipsTotal,
       barberManualChargesTotal,
+      externalMonthlyTotal,
+      monthlyCommission,
     };
   });
 
   const totalServicesPerformed = barberFinancials.reduce((sum, b) => sum + b.workCount, 0);
   const totalUnclassifiedCharges = barberFinancials.reduce((sum, b) => sum + b.unclassifiedChargesCount, 0);
-  const totalGrossAppointments = barberFinancials.reduce((sum, b) => sum + (b.grossGenerated - b.barberManualChargesTotal), 0);
+  const totalGrossAppointments = barberFinancials.reduce((sum, b) => sum + b.grossFromAppointments, 0);
   const totalManualChargesAll = filteredManualCharges.reduce((sum, c) => sum + Number(c.amount), 0);
-  const grossRevenueTotal = totalGrossAppointments + totalManualChargesAll;
+  const totalExternalMonthlyReceipts=filteredExternalMonthlyReceipts.reduce(
+    (sum,receipt)=>sum+Number(receipt.price_snapshot||0),0);
+  const grossRevenueTotal = totalGrossAppointments + totalManualChargesAll + totalExternalMonthlyReceipts;
 
   const staffCommissionsToPay = barberFinancials.reduce((sum, b) => sum + b.barberTakeHome, 0);
   const ownerTotalGrossIncome = barberFinancials.reduce((sum, b) => sum + b.leftForOwner, 0);
@@ -1247,7 +1264,7 @@ const handleAddBarber = async () => {
               </div></div>
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               {([
-                {k:'Facturación',v:grossRevenueTotal,sub:'Cortes y cobros completados',color:'text-white'},
+                {k:'Facturación',v:grossRevenueTotal,sub:'Cortes y cobros registrados, incluso abonos anteriores sin caja',color:'text-white'},
                 {k:'Comisiones generadas',v:staffCommissionsToPay,sub:'Importes del equipo',color:'text-amber-400'},
                 {k:'Gastos',v:totalExpensesAmount,sub:'Egresos del período',color:'text-white'},
                 {k:'Resultado del negocio',v:ownerFinalNetPocket,sub:'Después de gastos y comisiones. No es saldo acumulado.',color:'text-emerald-400'},
@@ -2071,6 +2088,14 @@ const handleAddBarber = async () => {
                               <span>Ingresos manuales · {item.manualCount}</span>
                               <span className="tabular-nums">{money(item.barberManualChargesTotal)}</span>
                             </div>
+                            {item.externalMonthlyTotal>0&&<div className="flex justify-between gap-2 text-amber-200">
+                              <span>Mensualidades ya pagadas · fuera de caja</span>
+                              <span className="tabular-nums">{money(item.externalMonthlyTotal)}</span>
+                            </div>}
+                            {item.monthlyCommission>0&&<div className="flex justify-between gap-2 text-emerald-300">
+                              <span>Comisión por cortes de abono realizados</span>
+                              <span className="tabular-nums">+{money(item.monthlyCommission)}</span>
+                            </div>}
                             {item.monthlyUsesCount > 0 && (
                               <p>Abonos: {item.monthlyUsesCount} trabajos incluidos, sin cobro adicional.</p>
                             )}

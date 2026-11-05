@@ -49,16 +49,19 @@ export async function GET() {
       Array.isArray(fastData.manualCharges) &&
       Array.isArray(fastData.cashRegisters) &&
       fastData.shop) {
-      const [uses, fixedBookings, courtesy] = await Promise.all([
+      const [uses, fixedBookings, courtesy, external] = await Promise.all([
         supabase.from('fixed_monthly_uses')
-          .select('fixed_booking_id,period_id,occurrence_date,completed_at')
+          .select('fixed_booking_id,period_id,occurrence_date,completed_at,commission_rate_snapshot,barber_earnings_snapshot')
           .eq('shop_id', SHOP_UUID),
         supabase.from('fixed_bookings').select('id,barber_id').eq('shop_id', SHOP_UUID),
         supabase.from('fixed_courtesy_uses')
           .select('fixed_booking_id,occurrence_date,completed_at,barber_id,service_name_snapshot')
           .eq('shop_id',SHOP_UUID),
+        supabase.from('fixed_monthly_periods')
+          .select('fixed_booking_id,period_month,paid_at,price_snapshot')
+          .eq('shop_id',SHOP_UUID).eq('payment_source','historical_off_drawer'),
       ]);
-      if (uses.error || fixedBookings.error || courtesy.error) {
+      if (uses.error || fixedBookings.error || courtesy.error || external.error) {
         return NextResponse.json({error:'No se pudieron cargar los cortes de abono.'},
           {status:503,headers:{'Cache-Control':'private, no-store'}});
       }
@@ -71,6 +74,9 @@ export async function GET() {
         ...fastData,
         manualCharges: await resolveManualServiceAnnotations(fastData.manualCharges, supabase),
         fixedMonthlyUses,
+        externalMonthlyReceipts:(external.data||[]).map(receipt=>({
+          ...receipt,barber_id:barberByFixed.get(receipt.fixed_booking_id)||null,
+        })),
         fixedCourtesyUses:courtesy.data||[],
       }, {
         headers: {
@@ -97,7 +103,7 @@ export async function GET() {
 
     const [
       appointments, services, barbers, expenses, tips, manualCharges, shop, cashRegisters,
-      fixedMonthlyUses, fixedBookings, fixedCourtesyUses,
+      fixedMonthlyUses, fixedBookings, fixedCourtesyUses, externalMonthlyReceipts,
     ] = await Promise.all([
       timed('appointments', supabase.from('appointments')
         .select('id,code,service_id,barber_id,date_string,time_slot,duration_minutes,status,created_at,client_name,client_phone,client_email,client_notes,price_snapshot,completed_at,commission_rate_snapshot,barber_earnings_snapshot,business_earnings_snapshot,completed_cash_register_id,services(name,price,duration_minutes),barbers(name)')
@@ -132,12 +138,15 @@ export async function GET() {
         .order('opened_at', {ascending: false})
         .limit(1)),
       timed('monthlyUses',supabase.from('fixed_monthly_uses')
-        .select('fixed_booking_id,period_id,occurrence_date,completed_at')
+        .select('fixed_booking_id,period_id,occurrence_date,completed_at,commission_rate_snapshot,barber_earnings_snapshot')
         .eq('shop_id',SHOP_UUID)),
       timed('fixedBookings',supabase.from('fixed_bookings').select('id,barber_id').eq('shop_id',SHOP_UUID)),
       timed('courtesy',supabase.from('fixed_courtesy_uses')
         .select('fixed_booking_id,occurrence_date,completed_at,barber_id,service_name_snapshot')
         .eq('shop_id',SHOP_UUID)),
+      timed('externalMonthlyReceipts',supabase.from('fixed_monthly_periods')
+        .select('fixed_booking_id,period_month,paid_at,price_snapshot')
+        .eq('shop_id',SHOP_UUID).eq('payment_source','historical_off_drawer')),
     ]);
 
     const totalDuration = performance.now() - startedAt;
@@ -159,6 +168,7 @@ export async function GET() {
       ['cortes de abono',fixedMonthlyUses.error],
       ['agenda fija',fixedBookings.error],
       ['cortesías',fixedCourtesyUses.error],
+      ['mensualidades previas',externalMonthlyReceipts.error],
     ] as const;
     const failed = errors.find(([, error]) => error);
     if (failed) {
@@ -182,6 +192,10 @@ export async function GET() {
             .find((fixed)=>fixed.id===use.fixed_booking_id)?.barber_id||null,
         })),
         fixedCourtesyUses:fixedCourtesyUses.data||[],
+        externalMonthlyReceipts:(externalMonthlyReceipts.data||[]).map(receipt=>({
+          ...receipt,barber_id:((fixedBookings.data||[]) as {id:string;barber_id:string}[])
+            .find(fixed=>fixed.id===receipt.fixed_booking_id)?.barber_id||null,
+        })),
         shop: shop.data,
         cashRegisters: cashRegisters.data || [],
       },

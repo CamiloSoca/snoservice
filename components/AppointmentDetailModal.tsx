@@ -223,7 +223,7 @@ export default function AppointmentDetailModal({
             <p className="text-sm font-semibold text-emerald-400">{courtesy
                ? 'Cortesía completada. Servicio realizado sin cobro ni comisión.'
                : appointment.fixedSubscription?.covered
-              ? 'Corte realizado y cubierto por el abono. El pago mensual ya figura una sola vez en caja.'
+              ? 'Corte realizado y cubierto por el abono. El abono mensual figura registrado una sola vez, sin cobrar este corte de nuevo.'
               : 'Este turno ya está completado y contabilizado.'}</p>
           )}
         </div>

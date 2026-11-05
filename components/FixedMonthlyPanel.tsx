@@ -3,7 +3,7 @@ import {useState} from 'react';
 
 export type MonthlyPeriod = {
   id:string;period_month:string;price_snapshot:number;included_cuts:number;
-  paid_at:string;payment_method:'cash'|'transfer';uses:string[];
+  paid_at:string;payment_method:'cash'|'transfer'|'unknown';payment_source:'live_drawer'|'historical_off_drawer';uses:string[];
 };
 export type MonthlyPlan = {
   fixed_booking_id:string;monthly_price:number;included_cuts:number;
@@ -36,7 +36,8 @@ export default function FixedMonthlyPanel({fixedBookingId,plan,month,onUpdated}:
       const result=await response.json().catch(()=>({}));
       if(!response.ok)throw new Error(result.error||'No se pudo completar la operación.');
       await onUpdated();
-      setNotice(body.action==='pay'?'Mensualidad registrada en caja.':'Configuración guardada.');
+      setNotice(body.action==='pay'?'Mensualidad registrada en caja.':
+        body.action==='record_paid'?'Mensualidad ya abonada, registrada sin entrada nueva de caja.':'Configuración guardada.');
       setPrice(null);
     }catch(e){setError(e instanceof Error?e.message:'Error inesperado.');}
     finally{setBusy(false);}
@@ -52,6 +53,14 @@ export default function FixedMonthlyPanel({fixedBookingId,plan,month,onUpdated}:
     if(!plan?.active||period||busy)return;
     if(!window.confirm(`¿Confirmás que recibiste ${money(plan.monthly_price)} por el abono de ${month.slice(0,7)} mediante ${payMethod==='cash'?'efectivo':'transferencia'}? Se registrará una sola vez en la caja.`))return;
     void send({action:'pay',month,paymentMethod:payMethod});
+  };
+  const recordPaid=()=>{
+    if(!plan?.active||period||busy)return;
+    if(!window.confirm(
+      '¿Confirmás que ya recibieron '+money(plan.monthly_price)+
+      ' por esta mensualidad? No se ingresará dinero en la caja de hoy. '+
+      'Este registro no se puede repetir ni borrar desde el panel.'))return;
+    void send({action:'record_paid',month,amount:Number(plan.monthly_price),acknowledge:true});
   };
   const loadHistory=async()=>{
     setShowHistory(v=>!v);if(showHistory)return;
@@ -76,7 +85,7 @@ export default function FixedMonthlyPanel({fixedBookingId,plan,month,onUpdated}:
           value={displayPrice} onChange={e=>setPrice(e.target.value)}
           className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 p-3 text-base text-white"/>
       </label>
-      <p className="text-xs text-zinc-400">4 cortes por mes · 1 por semana · Exclusivo del dueño.</p>
+      <p className="text-xs text-zinc-400">4 cortes por mes · 1 por semana. Si el barbero cobra comisión, se genera una parte por cada corte realizado.</p>
       <button type="button" disabled={busy} onClick={()=>configure(true)}
         className="w-full min-h-11 rounded-xl border border-emerald-500/50 p-3 text-sm font-bold text-emerald-300 disabled:opacity-50">
         {plan?.active?'Guardar importe / mantener activo':'Activar abono mensual'}
@@ -89,7 +98,9 @@ export default function FixedMonthlyPanel({fixedBookingId,plan,month,onUpdated}:
       {period?<div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 space-y-1">
         <p className="text-sm font-semibold text-emerald-200">Mensualidad pagada · {money(period.price_snapshot)}</p>
         <p className="text-xs text-zinc-200">Cortes realizados: {used} de {period.included_cuts} · Restantes: {remaining}</p>
-        <p className="text-xs text-zinc-400">{period.payment_method==='cash'?'Efectivo':'Transferencia'} · {period.paid_at.slice(0,10)}</p>
+        <p className="text-xs text-zinc-400">{period.payment_source==='historical_off_drawer'
+        ?'Pago anterior informado · sin movimiento de caja · registrado '+period.paid_at.slice(0,10)
+        :period.payment_method==='cash'?'Efectivo · '+period.paid_at.slice(0,10):'Transferencia · '+period.paid_at.slice(0,10)}</p>
       </div>:plan?.active?<div className="space-y-2 rounded-lg border border-amber-500/30 p-3">
         <p className="text-sm font-semibold text-amber-200">Pago del mes pendiente</p>
         <p className="text-xs text-zinc-400">Registrar solamente cuando el cliente ya haya pagado. Requiere caja abierta.</p>
@@ -102,6 +113,17 @@ export default function FixedMonthlyPanel({fixedBookingId,plan,month,onUpdated}:
           className="w-full min-h-11 rounded-xl bg-emerald-400 p-3 text-sm font-extrabold text-zinc-950 disabled:opacity-50">
           {busy?'Guardando…':`Registrar pago · ${money(plan.monthly_price)}`}
         </button>
+        <div className="border-t border-zinc-800 pt-3">
+          <p className="mb-2 text-[11px] leading-relaxed text-zinc-400">
+            ¿Ya se cobró antes, sin registrarlo en SNOSERVICE? Reconocelo
+            sin ingresar $ de nuevo al cajón. Verificá primero el historial para
+            evitar duplicados; el método original queda sin informar.
+          </p>
+          <button type="button" disabled={busy} onClick={recordPaid}
+            className="w-full min-h-11 rounded-xl border border-amber-500/50 px-3 py-2 text-xs font-bold text-amber-200 disabled:opacity-50">
+            Registrar pago ya realizado (sin mover caja)
+          </button>
+        </div>
       </div>:null}
       {plan&&<button type="button" onClick={()=>{void loadHistory();}} className="text-xs font-semibold text-emerald-300 underline">
         {showHistory?'Ocultar historial':'Ver historial de mensualidades'}
