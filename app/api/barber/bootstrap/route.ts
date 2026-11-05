@@ -109,6 +109,7 @@ export async function GET() {
     // Los consumos cuentan como servicios realizados, no como ingresos: la
     // mensualidad ya se contabiliza una sola vez en manual_charges.
     let fixedMonthlyUses: FixedMonthlyUseItem[] = [];
+    let externalMonthlyReceipts: Array<{fixed_booking_id:string;period_month:string;paid_at:string;price_snapshot:number|string;barber_id:string}> = [];
     {
       const fixedIds = await db.from('fixed_bookings').select('id')
         .eq('shop_id',SHOP_UUID).eq('barber_id',session.sub);
@@ -124,9 +125,19 @@ export async function GET() {
           return NextResponse.json({error:'No se pudieron cargar los cortes de abono.'},{status:503,headers});
         }
         fixedMonthlyUses=(uses.data||[]) as FixedMonthlyUseItem[];
+        const receipts=await db.from('fixed_monthly_periods')
+          .select('fixed_booking_id,period_month,paid_at,price_snapshot')
+          .eq('shop_id',SHOP_UUID).eq('payment_source','historical_off_drawer')
+          .in('fixed_booking_id',fixedIds.data.map(row=>row.id));
+        if(receipts.error)return NextResponse.json({error:'No se pudieron cargar las mensualidades previas.'},{status:503,headers});
+        externalMonthlyReceipts=(receipts.data||[]).map(row=>({...row,barber_id:session.sub}));
       }
     }
 
+    const commissionsResult=await db.from('barber_monthly_commissions')
+      .select('barber_id,fixed_booking_id,period_month,amount,earned_at')
+      .eq('shop_id',SHOP_UUID).eq('barber_id',session.sub);
+    if(commissionsResult.error)return NextResponse.json({error:'No se pudieron cargar comisiones de abonos.'},{status:503,headers});
     const courtesyResult=await db.from('fixed_courtesy_uses')
       .select('fixed_booking_id,occurrence_date,completed_at,barber_id,service_name_snapshot')
       .eq('shop_id',SHOP_UUID).eq('barber_id',session.sub);
@@ -188,6 +199,8 @@ export async function GET() {
         tips: (tips.data || []).map(mapEntry),
         manualCharges: (await resolveManualServiceAnnotations<any>(charges.data || [], db)).map(mapEntry),
         fixedMonthlyUses,
+        monthlyCommissions:commissionsResult.data||[],
+        externalMonthlyReceipts,
         fixedCourtesyUses:courtesyResult.data||[],
         cashOpen: cash.data?.length === 1,
         commissionRate: Number(activeBarber.commission_rate ?? 50),

@@ -534,6 +534,7 @@ export interface AdminDashboardSnapshot {
   manualCharges: ManualChargeItem[];
   fixedMonthlyUses: FixedMonthlyUseItem[];
   externalMonthlyReceipts: ExternalMonthlyReceiptItem[];
+  monthlyCommissions: MonthlyCommissionItem[];
   fixedCourtesyUses: FixedCourtesyUseItem[];
   config: ShopConfig;
   cashStatus: 'abierta' | 'cerrada';
@@ -548,6 +549,13 @@ export interface FixedCourtesyUseItem {
   service_name_snapshot: string;
 }
 
+export interface MonthlyCommissionItem {
+  barber_id: string;
+  fixed_booking_id: string;
+  period_month: string;
+  amount: number | string;
+  earned_at: string;
+}
 export interface ExternalMonthlyReceiptItem {
   fixed_booking_id: string;
   barber_id: string | null;
@@ -654,6 +662,7 @@ export async function getAdminDashboardSnapshot(): Promise<AdminDashboardSnapsho
   const manualCharges = (payload.manualCharges || []).map(mapFinancialEntry);
   const fixedMonthlyUses = (payload.fixedMonthlyUses || []) as FixedMonthlyUseItem[];
   const externalMonthlyReceipts = (payload.externalMonthlyReceipts || []) as ExternalMonthlyReceiptItem[];
+  const monthlyCommissions = (payload.monthlyCommissions || []) as MonthlyCommissionItem[];
   const fixedCourtesyUses = (payload.fixedCourtesyUses || []) as FixedCourtesyUseItem[];
 
   const shop = payload.shop;
@@ -683,6 +692,7 @@ export async function getAdminDashboardSnapshot(): Promise<AdminDashboardSnapsho
     manualCharges,
     fixedMonthlyUses,
     externalMonthlyReceipts,
+    monthlyCommissions,
     fixedCourtesyUses,
     config,
     cashStatus: cash?.status === 'abierta' ? 'abierta' : 'cerrada',
@@ -883,6 +893,8 @@ export async function unlockBarberPanelWithPin(barberId: string, pin: string) {
 
 export interface BarberDashboardSnapshot {
   appointments: AppointmentItem[];
+  monthlyCommissions: MonthlyCommissionItem[];
+  externalMonthlyReceipts: ExternalMonthlyReceiptItem[];
   tips: TipItem[];
   manualCharges: ManualChargeItem[];
   fixedMonthlyUses: FixedMonthlyUseItem[];
@@ -908,6 +920,8 @@ export async function getBarberDashboardSnapshot(): Promise<BarberDashboardSnaps
     tips: (response.tips || []) as TipItem[],
     manualCharges: (response.manualCharges || []) as ManualChargeItem[],
     fixedMonthlyUses: (response.fixedMonthlyUses || []) as FixedMonthlyUseItem[],
+    monthlyCommissions: (response.monthlyCommissions || []) as MonthlyCommissionItem[],
+    externalMonthlyReceipts: (response.externalMonthlyReceipts || []) as ExternalMonthlyReceiptItem[],
     fixedCourtesyUses: (response.fixedCourtesyUses || []) as FixedCourtesyUseItem[],
     cashOpen: response.cashOpen === true,
     commissionRate: Number(response.commissionRate ?? 50),

@@ -45,6 +45,7 @@ import {
   ManualChargeItem,
   FixedMonthlyUseItem,
   ExternalMonthlyReceiptItem,
+  MonthlyCommissionItem,
   FixedCourtesyUseItem,
   ShopConfig,
   DEFAULT_SHOP_CONFIG,
@@ -154,6 +155,7 @@ export default function AdminDashboard() {
   const [manualCharges, setManualCharges] = useState<ManualChargeItem[]>([]);
   const [fixedMonthlyUses, setFixedMonthlyUses] = useState<FixedMonthlyUseItem[]>([]);
   const [externalMonthlyReceipts,setExternalMonthlyReceipts]=useState<ExternalMonthlyReceiptItem[]>([]);
+  const [monthlyCommissions,setMonthlyCommissions]=useState<MonthlyCommissionItem[]>([]);
   const [fixedCourtesyUses,setFixedCourtesyUses]=useState<FixedCourtesyUseItem[]>([]);
   const [shopConfig, setShopConfig] = useState<ShopConfig>(DEFAULT_SHOP_CONFIG);
   const [savedBanner, setSavedBanner] = useState(false);
@@ -256,6 +258,7 @@ export default function AdminDashboard() {
         setManualCharges(snapshot.manualCharges);
         setFixedMonthlyUses(snapshot.fixedMonthlyUses);
         setExternalMonthlyReceipts(snapshot.externalMonthlyReceipts);
+        setMonthlyCommissions(snapshot.monthlyCommissions);
         setFixedCourtesyUses(snapshot.fixedCourtesyUses);
         setShopConfig(freshConfig);
 
@@ -299,6 +302,7 @@ export default function AdminDashboard() {
         setManualCharges(financial.manualCharges);
         setFixedMonthlyUses(financial.fixedMonthlyUses);
         setExternalMonthlyReceipts(financial.externalMonthlyReceipts);
+        setMonthlyCommissions(financial.monthlyCommissions);
         setFixedCourtesyUses(financial.fixedCourtesyUses);
         setCashStatus(financial.cashStatus);
         setLastClosedDate(financial.lastClosedDate);
@@ -356,6 +360,7 @@ export default function AdminDashboard() {
         setManualCharges(fresh.manualCharges);
         setFixedMonthlyUses(fresh.fixedMonthlyUses);
         setExternalMonthlyReceipts(fresh.externalMonthlyReceipts);
+        setMonthlyCommissions(fresh.monthlyCommissions);
         setFixedCourtesyUses(fresh.fixedCourtesyUses);
         setCashStatus(fresh.cashStatus);
       } catch {
@@ -923,6 +928,8 @@ const handleAddBarber = async () => {
     isWithinPeriod(`${use.occurrence_date}T12:00:00-03:00`,period,selectedMonth));
   const filteredExternalMonthlyReceipts=externalMonthlyReceipts.filter(receipt=>
     isWithinPeriod(receipt.paid_at,period,selectedMonth));
+  const filteredMonthlyCommissions=monthlyCommissions.filter(item=>
+    isWithinPeriod(item.earned_at,period,selectedMonth));
   const filteredCourtesyUses = fixedCourtesyUses.filter((use) =>
     isWithinPeriod(`${use.occurrence_date}T12:00:00-03:00`,period,selectedMonth));
 
@@ -1015,8 +1022,9 @@ const handleAddBarber = async () => {
     const categorizedCharges = barberCharges.filter(c => Boolean(c.serviceNameSnapshot));
     const barberMonthlyUses=filteredMonthlyUses.filter(use=>use.barber_id===barber.id);
     const monthlyUsesCount = barberMonthlyUses.length;
-    const monthlyCommission=barberMonthlyUses.reduce((sum,use)=>
-      sum+Number(use.barber_earnings_snapshot||0),0);
+    const monthlyCommission=filteredMonthlyCommissions
+      .filter(item=>item.barber_id===barber.id)
+      .reduce((sum,item)=>sum+Number(item.amount||0),0);
     const externalMonthlyTotal=filteredExternalMonthlyReceipts
       .filter(receipt=>receipt.barber_id===barber.id)
       .reduce((sum,receipt)=>sum+Number(receipt.price_snapshot||0),0);
@@ -2093,7 +2101,7 @@ const handleAddBarber = async () => {
                               <span className="tabular-nums">{money(item.externalMonthlyTotal)}</span>
                             </div>}
                             {item.monthlyCommission>0&&<div className="flex justify-between gap-2 text-emerald-300">
-                              <span>Comisión por cortes de abono realizados</span>
+                              <span>Comisión por mensualidades cobradas</span>
                               <span className="tabular-nums">+{money(item.monthlyCommission)}</span>
                             </div>}
                             {item.monthlyUsesCount > 0 && (
