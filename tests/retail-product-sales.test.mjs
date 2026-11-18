@@ -63,8 +63,8 @@ test('inventario privado y registros no están expuestos al navegador sin sesió
 });
 
 test('control visual separado en clientes, barbero y administración',()=>{
- assert.match(publicPage,/api\/retail\?scope=public/);
- assert.match(publicPage,/no cobra ni reserva productos/);
+ assert.match(publicPage,/getPublicRetailProducts/);
+ assert.match(publicPage,/No hay compra online/);
  assert.match(home,/href="\/ceras"/);
  assert.match(barber,/<RetailSalesPanel scope="barber"\/>/);
  assert.match(admin,/<RetailSalesPanel scope="admin" \/>/);

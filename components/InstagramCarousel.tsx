@@ -65,7 +65,7 @@ export default function InstagramCarousel({
         observer.disconnect();
         load();
       }
-    }, { rootMargin: '500px 0px' });
+    }, { rootMargin: '150px 0px' });
     observer.observe(section);
     return () => { observer.disconnect(); controller.abort(); };
   }, []);

@@ -110,7 +110,7 @@ export default function HomeClient({initialShop,featuredRetail}: {
             </div>
 
             <div className="flex items-center space-x-2 shrink-0">
-              <Link href="/ceras" className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/30 px-3 py-2.5 text-xs font-bold text-emerald-300">
+              <Link href="/ceras" prefetch={false} className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/30 px-3 py-2.5 text-xs font-bold text-emerald-300">
                 <ShoppingBag className="h-4 w-4"/>Ceras
               </Link>
               <Link
@@ -196,7 +196,7 @@ export default function HomeClient({initialShop,featuredRetail}: {
         </section>
 
         {featuredRetail&&<section aria-label="Ceras disponibles" className="mx-auto max-w-5xl px-4 pt-5">
-          <Link href="/ceras"
+          <Link href="/ceras" prefetch={false}
             className={['group flex min-h-28 items-center gap-3 overflow-hidden rounded-[24px] border px-3.5 py-3 transition-colors hover:border-emerald-400/70 sm:gap-5',
               isDark?'border-emerald-500/20 bg-[#141917]':'border-emerald-200 bg-white'].join(' ')}>
             <RetailProductPhoto

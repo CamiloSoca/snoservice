@@ -29,12 +29,16 @@ export function PublicShopProvider({children}: {children: React.ReactNode}) {
     };
 
     refreshIfNeeded();
-    const interval = window.setInterval(refreshIfNeeded, 10_000);
+    // La portada ya viene completa de SSR. No necesita hacer polling
+    // perpetuo del catálogo público; refrescar al volver a la pestaña alcanza.
+    // Los flujos operativos mantienen su intervalo de consulta independiente.
+    const activePanel=pathname.startsWith('/agendar')||pathname.startsWith('/barbero');
+    const interval=activePanel?window.setInterval(refreshIfNeeded, 30_000):null;
     window.addEventListener('focus', refreshIfNeeded);
     document.addEventListener('visibilitychange', refreshIfNeeded);
     return () => {
       stopped = true;
-      window.clearInterval(interval);
+      if(interval!==null)window.clearInterval(interval);
       window.removeEventListener('focus', refreshIfNeeded);
       document.removeEventListener('visibilitychange', refreshIfNeeded);
     };

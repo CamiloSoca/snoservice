@@ -36,7 +36,7 @@ export default function BottomNav() {
             <Link
               key={item.href}
               href={item.href}
-              prefetch={item.href !== '/admin'}
+              prefetch={item.href !== '/admin' && item.href !== '/ceras'}
               aria-current={isActive ? 'page' : undefined}
               className={`flex min-h-14 flex-col items-center justify-center gap-1.5 rounded-[18px] px-2 py-2 transition-[transform,background-color,border-color] touch-manipulation focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400 ${styles}`}
             >
