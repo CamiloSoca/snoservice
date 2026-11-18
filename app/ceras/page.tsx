@@ -1,86 +1,76 @@
-'use client';
-
-import {useEffect,useState} from 'react';
+import {Suspense} from 'react';
 import Link from 'next/link';
-import {ArrowLeft,Package,ShoppingBag,Store,Wallet} from 'lucide-react';
-import Image from 'next/image';
-import {PublicShopGate} from '@/components/PublicShopProvider';
-import type {PublicShopData} from '@/lib/public-shop-data';
+import {ArrowLeft,ShoppingBag,Store,Wallet,ArrowRight} from 'lucide-react';
+import {InitialShopSkeleton} from '@/components/InitialShopState';
+import RetailProductPhoto from '@/components/RetailProductPhoto';
+import {getServerPublicShopData} from '@/lib/server-public-shop';
+import {getPublicRetailProducts} from '@/lib/server-public-retail';
 
-type PublicProduct={id:string;slug:string;name:string;description:string;price:number;available:boolean;imageUrl:string|null};
-const money=(v:number)=>'$'+v.toLocaleString('es-UY');
+const money=(n:number)=>'$'+n.toLocaleString('es-UY');
 
-function CerasCatalogue({shop}:{shop:PublicShopData}) {
-  const [products,setProducts]=useState<PublicProduct[]>([]);
-  const [loading,setLoading]=useState(true);
-  const [error,setError]=useState('');
-  useEffect(()=>{
-    let active=true;
-    fetch('/api/retail?scope=public',{cache:'no-store'})
-      .then(async r=>{const body=await r.json();if(!r.ok)throw new Error(body.error||'No se pudo cargar el catálogo.');return body;})
-      .then(body=>{if(active)setProducts(body.products||[]);})
-      .catch(err=>{if(active)setError(err.message||'No se pudo cargar el catálogo.');})
-      .finally(()=>{if(active)setLoading(false);});
-    return()=>{active=false;};
-  },[]);
-  return <main className="min-h-screen bg-zinc-950 px-4 pb-32 pt-6 text-zinc-100">
-    <div className="mx-auto max-w-3xl space-y-6">
+async function CerasContent(){
+  const [shop,products]=await Promise.all([
+    getServerPublicShopData(),
+    getPublicRetailProducts().catch(()=>[]),
+  ]);
+
+  return <main className="min-h-screen bg-[#090b0a] px-4 pb-28 pt-[max(1.5rem,env(safe-area-inset-top))] text-zinc-100">
+    <div className="mx-auto max-w-4xl space-y-5">
       <div className="flex items-center justify-between gap-3">
-        <Link href="/" className="inline-flex items-center gap-2 rounded-xl border border-zinc-800 px-3 py-2 text-sm font-semibold">
+        <Link href="/" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-zinc-800 px-3 py-2 text-sm font-semibold hover:bg-zinc-900">
           <ArrowLeft className="h-4 w-4"/>Inicio</Link>
-        <span className="text-sm font-black">{shop.shopConfig.name}</span>
+        <span className="truncate text-sm font-black">{shop.shopConfig.name}</span>
       </div>
-      <header className="rounded-3xl border border-emerald-500/20 bg-zinc-900 p-6">
-        <p className="text-xs font-bold uppercase tracking-wider text-emerald-400">Productos para el pelo</p>
-        <h1 className="mt-2 text-3xl font-black">Ceras disponibles</h1>
-        <p className="mt-2 max-w-xl text-sm text-zinc-300">Conocé las ceras que podés conseguir en la barbería.
-          El pago se realiza en el local, en efectivo o por transferencia. No hay compra online.</p>
+      <header className="relative overflow-hidden rounded-[26px] border border-emerald-500/20 bg-[#141a17] px-5 py-6 sm:px-7">
+        <div aria-hidden="true" className="pointer-events-none absolute -right-10 -top-20 h-52 w-52 rounded-full bg-emerald-400/[0.06] blur-3xl"/>
+        <p className="relative text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-400">13Cut · Productos para el pelo</p>
+        <h1 className="relative mt-2 text-2xl font-black tracking-tight sm:text-3xl">Ceras y productos</h1>
+        <p className="relative mt-2 max-w-xl text-sm leading-relaxed text-zinc-400">
+          Productos seleccionados para cuidar tu estilo. Consultalos en la barbería y pagá en efectivo o por transferencia.
+        </p>
       </header>
-      {loading&&<p className="text-sm text-zinc-400">Consultando productos...</p>}
-      {error&&<p role="alert" className="rounded-xl border border-rose-700 p-4 text-sm text-rose-200">{error}</p>}
-      {products.length===0&&!loading&&!error&&<p className="text-sm text-zinc-400">Próximamente tendremos productos disponibles.</p>}
-      <div className="grid gap-4 sm:grid-cols-2">
-        {products.map(product=><article key={product.id} className="space-y-4 rounded-3xl border border-zinc-800 bg-zinc-900 p-5">
-          <div className="relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-2xl bg-zinc-950">
-            {product.imageUrl
-              ? <Image src={product.imageUrl} alt={'Foto de '+product.name} width={500} height={500}
-                  sizes="(max-width: 640px) 90vw, 350px" className="h-full w-full object-contain"
-                  priority={false}/>
-              : <Package className="h-12 w-12 text-emerald-400" aria-hidden="true"/>}
+      {products.length===0&&<p className="rounded-2xl border border-zinc-800 p-5 text-sm text-zinc-400">
+        Por el momento no hay productos para mostrar. Consultá en el local.
+      </p>}
+      <div className="grid gap-3 sm:grid-cols-2">
+        {products.map(product=><article key={product.id}
+          className="flex min-w-0 flex-col gap-4 rounded-[26px] border border-zinc-800 bg-[#161a19] p-4 shadow-[0_14px_38px_rgba(0,0,0,0.15)] sm:p-5">
+          <div className="flex items-center gap-4 sm:gap-5">
+            <RetailProductPhoto src={product.imageUrl} slug={product.slug} name={product.name} size="catalog" priority={false}/>
+            <div className="min-w-0 flex-1">
+              <span className="text-[10px] font-bold uppercase tracking-[0.13em] text-emerald-400">Cuidado del cabello</span>
+              <h2 className="mt-1 text-base font-extrabold leading-snug sm:text-lg">{product.name}</h2>
+              <p className="mt-3 text-2xl font-black text-emerald-400">{money(product.price)}</p>
+              <span className="mt-1 block text-[11px] text-zinc-500">Consultá disponibilidad</span>
+            </div>
           </div>
-          <div>
-            <h2 className="text-lg font-extrabold">{product.name}</h2>
-            <p className="mt-2 text-sm text-zinc-400">{product.description}</p>
-          </div>
-          <div className="flex items-center justify-between">
-            <strong className="text-3xl text-emerald-400">{money(product.price)}</strong>
-            <span className="text-xs text-zinc-400">{product.available?'Consultá en el local':'Consultar disponibilidad'}</span>
-          </div>
+          {product.description&&<p className="border-t border-white/[0.06] pt-3 text-xs leading-relaxed text-zinc-400 sm:text-sm">
+            {product.description}
+          </p>}
         </article>)}
       </div>
       <section className="grid gap-3 sm:grid-cols-2">
-        <div className="rounded-2xl border border-zinc-800 p-4">
-          <Store className="mb-2 h-5 w-5 text-emerald-400"/>
-          <h3 className="font-bold">Compra en la barbería</h3>
-          <p className="mt-1 text-sm text-zinc-400">{shop.shopConfig.address||'Consultá en el local'}.
-            Preguntale a cualquiera de nuestros barberos.</p>
+        <div className="flex gap-3 rounded-2xl border border-zinc-800 bg-[#121615] p-4">
+          <Store className="mt-0.5 h-5 w-5 shrink-0 text-emerald-400"/>
+          <div><h3 className="text-sm font-bold">Retirá en la barbería</h3>
+          <p className="mt-1 text-xs leading-relaxed text-zinc-400">{shop.shopConfig.address||'Consultá en el local'}.
+            Preguntale a nuestros barberos.</p></div>
         </div>
-        <div className="rounded-2xl border border-zinc-800 p-4">
-          <Wallet className="mb-2 h-5 w-5 text-emerald-400"/>
-          <h3 className="font-bold">Pago al retirar</h3>
-          <p className="mt-1 text-sm text-zinc-400">Aceptamos efectivo o transferencia en el local.
-            Esta web no cobra ni reserva productos.</p>
+        <div className="flex gap-3 rounded-2xl border border-zinc-800 bg-[#121615] p-4">
+          <Wallet className="mt-0.5 h-5 w-5 shrink-0 text-emerald-400"/>
+          <div><h3 className="text-sm font-bold">Pagá en el local</h3>
+          <p className="mt-1 text-xs leading-relaxed text-zinc-400">Aceptamos efectivo o transferencia. No hay compra online.</p></div>
         </div>
       </section>
-      <Link href="/agendar" className="inline-flex items-center gap-2 text-sm font-bold text-emerald-300">
-        <ShoppingBag className="h-4 w-4"/>¿Querés reservar un corte? Ir a la agenda
+      <Link href="/agendar" className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-emerald-500/25 px-4 py-2 text-sm font-bold text-emerald-300">
+        <ShoppingBag className="h-4 w-4"/>Reservar un corte <ArrowRight className="h-4 w-4"/>
       </Link>
     </div>
   </main>;
 }
 
-export default function CerasPage() {
-  return <PublicShopGate variant="home" label="Cargando productos...">
-    {shop=><CerasCatalogue shop={shop}/>}
-  </PublicShopGate>;
+export default function CerasPage(){
+  return <Suspense fallback={<InitialShopSkeleton variant="home" label="Cargando productos..."/>}>
+    <CerasContent/>
+  </Suspense>;
 }

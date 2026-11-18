@@ -18,7 +18,7 @@ test('la pomada original conserva su imagen individual en la base',()=>{
 test('catalogo y panel usan imagen dinamica del producto',()=>{
  assert.match(api,/imageUrl:imageUrl\(p\.image_path\)/);
  assert.match(publicPage,/product\.imageUrl/);
- assert.match(publicPage,/<Image src=\{product\.imageUrl\}/);
+ assert.match(publicPage,/<RetailProductPhoto src=\{product\.imageUrl\}/);
  assert.match(admin,/product\.imageUrl/);
  assert.match(admin,/<Image src=\{product\.imageUrl\}/);
  assert.match(resolver,/getPublicUrl\(objectPath\)/);
