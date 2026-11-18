@@ -36,7 +36,7 @@ test('no se suma comisión del barbero por vender productos',()=>{
  assert.match(db,/p_payment_method,0/);
  assert.doesNotMatch(db,/INSERT INTO public.manual_charges/);
  assert.doesNotMatch(db,/UPDATE public.barber_payouts/);
- assert.match(sales,/No genera comisión para los barberos/);
+ assert.doesNotMatch(sales,/La venta es 100% de Nahuel|No genera comisión para los barberos/);
 });
 
 test('caja incorpora venta de producto en efectivo, transferencia e informe de cierre',()=>{
