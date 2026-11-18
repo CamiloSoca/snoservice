@@ -41,7 +41,7 @@ export async function GET(request:Request) {
     const identity=await seller(scope);
     if(!identity)return NextResponse.json({error:'Sesión no autorizada.'},{status:401,headers});
     let history=db.from('retail_sales')
-      .select('id,product_id,barber_id,actor_role,quantity,unit_price,amount,payment_method,sold_at,retail_products(name)')
+      .select('id,product_id,barber_id,actor_role,quantity,unit_price,amount,payment_method,sold_at,retail_products(name),barbers(name)')
       .eq('shop_id',SHOP_UUID).order('sold_at',{ascending:false}).limit(scope==='admin'?100:40);
     if(identity.role==='barber')history=history.eq('barber_id',identity.barberId);
     const [products,sales,summary,adjustments]=await Promise.all([

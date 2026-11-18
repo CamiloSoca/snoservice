@@ -4,7 +4,7 @@
 export type NavigationArea = 'public' | 'admin' | 'staff' | 'none';
 
 export function navigationArea(pathname: string): NavigationArea {
-  if (pathname === '/') return 'public';
+  if (pathname === '/' || pathname === '/ceras') return 'public';
   if (pathname === '/admin' || pathname.startsWith('/admin/')) return 'admin';
   if (pathname === '/barbero' || pathname.startsWith('/barbero/')) return 'staff';
   return 'none';
@@ -15,6 +15,7 @@ export function bottomNavigationItems(pathname: string): Array<{href: string; la
   if (area === 'public') return [
     {href: '/', label: 'Inicio'},
     {href: '/agendar', label: 'Reservar'},
+    {href: '/ceras', label: 'Ceras'},
   ];
   if (area === 'admin') return [
     {href: '/admin', label: 'Administración'},

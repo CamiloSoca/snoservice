@@ -13,6 +13,7 @@ import {
   Moon,
   Phone,
   ArrowRight,
+  ShoppingBag,
 } from 'lucide-react';
 import {
   DEFAULT_SHOP_CONFIG,
@@ -101,6 +102,9 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
             </div>
 
             <div className="flex items-center space-x-2 shrink-0">
+              <Link href="/ceras" className="hidden sm:inline-flex items-center gap-1.5 rounded-xl border border-emerald-500/30 px-3 py-2.5 text-xs font-bold text-emerald-300">
+                <ShoppingBag className="h-4 w-4"/>Ceras
+              </Link>
               <Link
                 href="/agendar"
                 prefetch={true}
@@ -181,6 +185,19 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
               </Link>
             </div>
           </div>
+        </section>
+
+        <section aria-label="Ceras disponibles" className="mx-auto max-w-5xl px-4 pt-5">
+          <Link href="/ceras"
+            className="flex items-center justify-between gap-3 rounded-2xl border border-emerald-500/20 bg-zinc-900/90 p-4 transition-colors hover:border-emerald-400">
+            <span className="flex items-center gap-3">
+              <ShoppingBag className="h-6 w-6 shrink-0 text-emerald-400"/>
+              <span><strong className="block text-sm text-white">Ceras para el pelo</strong>
+                <span className="text-xs text-zinc-400">Pomada Matte 60g · $350 · Consultá disponibilidad</span>
+              </span>
+            </span>
+            <ArrowRight className="h-5 w-5 shrink-0 text-emerald-400"/>
+          </Link>
         </section>
 
         {/* EQUIPO: tarjetas breves, foto real o inicial */}

@@ -64,7 +64,7 @@ test('trabajos de la cuenta profesional antes del equipo y fotos de barberos opc
 });
 test('barra inferior del cliente ya no muestra accesos internos', async () => {
   const { bottomNavigationItems } = await import('../lib/site-navigation.ts');
-  assert.deepEqual(bottomNavigationItems('/').map(item => item.href), ['/', '/agendar']);
+  assert.deepEqual(bottomNavigationItems('/').map(item => item.href), ['/', '/agendar', '/ceras']);
   assert.deepEqual(bottomNavigationItems('/admin').map(item => item.href), ['/admin', '/barbero']);
   assert.deepEqual(bottomNavigationItems('/barbero'), []);
   assert.match(nav, /bottomNavigationItems\(pathname\)/);

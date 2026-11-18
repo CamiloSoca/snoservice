@@ -16,6 +16,7 @@ import {
   Trash2,
   BarChart3,
   ChevronDown,
+  ShoppingBag,
 } from 'lucide-react';
 import {
   AppointmentItem,
@@ -43,6 +44,7 @@ import type { PublicShopData } from '@/lib/public-shop-data';
 import { splitBusinessRevenue } from '@/lib/financial-allocations';
 import AgendaCalendar from '@/components/AgendaCalendar';
 import FinanceLedgerCard from '@/components/FinanceLedgerCard';
+import RetailSalesPanel from '@/components/RetailSalesPanel';
 import type {OnSitePaymentMethod} from '@/lib/payment-method';
 import {customerWhatsAppLink} from '@/lib/customer-contact';
 import {useAgendaAutoSync} from '@/hooks/useAgendaAutoSync';
@@ -678,6 +680,17 @@ function BarberPortalContent({initialShop}: {initialShop: PublicShopData}) {
               </summary>
               <div className="border-t border-zinc-800 p-3 sm:p-4">
                 <FinanceLedgerCard mode="barber" />
+              </div>
+            </details>
+
+            <details className="group/retail overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/90 open:border-zinc-700">
+              <summary className="flex min-h-16 cursor-pointer list-none items-center gap-3 px-4 py-3 text-sm font-bold hover:bg-zinc-800/60">
+                <ShoppingBag className="h-5 w-5 text-emerald-400"/>
+                <span className="flex-1">Vender cera · stock y cobro</span>
+                <ChevronDown className="h-4 w-4 text-zinc-400 transition-transform group-open/retail:rotate-180"/>
+              </summary>
+              <div className="border-t border-zinc-800 p-3">
+                <RetailSalesPanel scope="barber"/>
               </div>
             </details>
 

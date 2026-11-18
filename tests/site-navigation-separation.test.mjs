@@ -13,12 +13,14 @@ const barberPage=read('app/barbero/page.tsx');
 const middleware=read('middleware.ts');
 const barberApi=read('app/api/barber/route.ts');
 
-test('cliente: sólo Inicio y Reservar en la navegación pública',()=>{
+test('cliente: Inicio, Reservar y Ceras sin accesos privados',()=>{
   assert.equal(navigationArea('/'),'public');
   assert.deepEqual(bottomNavigationItems('/'),[
     {href:'/',label:'Inicio'},
     {href:'/agendar',label:'Reservar'},
+    {href:'/ceras',label:'Ceras'},
   ]);
+  assert.deepEqual(bottomNavigationItems('/ceras'),bottomNavigationItems('/'));
   assert.equal(bottomNavigationItems('/').some(link=>['/admin','/barbero','/login'].includes(link.href)),false);
   assert.equal(home.includes('href="/admin"'),false);
   assert.equal(home.includes('href="/barbero"'),false);

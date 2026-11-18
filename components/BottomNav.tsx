@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, CalendarCheck, UserCheck, ShieldCheck } from 'lucide-react';
+import { Home, CalendarCheck, UserCheck, ShieldCheck, ShoppingBag } from 'lucide-react';
 import { bottomNavigationItems, navigationArea } from '@/lib/site-navigation';
 
 export default function BottomNav() {
@@ -19,13 +19,13 @@ export default function BottomNav() {
       aria-label={area === 'admin' ? 'Navegación de administración' : 'Navegación de clientes'}
       className="fixed bottom-0 left-0 right-0 z-50 border-t border-white/10 bg-[#0a0d0b]/95 px-3 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] shadow-[0_-12px_38px_rgba(0,0,0,0.18)] backdrop-blur-md sm:hidden"
     >
-      <div className="mx-auto grid max-w-md grid-cols-2 gap-2">
+      <div className={"mx-auto grid max-w-md gap-2 "+(items.length===3?"grid-cols-3":"grid-cols-2")}>
         {items.map((item) => {
           const isActive = pathname === item.href;
           const isBooking = item.href === '/agendar';
           const Icon = item.href === '/' ? Home :
             item.href === '/agendar' ? CalendarCheck :
-            item.href === '/admin' ? ShieldCheck : UserCheck;
+            item.href === '/admin' ? ShieldCheck : item.href === '/ceras' ? ShoppingBag : UserCheck;
           const styles = isBooking
             ? 'bg-white text-zinc-950 font-extrabold shadow-[0_4px_18px_rgba(255,255,255,0.08)] active:scale-[0.98]'
             : isActive

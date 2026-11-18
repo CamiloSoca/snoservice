@@ -7,12 +7,12 @@ const start = source.indexOf('<nav aria-label="Secciones de administración"');
 const end = source.indexOf('</nav>',start);
 const nav = source.slice(start,end + 6);
 
-test('las seis secciones del panel admin permanecen visibles en móvil', () => {
+test('las siete secciones del panel admin permanecen visibles en móvil', () => {
   assert.ok(start >= 0 && end > start);
   assert.match(nav,/grid grid-cols-3/);
-  assert.match(nav,/sm:grid-cols-6/);
+  assert.match(nav,/sm:grid-cols-7/);
   assert.doesNotMatch(nav,/overflow-x-auto|overscroll-x-contain/);
-  for (const label of ['Inicio','Agenda','Caja','Informes','Equipo','Configuración']) {
+  for (const label of ['Inicio','Agenda','Caja','Ceras','Informes','Equipo','Configuración']) {
     assert.match(nav, new RegExp("label:'" + label + "'"));
   }
 });

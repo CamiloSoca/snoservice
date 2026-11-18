@@ -33,6 +33,7 @@ import {
   Lock,
   Coins,
   BarChart3,
+  ShoppingBag,
   ChevronDown,
 } from 'lucide-react';
 import {
@@ -83,6 +84,7 @@ import {normalizeHours, type WeeklyHours} from '@/lib/weekly-hours';
 import CashDrawerCard from '@/components/CashDrawerCard';
 import CashCloseDialog from '@/components/CashCloseDialog';
 import FinanceLedgerCard from '@/components/FinanceLedgerCard';
+import RetailSalesPanel from '@/components/RetailSalesPanel';
 import {getSaturdaySettlementWeek, isWithinSaturdaySettlementWeek} from '@/lib/saturday-settlement-week';
 import InstagramConnection from '@/components/admin/InstagramConnection';
 import type {OnSitePaymentMethod} from '@/lib/payment-method';
@@ -144,7 +146,7 @@ function isWithinPeriod(
 export default function AdminDashboard() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<
-    'inicio' | 'caja' | 'facturacion' | 'agenda' | 'turnos' | 'fijos' | 'barberos' | 'servicios' | 'marca' | 'configuracion'
+    'inicio' | 'caja' | 'facturacion' | 'productos' | 'agenda' | 'turnos' | 'fijos' | 'barberos' | 'servicios' | 'marca' | 'configuracion'
   >('inicio');
 
   const [appointments, setAppointments] = useState<AppointmentItem[]>([]);
@@ -1226,11 +1228,12 @@ const handleAddBarber = async () => {
           )}
 
           {/* SNOSERVICE_PRESET_V1 */}
-          <nav aria-label="Secciones de administración" className="grid grid-cols-3 gap-1.5 rounded-2xl border border-zinc-800 bg-zinc-900/90 p-1.5 sm:grid-cols-6 sm:gap-2 sm:p-2">
+          <nav aria-label="Secciones de administración" className="grid grid-cols-3 gap-1.5 rounded-2xl border border-zinc-800 bg-zinc-900/90 p-1.5 sm:grid-cols-7 sm:gap-2 sm:p-2">
             {([
               {id:'inicio',label:'Inicio',icon:BarChart3},
               {id:'agenda',label:'Agenda',icon:CalendarIcon},
               {id:'caja',label:'Caja',icon:Wallet},
+              {id:'productos',label:'Ceras',icon:ShoppingBag},
               {id:'facturacion',label:'Informes',icon:TrendingUp},
               {id:'barberos',label:'Equipo',icon:Users},
               {id:'configuracion',label:'Configuración',icon:Settings},
@@ -1262,6 +1265,7 @@ const handleAddBarber = async () => {
             <button type="button" onClick={() => setActiveTab('marca')} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6 text-left hover:border-emerald-400"><Settings className="mb-3 h-7 w-7 text-emerald-400"/><strong>Datos de la barbería</strong><p className="mt-2 text-xs text-zinc-400">Horarios, contacto y marca.</p></button>
             <InstagramConnection />
           </div>}
+          {activeTab==='productos' && <RetailSalesPanel scope="admin" />}
           {activeTab==='inicio' && <div className="space-y-5">
             <div><span className="text-xs font-bold uppercase tracking-widest text-emerald-400">Control del negocio</span><h2 className="mt-1 text-2xl font-extrabold">Resumen de {shopConfig.name}</h2><p className="mt-1 text-xs text-zinc-400">Resumen {period==='hoy'?'de hoy':period==='semana'?'de la semana':'del mes seleccionado'}. El fondo común no es el efectivo de caja.</p>
               <div className="mt-3 flex flex-wrap gap-2">
@@ -1281,6 +1285,7 @@ const handleAddBarber = async () => {
             <div className="grid gap-3 lg:grid-cols-2"><div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5"><h3 className="mb-4 font-bold">Accesos rápidos</h3><div className="flex flex-col gap-2">
               <button type="button" onClick={() => setActiveTab('agenda')} className="rounded-xl border border-zinc-700 p-3 text-left text-sm hover:bg-zinc-800">📅 Agenda y clientes →</button>
               <button type="button" onClick={() => setActiveTab('caja')} className="rounded-xl border border-zinc-700 p-3 text-left text-sm hover:bg-zinc-800">💳 Caja y movimientos →</button>
+              <button type="button" onClick={() => setActiveTab('productos')} className="rounded-xl border border-zinc-700 p-3 text-left text-sm hover:bg-zinc-800">Ceras · Stock y ventas →</button>
               <button type="button" onClick={() => setActiveTab('facturacion')} className="rounded-xl border border-zinc-700 p-3 text-left text-sm hover:bg-zinc-800">📊 Ganancias por barbero →</button>
             </div></div><div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5"><h3 className="mb-3 font-bold">Caja actual</h3><span className={'rounded-full px-3 py-1 text-xs font-bold '+(cashStatus==='abierta'?'bg-emerald-500/20 text-emerald-300':'bg-rose-500/20 text-rose-300')}>{cashStatus}</span><p className="mt-4 text-sm text-zinc-400">{totalServicesPerformed} trabajos registrados en el período consultado.</p><p className="mt-2 text-xs text-zinc-500">Las ganancias del negocio no equivalen al efectivo contado ni a retiros de propietarios.</p><button type="button" onClick={() => setActiveTab('caja')} className="mt-5 w-full rounded-xl bg-emerald-400 p-3 text-xs font-bold text-zinc-950">Ir a caja →</button></div></div>
           </div>}
