@@ -7,8 +7,20 @@ import Image from 'next/image';
 type Product={id:string;slug:string;name:string;description:string;price:number;stock_quantity:number;active:boolean;image_path:string;imageUrl:string|null};
 type Sale={id:string;barber_id:string|null;actor_role:'barber'|'admin';quantity:number;unit_price:number|string;amount:number|string;payment_method:'cash'|'transfer';sold_at:string;retail_products?:{name:string}|null;barbers?:{name:string}|null};
 type Adjustment={id:string;product_id:string;previous_stock:number;new_stock:number;note:string;created_at:string};
-type Summary={unitsTotal:number|string;amountTotal:number|string;cashTotal:number|string;transferTotal:number|string;unitsThisMonth:number|string;amountThisMonth:number|string;cashThisMonth:number|string;transferThisMonth:number|string};
-type Snapshot={products:Product[];sales:Sale[];summary:Summary;adjustments:Adjustment[]};
+type Summary={
+  unitsTotal:number|string;unitsThisMonth:number|string;
+  amountTotal?:number|string;cashTotal?:number|string;transferTotal?:number|string;
+  amountThisMonth?:number|string;cashThisMonth?:number|string;transferThisMonth?:number|string;
+};
+type SellerStats={
+  barberId:string|null;name:string;isAdmin:boolean;
+  saleCountTotal:number;unitsTotal:number;amountTotal:number|string;
+  saleCountMonth:number;unitsMonth:number;amountMonth:number|string;
+};
+type Snapshot={
+  products:Product[];sales:Sale[];summary:Summary;
+  adjustments?:Adjustment[];sellerBreakdown?:SellerStats[];
+};
 type Attempt={fingerprint:string;id:string};
 const money=(v:number|string)=>'$'+Number(v||0).toLocaleString('es-UY',{maximumFractionDigits:2});
 
@@ -80,7 +92,7 @@ export default function RetailSalesPanel({scope}:{scope:'barber'|'admin'}) {
       });
       saleAttempt.current=null;
       setFeedback(result.sale?.repeated?'La venta ya estaba guardada. No se duplicó.':
-        'Venta registrada. El stock se descontó y el ingreso quedó para Nahuel, sin comisión.');
+        'Venta registrada correctamente. Stock actualizado.');
       setQuantity(1);
       try {await refresh();}
       catch {setFeedback('Venta guardada correctamente, pero el historial no pudo actualizarse. Usá Actualizar antes de registrar otra.');}
@@ -158,7 +170,7 @@ export default function RetailSalesPanel({scope}:{scope:'barber'|'admin'}) {
           <h2 className="flex items-center gap-2 text-lg font-black">
             <ShoppingBag className="h-5 w-5 text-emerald-400"/>Ceras · Ventas
           </h2>
-          <p className="text-xs text-zinc-400">La venta es 100% de Nahuel. No genera comisión para los barberos.</p>
+
         </div>
         <button type="button" onClick={()=>{setError('');void refresh().catch(err=>setError(err.message));}}
           className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 px-3 py-2 text-xs font-bold text-zinc-200">
@@ -170,19 +182,57 @@ export default function RetailSalesPanel({scope}:{scope:'barber'|'admin'}) {
       {feedback&&<p role="status" className="flex items-center gap-2 rounded-xl border border-emerald-800 bg-emerald-950/30 p-3 text-sm text-emerald-200">
         <CheckCircle2 className="h-4 w-4 shrink-0"/>{feedback}</p>}
       {data&&<>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {([
-            ['Ventas este mes',String(summary?.unitsThisMonth??0)+' un.'],
-            ['Ingresos este mes',money(summary?.amountThisMonth??0)],
-            ['En efectivo',money(summary?.cashThisMonth??0)],
-            ['Por transferencia',money(summary?.transferThisMonth??0)],
-          ] as const).map(([label,value])=>(
-            <div key={label} className="rounded-xl border border-zinc-800 bg-zinc-950 p-3">
-              <p className="text-[11px] text-zinc-400">{label}</p>
-              <p className="mt-1 text-lg font-extrabold text-emerald-300">{value}</p>
+        {scope==='barber'?(
+          <div className="grid grid-cols-2 gap-2" aria-label="Mis ventas de ceras">
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3">
+              <p className="text-[11px] text-zinc-400">Mis ceras vendidas este mes</p>
+              <p className="mt-1 text-xl font-extrabold text-emerald-300">{Number(summary?.unitsThisMonth??0)} un.</p>
             </div>
-          ))}
-        </div>
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3">
+              <p className="text-[11px] text-zinc-400">Mis ceras vendidas en total</p>
+              <p className="mt-1 text-xl font-extrabold text-emerald-300">{Number(summary?.unitsTotal??0)} un.</p>
+            </div>
+          </div>
+        ):(
+          <>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {([
+                ['Unidades este mes',String(summary?.unitsThisMonth??0)+' un.'],
+                ['Ingresos este mes',money(summary?.amountThisMonth??0)],
+                ['En efectivo',money(summary?.cashThisMonth??0)],
+                ['Por transferencia',money(summary?.transferThisMonth??0)],
+              ] as const).map(([label,value])=>(
+                <div key={label} className="rounded-xl border border-zinc-800 bg-zinc-950 p-3">
+                  <p className="text-[11px] text-zinc-400">{label}</p>
+                  <p className="mt-1 text-lg font-extrabold text-emerald-300">{value}</p>
+                </div>
+              ))}
+            </div>
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3 sm:p-4"
+              aria-label="Ceras vendidas por barbero">
+              <h3 className="text-sm font-bold">Ceras vendidas por barbero</h3>
+              <p className="mt-1 text-xs text-zinc-400">Unidades vendidas, no cantidad de tickets.</p>
+              <div className="mt-3 divide-y divide-zinc-800">
+                {(data.sellerBreakdown||[]).map(seller=>(
+                  <div key={seller.barberId||'administracion'} className="flex items-center justify-between gap-3 py-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold">{seller.name}</p>
+                      <p className="text-[11px] text-zinc-400">
+                        {seller.saleCountMonth} ventas este mes · {seller.unitsTotal} unidades históricas
+                      </p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="text-sm font-extrabold text-emerald-300">{seller.unitsMonth} un. este mes</p>
+                      <p className="text-[11px] text-zinc-400">{money(seller.amountMonth)} cobrados</p>
+                    </div>
+                  </div>
+                ))}
+                {!(data.sellerBreakdown||[]).length&&
+                  <p className="py-3 text-xs text-zinc-400">Sin vendedores registrados.</p>}
+              </div>
+            </div>
+          </>
+        )}
         {data.products.length===0?<p className="text-sm text-zinc-400">Todavía no hay ceras configuradas.</p>:<>
           <label className="block text-xs font-semibold text-zinc-300">Producto
             <select value={productId} onChange={e=>setProductId(e.target.value)}
@@ -278,14 +328,14 @@ export default function RetailSalesPanel({scope}:{scope:'barber'|'admin'}) {
           </form>}
         </>}
         <div>
-          <h3 className="mb-2 text-sm font-bold">Últimas ventas registradas</h3>
+          <h3 className="mb-2 text-sm font-bold">{scope==='admin'?'Últimas ventas registradas':'Mis últimas ventas'}</h3>
           {data.sales.length===0?<p className="text-xs text-zinc-400">Todavía no hay ventas de ceras.</p>:
             <div className="space-y-2">
               {data.sales.map(s=><div key={s.id} className="flex justify-between gap-2 rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-xs">
                 <div className="space-y-1">
                   <p className="font-semibold">{s.quantity} × {s.retail_products?.name||'Cera'}</p>
                   <p className="text-zinc-400">{new Date(s.sold_at).toLocaleString('es-UY',{timeZone:'America/Montevideo'})} ·
-                    {' '}{s.actor_role==='admin'?'Administración':s.barbers?.name||'Barbero'} ·
+                    {scope==='admin'?' '+(s.actor_role==='admin'?'Administración':s.barbers?.name||'Barbero')+' ·':''}
                     {' '}{s.payment_method==='cash'?'Efectivo':'Transferencia'}
                   </p>
                 </div>
@@ -293,10 +343,10 @@ export default function RetailSalesPanel({scope}:{scope:'barber'|'admin'}) {
               </div>)}
             </div>}
         </div>
-        {scope==='admin'&&data.adjustments.length>0&&<details className="border-t border-zinc-800 pt-3">
+        {scope==='admin'&&(data.adjustments||[]).length>0&&<details className="border-t border-zinc-800 pt-3">
           <summary className="cursor-pointer text-xs font-bold text-zinc-300">Historial de ajustes de stock</summary>
           <div className="mt-2 space-y-1 text-xs text-zinc-400">
-            {data.adjustments.map(a=><p key={a.id}>
+            {(data.adjustments||[]).map(a=><p key={a.id}>
               {new Date(a.created_at).toLocaleString('es-UY',{timeZone:'America/Montevideo'})}
               {' · '}{a.previous_stock} → {a.new_stock} · {a.note}
             </p>)}
