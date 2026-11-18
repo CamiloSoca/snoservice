@@ -73,7 +73,7 @@ BEGIN
     'unclassified',v_unknown,
     'reliable',c.opening_verified AND v_unknown=0,
     'closingCounted',c.closing_counted,'cashVariance',c.cash_variance);
-END;$function$
+END;$function$;
 
 
 CREATE OR REPLACE FUNCTION public.close_cash_financial(p_shop_id uuid)
@@ -122,5 +122,4 @@ BEGIN
    'tips',v_tips,'completedAppointments',v_bookings,'manualCharges',v_manual,
    'retailSales',v_retail);
 END;
-$function$
-
+$function$;
