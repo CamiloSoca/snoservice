@@ -1,4 +1,5 @@
 import {Suspense} from 'react';
+import {connection} from 'next/server';
 import HomeClient from '@/components/HomeClient';
 import {InitialShopSkeleton,InitialShopError} from '@/components/InitialShopState';
 import {getServerPublicShopData} from '@/lib/server-public-shop';
@@ -7,6 +8,8 @@ import {getPublicRetailProducts} from '@/lib/server-public-retail';
 // Mostrar el catálogo público desde el servidor, sin esperar a que
 // el móvil descargue JavaScript y después consulte /api/public/shop.
 async function HomeContent(){
+  // Evita prerender en build sin credenciales; se resuelve con caché al servir.
+  await connection();
   try {
     const [shop,products]=await Promise.all([
       getServerPublicShopData(),

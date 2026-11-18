@@ -1,4 +1,5 @@
 import {Suspense} from 'react';
+import {connection} from 'next/server';
 import Link from 'next/link';
 import {ArrowLeft,ShoppingBag,Store,Wallet,ArrowRight} from 'lucide-react';
 import {InitialShopSkeleton} from '@/components/InitialShopState';
@@ -9,6 +10,7 @@ import {getPublicRetailProducts} from '@/lib/server-public-retail';
 const money=(n:number)=>'$'+n.toLocaleString('es-UY');
 
 async function CerasContent(){
+  await connection();
   const [shop,products]=await Promise.all([
     getServerPublicShopData(),
     getPublicRetailProducts().catch(()=>[]),
