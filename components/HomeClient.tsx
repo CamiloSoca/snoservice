@@ -16,6 +16,7 @@ import {
   Moon,
   Phone,
   ArrowRight,
+  ShoppingBag,
 } from 'lucide-react';
 import {
   DEFAULT_SHOP_CONFIG,
