@@ -2,8 +2,9 @@
 
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {Package,ShoppingBag,RefreshCw,CheckCircle2,AlertTriangle} from 'lucide-react';
+import Image from 'next/image';
 
-type Product={id:string;slug:string;name:string;description:string;price:number;stock_quantity:number;active:boolean};
+type Product={id:string;slug:string;name:string;description:string;price:number;stock_quantity:number;active:boolean;image_path:string;imageUrl:string|null};
 type Sale={id:string;barber_id:string|null;actor_role:'barber'|'admin';quantity:number;unit_price:number|string;amount:number|string;payment_method:'cash'|'transfer';sold_at:string;retail_products?:{name:string}|null;barbers?:{name:string}|null};
 type Adjustment={id:string;product_id:string;previous_stock:number;new_stock:number;note:string;created_at:string};
 type Summary={unitsTotal:number|string;amountTotal:number|string;cashTotal:number|string;transferTotal:number|string;unitsThisMonth:number|string;amountThisMonth:number|string;cashThisMonth:number|string;transferThisMonth:number|string};
@@ -22,6 +23,9 @@ export default function RetailSalesPanel({scope}:{scope:'barber'|'admin'}) {
   const [method,setMethod]=useState<'cash'|'transfer'>('cash');
   const [newStock,setNewStock]=useState('');
   const [reason,setReason]=useState('');
+  const [editing,setEditing]=useState(false);
+  const [draft,setDraft]=useState({name:'',description:'',price:'350',imagePath:'',imageUrl:'' as string,active:true});
+  const [uploading,setUploading]=useState(false);
   const saleAttempt=useRef<Attempt|null>(null);
   const stockAttempt=useRef<Attempt|null>(null);
 
@@ -45,6 +49,11 @@ export default function RetailSalesPanel({scope}:{scope:'barber'|'admin'}) {
   const product=data?.products.find(p=>p.id===productId);
   const saleFingerprint=JSON.stringify([productId,quantity,method]);
   const stockFingerprint=JSON.stringify([productId,newStock,reason.trim()]);
+  useEffect(()=>{
+    if(editing||!product)return;
+    setDraft({name:product.name,description:product.description,price:String(product.price),
+      imagePath:product.image_path||'',imageUrl:product.imageUrl||'',active:product.active});
+  },[editing,product]);
 
   const post=async(body:Record<string,unknown>)=>{
     const r=await fetch('/api/retail',{
@@ -108,6 +117,38 @@ export default function RetailSalesPanel({scope}:{scope:'barber'|'admin'}) {
     } finally {setBusy(false);}
   };
 
+  const uploadImage=async(file:File)=>{
+    if(scope!=='admin'||busy||uploading)return;
+    setUploading(true);setError('');setFeedback('');
+    try{
+      const body=new FormData();body.set('image',file);
+      const r=await fetch('/api/retail/image',{method:'POST',credentials:'same-origin',body});
+      const value=await r.json();
+      if(!r.ok||!value.ok)throw Error(value.error||'No se pudo subir la imagen.');
+      setDraft(old=>({...old,imagePath:value.imagePath,imageUrl:value.imageUrl}));
+      setFeedback('Imagen cargada. Guardá el producto para aplicarla.');
+    }catch(err){setError(err instanceof Error?err.message:'No se pudo subir la imagen.');}
+    finally{setUploading(false);}
+  };
+
+  const saveProduct=async(e:React.FormEvent)=>{
+    e.preventDefault();
+    if(scope!=='admin'||busy||uploading)return;
+    const parsedPrice=Number(draft.price);
+    if(!draft.name.trim()||!Number.isFinite(parsedPrice)||parsedPrice<=0)return;
+    setBusy(true);setError('');setFeedback('');
+    try{
+      const result=await post({action:'SAVE_PRODUCT',productId:editing?null:productId,
+        name:draft.name.trim(),description:draft.description.trim(),price:parsedPrice,
+        imagePath:draft.imagePath,active:draft.active});
+      setEditing(false);
+      await refresh();
+      setProductId(result.productId);
+      setFeedback(editing?'Producto creado con stock inicial en cero.':'Producto actualizado.');
+    }catch(err){setError(err instanceof Error?err.message:'No se pudo guardar el producto.');}
+    finally{setBusy(false);}
+  };
+
   const summary=data?.summary;
   return (
     <section className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900/90 p-4 sm:p-6"
@@ -149,10 +190,16 @@ export default function RetailSalesPanel({scope}:{scope:'barber'|'admin'}) {
               {data.products.map(p=><option key={p.id} value={p.id}>{p.name} · {money(p.price)}</option>)}
             </select>
           </label>
-          {product&&<div className="flex items-center justify-between gap-3 rounded-xl border border-zinc-700 bg-zinc-950 p-3">
-            <span className="flex items-center gap-2 text-sm"><Package className="h-5 w-5 text-emerald-400"/>
-              Stock disponible</span>
-            <strong className="text-lg text-emerald-300">{product.stock_quantity} unidades</strong>
+          {product&&<div className="flex items-center gap-3 rounded-xl border border-zinc-700 bg-zinc-950 p-3">
+            <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-zinc-900">
+              {product.imageUrl?<Image src={product.imageUrl} alt={'Foto de '+product.name}
+                fill sizes="80px" className="object-contain"/>:
+                <Package className="m-auto h-8 w-8 text-emerald-400"/>}
+            </div>
+            <div>
+              <p className="text-xs text-zinc-400">Stock disponible · {product.name}</p>
+              <strong className="text-lg text-emerald-300">{product.stock_quantity} unidades</strong>
+            </div>
           </div>}
           <form onSubmit={registerSale} className="space-y-3 rounded-xl border border-zinc-800 bg-zinc-950/60 p-3">
             <h3 className="text-sm font-bold">Registrar venta cobrada</h3>
@@ -178,6 +225,43 @@ export default function RetailSalesPanel({scope}:{scope:'barber'|'admin'}) {
               <AlertTriangle className="h-4 w-4"/>Sin unidades cargadas. Administración debe ingresar el stock real.
             </p>}
           </form>
+          {scope==='admin'&&<div className="space-y-3 rounded-xl border border-zinc-700 bg-zinc-950/60 p-3">
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={()=>{setEditing(true);setDraft({name:'',description:'',price:'350',imagePath:'',imageUrl:'',active:true});}}
+                className="rounded-lg bg-emerald-400 px-3 py-2 text-xs font-bold text-zinc-950">Agregar producto</button>
+              <button type="button" onClick={()=>{setEditing(false);if(product)setDraft({name:product.name,description:product.description,
+                price:String(product.price),imagePath:product.image_path||'',imageUrl:product.imageUrl||'',active:product.active});}}
+                className="rounded-lg border border-zinc-700 px-3 py-2 text-xs font-bold">Editar seleccionado</button>
+            </div>
+            <form onSubmit={saveProduct} className="space-y-3">
+              <h3 className="text-sm font-bold">{editing?'Nuevo producto':'Datos del producto'}</h3>
+              <input required minLength={2} maxLength={90} value={draft.name} onChange={e=>setDraft(d=>({...d,name:e.target.value}))}
+                placeholder="Nombre del producto" className="w-full rounded-lg border border-zinc-700 bg-zinc-900 p-3 text-sm"/>
+              <textarea maxLength={500} value={draft.description} onChange={e=>setDraft(d=>({...d,description:e.target.value}))}
+                placeholder="Descripción" rows={2} className="w-full rounded-lg border border-zinc-700 bg-zinc-900 p-3 text-sm"/>
+              <label className="block text-xs text-zinc-400">Precio
+                <input required type="number" min="0.01" max="100000" step="0.01" value={draft.price}
+                  onChange={e=>setDraft(d=>({...d,price:e.target.value}))}
+                  className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 p-3 text-sm"/>
+              </label>
+              <label className="block text-xs text-zinc-400">Foto JPG, PNG o WebP (máximo 2 MB)
+                <input type="file" accept="image/jpeg,image/png,image/webp" disabled={uploading||busy}
+                  onChange={e=>{const f=e.target.files?.[0];if(f)void uploadImage(f);e.target.value='';}}
+                  className="mt-2 block w-full text-xs text-zinc-300 file:mr-2 file:rounded-lg file:border-0 file:bg-zinc-800 file:p-2 file:text-white"/>
+              </label>
+              {draft.imageUrl&&<div className="relative h-28 w-28 overflow-hidden rounded-xl bg-zinc-900">
+                <Image src={draft.imageUrl} alt="Vista previa del producto" fill sizes="112px" className="object-contain"/>
+              </div>}
+              <label className="flex items-center gap-2 text-xs">
+                <input type="checkbox" checked={draft.active} onChange={e=>setDraft(d=>({...d,active:e.target.checked}))}/>
+                Producto visible en el catálogo
+              </label>
+              <button type="submit" disabled={busy||uploading||!draft.name.trim()}
+                className="w-full rounded-xl border border-emerald-500/50 p-3 text-sm font-bold text-emerald-300 disabled:opacity-40">
+                {uploading?'Subiendo foto...':busy?'Guardando...':editing?'Crear producto (stock 0)':'Guardar producto'}
+              </button>
+            </form>
+          </div>}
           {scope==='admin'&&<form onSubmit={updateStock} className="space-y-3 rounded-xl border border-zinc-700 bg-zinc-950/60 p-3">
             <h3 className="text-sm font-bold">Actualizar stock físico</h3>
             <p className="text-xs text-zinc-400">Ingresá cuántas unidades hay actualmente en el local, no cuántas se agregan.</p>

@@ -3,10 +3,11 @@
 import {useEffect,useState} from 'react';
 import Link from 'next/link';
 import {ArrowLeft,Package,ShoppingBag,Store,Wallet} from 'lucide-react';
+import Image from 'next/image';
 import {PublicShopGate} from '@/components/PublicShopProvider';
 import type {PublicShopData} from '@/lib/public-shop-data';
 
-type PublicProduct={id:string;slug:string;name:string;description:string;price:number;available:boolean};
+type PublicProduct={id:string;slug:string;name:string;description:string;price:number;available:boolean;imageUrl:string|null};
 const money=(v:number)=>'$'+v.toLocaleString('es-UY');
 
 function CerasCatalogue({shop}:{shop:PublicShopData}) {
@@ -40,8 +41,12 @@ function CerasCatalogue({shop}:{shop:PublicShopData}) {
       {products.length===0&&!loading&&!error&&<p className="text-sm text-zinc-400">Próximamente tendremos productos disponibles.</p>}
       <div className="grid gap-4 sm:grid-cols-2">
         {products.map(product=><article key={product.id} className="space-y-4 rounded-3xl border border-zinc-800 bg-zinc-900 p-5">
-          <div className="flex h-28 items-center justify-center rounded-2xl bg-zinc-950">
-            <Package className="h-12 w-12 text-emerald-400" aria-hidden="true"/>
+          <div className="relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-2xl bg-zinc-950">
+            {product.imageUrl
+              ? <Image src={product.imageUrl} alt={'Foto de '+product.name} width={500} height={500}
+                  sizes="(max-width: 640px) 90vw, 350px" className="h-full w-full object-contain"
+                  priority={false}/>
+              : <Package className="h-12 w-12 text-emerald-400" aria-hidden="true"/>}
           </div>
           <div>
             <h2 className="text-lg font-extrabold">{product.name}</h2>
