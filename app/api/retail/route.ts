@@ -2,6 +2,7 @@ import {NextResponse} from 'next/server';
 import {getSupabaseServer,SHOP_UUID} from '@/lib/supabase-server';
 import {getBarberSession,requireAdminSession,verifyCsrfOrigin} from '@/lib/session';
 import {isValidUUID} from '@/lib/booking-store';
+import {resolveRetailImage,validRetailImagePath} from '@/lib/retail-images';
 
 const headers={'Cache-Control':'private, no-store'};
 
@@ -27,15 +28,17 @@ export async function GET(request:Request) {
     return NextResponse.json({error:'Consulta inválida.'},{status:400,headers});
   try {
     const db=getSupabaseServer();
+    const imageUrl=(path:string)=>resolveRetailImage(path,SHOP_UUID,db);
     if(scope==='public') {
       const {data,error}=await db.from('retail_products')
-        .select('id,slug,name,description,price,stock_quantity')
+        .select('id,slug,name,description,price,stock_quantity,image_path')
         .eq('shop_id',SHOP_UUID).eq('active',true).order('name');
       if(error)return NextResponse.json({error:'No se pudo consultar el catálogo.'},{status:503,headers});
       // Only general availability is public; no receipt/customer/stock history.
       return NextResponse.json({products:(data||[]).map(p=>({
         id:p.id,slug:p.slug,name:p.name,description:p.description,
         price:Number(p.price),available:Number(p.stock_quantity)>0,
+        imageUrl:imageUrl(p.image_path),
       }))},{headers});
     }
     const identity=await seller(scope);
@@ -46,7 +49,7 @@ export async function GET(request:Request) {
     if(identity.role==='barber')history=history.eq('barber_id',identity.barberId);
     const [products,sales,summary,adjustments]=await Promise.all([
       db.from('retail_products')
-        .select('id,slug,name,description,price,stock_quantity,active')
+        .select('id,slug,name,description,price,stock_quantity,active,image_path')
         .eq('shop_id',SHOP_UUID).order('name'),
       history,
       db.rpc('retail_sales_summary',{p_shop_id:SHOP_UUID,p_barber_id:identity.barberId}),
@@ -59,7 +62,7 @@ export async function GET(request:Request) {
     if(products.error||sales.error||summary.error||adjustments.error)
       return NextResponse.json({error:'No se pudo consultar el inventario y las ventas.'},{status:503,headers});
     return NextResponse.json({
-      products:(products.data||[]).map(p=>({...p,price:Number(p.price)})),
+      products:(products.data||[]).map(p=>({...p,price:Number(p.price),imageUrl:imageUrl(p.image_path)})),
       sales:sales.data||[],summary:summary.data,
       adjustments:scope==='admin'?adjustments.data||[]:[],
     },{headers});
@@ -78,10 +81,42 @@ export async function POST(request:Request) {
     return NextResponse.json({error:'Origen de venta inválido.'},{status:400,headers});
   const identity=await seller(scope);
   if(!identity)return NextResponse.json({error:'Sesión vencida o no autorizada.'},{status:401,headers});
+  const db=getSupabaseServer();
+  if(body.action==='SAVE_PRODUCT'&&identity.role==='admin'){
+    const id=typeof body.productId==='string'?body.productId:'';
+    const isNew=!id;
+    if(!isNew&&!isValidUUID(id))
+      return NextResponse.json({error:'Producto inválido.'},{status:400,headers});
+    const name=typeof body.name==='string'?body.name.trim():'';
+    const description=typeof body.description==='string'?body.description.trim():'';
+    const price=body.price;
+    const imagePath=typeof body.imagePath==='string'?body.imagePath:'';
+    const active=body.active;
+    if(name.length<2||name.length>90||description.length>500||
+       typeof price!=='number'||!Number.isFinite(price)||price<=0||price>100000||
+       Math.abs(price*100-Math.round(price*100))>0.000001||
+       typeof active!=='boolean'||!validRetailImagePath(imagePath,SHOP_UUID))
+      return NextResponse.json({error:'Revisá nombre, precio, descripción e imagen.'},{status:422,headers});
+    const props={name,description,price,active,image_path:imagePath};
+    if(isNew){
+      const slug=name.normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+        .toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,48)||
+        'producto';
+      const {data,error}=await db.from('retail_products')
+        .insert({...props,shop_id:SHOP_UUID,stock_quantity:0,
+          slug:slug+'-'+crypto.randomUUID().slice(0,8)})
+        .select('id').single();
+      if(error||!data)return NextResponse.json({error:'No se pudo crear el producto.'},{status:503,headers});
+      return NextResponse.json({ok:true,productId:data.id},{headers});
+    }
+    const {data,error}=await db.from('retail_products')
+      .update(props).eq('shop_id',SHOP_UUID).eq('id',id)
+      .select('id').maybeSingle();
+    if(error||!data)return NextResponse.json({error:'No se pudo actualizar el producto.'},{status:503,headers});
+    return NextResponse.json({ok:true,productId:data.id},{headers});
+  }
   if(!isValidUUID(String(body.productId||''))||!isValidUUID(String(body.requestId||'')))
     return NextResponse.json({error:'Producto o identificador inválido.'},{status:400,headers});
-
-  const db=getSupabaseServer();
   if(body.action==='SALE') {
     const quantity=body.quantity;
     const method=body.method;
