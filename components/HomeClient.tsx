@@ -213,7 +213,13 @@ export default function HomeClient({initialShop,featuredRetail}: {
                 Ceras para el pelo
               </strong>
               <span className={['mt-1 block truncate text-xs sm:text-sm',isDark?'text-zinc-400':'text-zinc-600'].join(' ')}>
-                {featuredRetail.name} · {'
+                {featuredRetail.name} · {new Intl.NumberFormat('es-UY',{style:'currency',currency:'UYU',maximumFractionDigits:0}).format(featuredRetail.price)}
+              </span>
+              <span className="mt-1 block text-[11px] text-zinc-500">Consultá disponibilidad</span>
+            </span>
+            <ArrowRight className={['h-5 w-5 shrink-0 transition-transform group-hover:translate-x-0.5',isDark?'text-emerald-400':'text-emerald-700'].join(' ')}/>
+          </Link>
+        </section>}
 
         {/* EQUIPO: tarjetas breves, foto real o inicial */}
         <section id="equipo" className="mx-auto max-w-5xl scroll-mt-24 px-4 pt-6" aria-labelledby="equipo-title">
