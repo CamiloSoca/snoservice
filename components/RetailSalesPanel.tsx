@@ -73,7 +73,8 @@ export default function RetailSalesPanel({scope}:{scope:'barber'|'admin'}) {
       setFeedback(result.sale?.repeated?'La venta ya estaba guardada. No se duplicó.':
         'Venta registrada. El stock se descontó y el ingreso quedó para Nahuel, sin comisión.');
       setQuantity(1);
-      await refresh();
+      try {await refresh();}
+      catch {setFeedback('Venta guardada correctamente, pero el historial no pudo actualizarse. Usá Actualizar antes de registrar otra.');}
     } catch(err) {
       setError((err instanceof Error?err.message:'No se confirmó la venta.')+
         ' Si se cortó la conexión, revisá el historial antes de intentar otra venta.');
@@ -99,7 +100,8 @@ export default function RetailSalesPanel({scope}:{scope:'barber'|'admin'}) {
       setFeedback(result.adjustment?.repeated?'El ajuste ya estaba registrado.':
         'Stock actualizado y movimiento auditado.');
       setNewStock('');setReason('');
-      await refresh();
+      try {await refresh();}
+      catch {setFeedback('Ajuste guardado correctamente, pero no se pudo refrescar la pantalla. Usá Actualizar.');}
     } catch(err) {
       setError((err instanceof Error?err.message:'No se pudo ajustar el stock.')+
         ' Revisá el historial antes de repetir.');
