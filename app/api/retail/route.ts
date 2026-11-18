@@ -47,7 +47,7 @@ export async function GET(request:Request) {
       .select('id,product_id,barber_id,actor_role,quantity,unit_price,amount,payment_method,sold_at,retail_products(name),barbers(name)')
       .eq('shop_id',SHOP_UUID).order('sold_at',{ascending:false}).limit(scope==='admin'?100:40);
     if(identity.role==='barber')history=history.eq('barber_id',identity.barberId);
-    const [products,sales,summary,adjustments]=await Promise.all([
+    const [products,sales,summary,adjustments,breakdown]=await Promise.all([
       db.from('retail_products')
         .select('id,slug,name,description,price,stock_quantity,active,image_path')
         .eq('shop_id',SHOP_UUID).order('name'),
@@ -58,13 +58,28 @@ export async function GET(request:Request) {
             .select('id,product_id,previous_stock,new_stock,note,created_at')
             .eq('shop_id',SHOP_UUID).order('created_at',{ascending:false}).limit(50)
         : Promise.resolve({data:[],error:null}),
+      // Only authenticated administration can request per-barber totals.
+      identity.role==='admin'
+        ? db.rpc('retail_seller_breakdown',{p_shop_id:SHOP_UUID})
+        : Promise.resolve({data:[],error:null}),
     ]);
-    if(products.error||sales.error||summary.error||adjustments.error)
+    if(products.error||sales.error||summary.error||adjustments.error||breakdown.error)
       return NextResponse.json({error:'No se pudo consultar el inventario y las ventas.'},{status:503,headers});
+    const ownSummary=summary.data && typeof summary.data==='object' && !Array.isArray(summary.data)
+      ? summary.data as {unitsTotal?:number|string;unitsThisMonth?:number|string}
+      : null;
     return NextResponse.json({
       products:(products.data||[]).map(p=>({...p,price:Number(p.price),imageUrl:imageUrl(p.image_path)})),
-      sales:sales.data||[],summary:summary.data,
-      adjustments:scope==='admin'?adjustments.data||[]:[],
+      sales:sales.data||[],
+      // Never expose overall revenue, payment totals or other sellers to a barber.
+      summary:identity.role==='admin'?summary.data:{
+        unitsTotal:Number(ownSummary?.unitsTotal||0),
+        unitsThisMonth:Number(ownSummary?.unitsThisMonth||0),
+      },
+      ...(identity.role==='admin'?{
+        adjustments:adjustments.data||[],
+        sellerBreakdown:breakdown.data||[],
+      }:{}),
     },{headers});
   } catch {
     return NextResponse.json({error:'No se pudo cargar el inventario.'},{status:500,headers});
