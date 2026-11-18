@@ -132,6 +132,20 @@ function persistPublicData(data: PublicShopData, savedAt: number): void {
   }
 }
 
+// Datos recibidos desde SSR para evitar el segundo request público en Inicio.
+export function seedPublicShopData(data:PublicShopData):void {
+  if(typeof window==='undefined')return;
+  hydrateFromSession();
+  const identity=syncStorageScope();
+  if(snapshot.data || !isPublicData(data,identity.shopId))return;
+  const clean=onlyPublicFields(data);
+  generation+=1;
+  request=null;
+  const savedAt=Date.now();
+  persistPublicData(clean,savedAt);
+  publish({data:clean,state:'ready',updatedAt:savedAt});
+}
+
 export function subscribePublicShop(listener: () => void): () => void {
   listeners.add(listener);
   return () => { listeners.delete(listener); };

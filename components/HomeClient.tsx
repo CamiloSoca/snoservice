@@ -6,6 +6,9 @@ import Link from 'next/link';
 import Image from 'next/image';
 import BarberDetailPanel from '@/components/BarberDetailPanel';
 import InstagramCarousel from '@/components/InstagramCarousel';
+import RetailProductPhoto from '@/components/RetailProductPhoto';
+import type {PublicRetailProduct} from '@/lib/server-public-retail';
+import {seedPublicShopData} from '@/lib/public-shop-data';
 import ShopInfoCards from '@/components/ShopInfoCards';
 import {
   MapPin,
@@ -13,14 +16,16 @@ import {
   Moon,
   Phone,
   ArrowRight,
-  ShoppingBag,
 } from 'lucide-react';
 import {
   DEFAULT_SHOP_CONFIG,
 } from '@/lib/booking-store';
 import type { PublicShopData } from '@/lib/public-shop-data';
 
-export default function HomeClient({initialShop}: {initialShop: PublicShopData}) {
+export default function HomeClient({initialShop,featuredRetail}: {
+  initialShop:PublicShopData;
+  featuredRetail:PublicRetailProduct|null;
+}) {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [selectedBarber, setSelectedBarber] = useState<PublicShopData['barbers'][number] | null>(null);
 
@@ -29,6 +34,9 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
   const barbers = initialShop.barbers.filter(b => b.active !== false);
 
   useEffect(() => {
+    // La portada viene renderizada desde el servidor: evitamos pedir
+    // los mismos datos de nuevo tras hidratar el navegador.
+    seedPublicShopData(initialShop);
     // Solo se persiste la preferencia visual. Los datos del negocio
     // llegan renderizados desde el servidor, sin esperar al navegador.
     const savedTheme = localStorage.getItem('barber_theme');
@@ -187,18 +195,25 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
           </div>
         </section>
 
-        <section aria-label="Ceras disponibles" className="mx-auto max-w-5xl px-4 pt-5">
+        {featuredRetail&&<section aria-label="Ceras disponibles" className="mx-auto max-w-5xl px-4 pt-5">
           <Link href="/ceras"
-            className="flex items-center justify-between gap-3 rounded-2xl border border-emerald-500/20 bg-zinc-900/90 p-4 transition-colors hover:border-emerald-400">
-            <span className="flex items-center gap-3">
-              <ShoppingBag className="h-6 w-6 shrink-0 text-emerald-400"/>
-              <span><strong className="block text-sm text-white">Ceras para el pelo</strong>
-                <span className="text-xs text-zinc-400">Pomada Matte 60g · $350 · Consultá disponibilidad</span>
+            className={['group flex min-h-28 items-center gap-3 overflow-hidden rounded-[24px] border px-3.5 py-3 transition-colors hover:border-emerald-400/70 sm:gap-5',
+              isDark?'border-emerald-500/20 bg-[#141917]':'border-emerald-200 bg-white'].join(' ')}>
+            <RetailProductPhoto
+              src={featuredRetail.imageUrl}
+              slug={featuredRetail.slug}
+              name={featuredRetail.name}
+              size="tile"
+            />
+            <span className="min-w-0 flex-1">
+              <span className={['mb-1 block text-[10px] font-bold uppercase tracking-[0.14em]',isDark?'text-emerald-400':'text-emerald-700'].join(' ')}>
+                Productos para el pelo
               </span>
-            </span>
-            <ArrowRight className="h-5 w-5 shrink-0 text-emerald-400"/>
-          </Link>
-        </section>
+              <strong className={['block truncate text-sm font-extrabold sm:text-base',isDark?'text-white':'text-zinc-950'].join(' ')}>
+                Ceras para el pelo
+              </strong>
+              <span className={['mt-1 block truncate text-xs sm:text-sm',isDark?'text-zinc-400':'text-zinc-600'].join(' ')}>
+                {featuredRetail.name} · {'
 
         {/* EQUIPO: tarjetas breves, foto real o inicial */}
         <section id="equipo" className="mx-auto max-w-5xl scroll-mt-24 px-4 pt-6" aria-labelledby="equipo-title">
@@ -229,7 +244,104 @@ export default function HomeClient({initialShop}: {initialShop: PublicShopData})
                         <p className={['mt-1 text-xs', isDark ? 'text-zinc-400' : 'text-zinc-500'].join(' ')}>Ver perfil <ArrowRight className="ml-1 inline h-3 w-3" aria-hidden="true" /></p>
                       </div>
                     </button>
-                    <Link href={'/agendar?barbero=' + encodeURIComponent(slug)} prefetch={true}
+                    <Link href={'/agendar?barbero=' + encodeURIComponent(slug)} prefetch={false}
+                      className={['mx-3 mb-3 mt-3 flex min-h-11 items-center justify-center gap-1.5 rounded-xl px-2 text-xs font-bold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400',primaryBtn].join(' ')}>
+                      Reservar <ArrowRight className="h-3.5 w-3.5" />
+                    </Link>
+                  </div>
+                );
+              })}
+            </div>
+          ) : <p className="text-sm text-zinc-400">No hay barberos disponibles por el momento.</p>}
+        </section>
+
+        {/* INSTAGRAM — carrusel liviano de publicaciones oficiales */}
+        <InstagramCarousel
+          isDark={isDark}
+          instagramHandle={shopConfig.instagramHandle || '@13.cut'}
+          shopName={shopConfig.name}
+          bannerUrl={bannerUrl}
+          logoImage={logoImage}
+          instagramUrl={shopConfig.instagramUrl || 'https://www.instagram.com/13.cut/'}
+        />
+
+        {/* HORARIOS Y UBICACIÓN: solo visual, siempre datos vigentes del local */}
+        <section id="info" className="mx-auto max-w-5xl scroll-mt-24 px-4 pb-10 pt-5" aria-label="Horarios y ubicación">
+          <ShopInfoCards
+            schedule={activeSchedule}
+            address={shopAddress}
+            city={shopCity}
+            isDark={isDark}
+          />
+        </section>
+
+
+      </div>
+
+      {selectedBarber && (
+        <BarberDetailPanel shop={initialShop} barber={selectedBarber} onClose={() => setSelectedBarber(null)} />
+      )}
+
+      <footer
+        className={`relative z-10 border-t py-6 text-xs hidden sm:block ${
+          isDark ? 'border-zinc-900 text-zinc-500' : 'border-zinc-200 text-zinc-500'
+        }`}
+      >
+        <div className="max-w-5xl mx-auto px-4 flex items-center justify-between gap-2">
+          <div>
+            <span className="font-semibold">{shopConfig.name}</span> - {shopAddress}
+          </div>
+          <div className="flex items-center space-x-4">
+            <Link href="/" aria-current="page" className="hover:underline">
+              Inicio
+            </Link>
+            <Link href="/agendar" className="hover:underline">
+              Reservar
+            </Link>
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+}
++featuredRetail.price.toLocaleString('es-UY')}
+              </span>
+              <span className="mt-1 block text-[11px] text-zinc-500">Consultá disponibilidad</span>
+            </span>
+            <ArrowRight className={['h-5 w-5 shrink-0 transition-transform group-hover:translate-x-0.5',isDark?'text-emerald-400':'text-emerald-700'].join(' ')}/>
+          </Link>
+        </section>}
+
+        {/* EQUIPO: tarjetas breves, foto real o inicial */}
+        <section id="equipo" className="mx-auto max-w-5xl scroll-mt-24 px-4 pt-6" aria-labelledby="equipo-title">
+          <div className="mb-4">
+            <span className={['mb-1.5 block text-[10px] font-bold uppercase tracking-[0.18em]', isDark ? 'text-emerald-400/90' : 'text-emerald-700'].join(' ')}>Elegí tu barbero</span>
+            <h2 id="equipo-title" className="text-xl font-extrabold tracking-tight sm:text-2xl">Nuestro equipo</h2>
+            <p className={['mt-1 text-xs sm:text-sm', isDark ? 'text-zinc-400' : 'text-zinc-500'].join(' ')}>Conocé a tu barbero y reservá</p>
+          </div>
+          {activeBarbers.length ? (
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              {activeBarbers.map(b => {
+                const slug = b.slug || b.name.toLowerCase();
+                return (
+                  <div key={b.id} className={['min-w-0 overflow-hidden rounded-[24px] border transition-[border-color,transform] duration-200 hover:-translate-y-0.5',
+                    isDark ? 'border-white/[0.075] bg-[#151917]/90 shadow-[0_12px_34px_rgba(0,0,0,0.16)]' : 'border-zinc-200/80 bg-white shadow-sm'
+                  ].join(' ')}>
+                    <button type="button" onClick={() => setSelectedBarber(b)} className="block w-full text-left">
+                      <div className="relative flex aspect-[5/4] items-center justify-center overflow-hidden bg-zinc-800">
+                        {b.imageUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={b.imageUrl} alt={'Foto de ' + b.name} loading="lazy" className="h-full w-full object-cover" />
+                        ) : (
+                          <span className="text-4xl font-extrabold text-zinc-400">{b.name.charAt(0)}</span>
+                        )}
+                      </div>
+                      <div className="px-3.5 pt-3">
+                        <h3 className="truncate text-sm font-bold" title={b.name}>{b.name}</h3>
+                        <p className={['mt-1 text-xs', isDark ? 'text-zinc-400' : 'text-zinc-500'].join(' ')}>Ver perfil <ArrowRight className="ml-1 inline h-3 w-3" aria-hidden="true" /></p>
+                      </div>
+                    </button>
+                    <Link href={'/agendar?barbero=' + encodeURIComponent(slug)} prefetch={false}
                       className={['mx-3 mb-3 mt-3 flex min-h-11 items-center justify-center gap-1.5 rounded-xl px-2 text-xs font-bold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400',primaryBtn].join(' ')}>
                       Reservar <ArrowRight className="h-3.5 w-3.5" />
                     </Link>
